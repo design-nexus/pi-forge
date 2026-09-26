@@ -24,6 +24,8 @@ import type { LocalProtocolOptions } from "../internal-urls";
 import type { DaemonCompletionNotification } from "../launch/protocol";
 import { LspTool } from "../lsp";
 import type { MCPManager } from "../mcp";
+import { resolveCapabilityPolicies, resolvePromptPolicies } from "../prompt-engine/profiles";
+import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "../prompt-engine/settings";
 import { MEMORY_BACKEND_TOOL_NAMES } from "../memory-backend/tool-names";
 import type { MnemopiSessionState } from "../mnemopi/state";
 import type { PlanModeState } from "../plan-mode/state";
@@ -366,6 +368,8 @@ export interface ToolSession {
 	toolRegistry?: Map<string, Tool>;
 	/** `xd://` presentation state backed by {@link toolRegistry}. */
 	xdev?: XdevState;
+	/** Notify the prompt owner after an automatic mounted capability is used. */
+	onXdevToolUsed?: (name: string) => Promise<void>;
 	/**
 	 * Set when this session's `write` tool was granted only as the `xd://`
 	 * transport: `write xd://<tool>` dispatches mounted devices, but filesystem
@@ -722,7 +726,15 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 			}
 		}
 	}
+	const promptProfile = cfgPromptProfile.get(session.settings);
+	const promptModules = resolvePromptPolicies(promptProfile, cfgPromptModules.get(session.settings));
+	const promptCapabilities = resolveCapabilityPolicies(promptProfile, cfgPromptCapabilities.get(session.settings));
 	const isToolAllowed = (name: string) => {
+		if (name === "task" && (promptModules.delegation === "disabled" || promptCapabilities.subagents === "disabled"))
+			return false;
+		if (name === "lsp" && promptCapabilities.lsp === "disabled") return false;
+		if (name === "debug" && promptCapabilities.debugger === "disabled") return false;
+		if (name === "github" && promptCapabilities.github === "disabled") return false;
 		// Never in the default set. Explicitly activatable while goal.enabled and
 		// no goal record exists yet — /guided-goal enables it so the agent can
 		// finish the interview with `goal create`, which turns goal mode on. Once
@@ -815,6 +827,7 @@ export function createXdevState(
 		mountedNames,
 		builtInNames,
 		isActive: name => session.isToolActive?.(name) === true,
+		onUsed: name => session.onXdevToolUsed?.(name),
 		// Card rendering reads the same predicate as execution: mounted devices
 		// plus active top-level tools, which the `write` transport also accepts.
 		resolve: name => resolveXdevTool(state, name),

@@ -212,6 +212,8 @@ import {
 	projectSystemPromptToolMetadata,
 } from "./system-prompt";
 import { AgentOutputManager } from "./task/output-manager";
+import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "./prompt-engine/settings";
+import { resolveCapabilityPolicies, resolvePromptPolicies } from "./prompt-engine/profiles";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
 import { sessionDelegationBias } from "./task/prompt-policy";
 import { isScoutSpawnable } from "./task/spawn-policy";
@@ -2009,6 +2011,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		const fileMutationVersions = new Map<string, number>();
 		const disposeCallbacks = new Set<() => void>();
 		const activeToolNames = new Set<string>();
+		const activatedPromptToolNames = new Set<string>();
 		const toolRegistry = new Map<string, Tool & Pick<ToolDefinition, "defaultInactive">>();
 		const setActiveToolNames = (names: Iterable<string>): void => {
 			activeToolNames.clear();
@@ -2022,6 +2025,20 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			},
 			isToolActive: name => activeToolNames.has(name),
 			setActiveToolNames,
+			onXdevToolUsed: async name => {
+				if (name !== "task" || activatedPromptToolNames.has(name) || session?.isDisposed) return;
+				const profile = cfgPromptProfile.get(settings);
+				const delegation = resolvePromptPolicies(profile, cfgPromptModules.get(settings)).delegation;
+				const subagents = resolveCapabilityPolicies(profile, cfgPromptCapabilities.get(settings)).subagents;
+				if (delegation !== "automatic" && subagents !== "automatic") return;
+				activatedPromptToolNames.add(name);
+				try {
+					await session.refreshBaseSystemPrompt();
+				} catch (error) {
+					activatedPromptToolNames.delete(name);
+					throw error;
+				}
+			},
 			toolRegistry,
 			hasUI: options.hasUI ?? false,
 			canPromptUser: options.interactivePrompts ?? options.hasUI ?? false,
@@ -2182,7 +2199,11 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		const getEvalPreludes = (): readonly EvalPreludeDefinition[] => {
 			if (restrictToolNames || !toolRegistry.has("eval") || !activeToolNames.has("eval")) return [];
 			const builtins: EvalPreludeDefinition[] = [];
-			if (cfgBrowserEnabled.get(settings)) {
+			if (
+				cfgBrowserEnabled.get(settings) &&
+				resolveCapabilityPolicies(cfgPromptProfile.get(settings), cfgPromptCapabilities.get(settings)).browser !==
+					"disabled"
+			) {
 				browserPrelude ??= createBrowserPrelude(toolSession);
 				builtins.push(browserPrelude);
 			}
@@ -2228,7 +2249,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		await logger.time("createAllTools", createTools, toolSession, options.toolNames);
 		const initialBrowserPreludeAvailable = shouldFilterBrowserMCPForPrelude({
 			restrictToolNames,
-			browserEnabled: cfgBrowserEnabled.get(settings),
+			browserEnabled:
+				cfgBrowserEnabled.get(settings) &&
+				resolveCapabilityPolicies(cfgPromptProfile.get(settings), cfgPromptCapabilities.get(settings)).browser !==
+					"disabled",
 			evalRegistered: toolRegistry.has("eval"),
 			evalActive: activeToolNames.has("eval"),
 		});
@@ -2330,8 +2354,13 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				// MCP tools are LoadedCustomTool, extract the tool property while
 				// retaining their origins for initial registry ownership.
 				const loadedMcpTools = mcpResult.tools.map(loaded => loaded.tool);
-				customTools.push(...loadedMcpTools);
-				initialMcpManagerTools.push(...loadedMcpTools);
+				if (
+					resolveCapabilityPolicies(cfgPromptProfile.get(settings), cfgPromptCapabilities.get(settings)).mcp !==
+					"disabled"
+				) {
+					customTools.push(...loadedMcpTools);
+					initialMcpManagerTools.push(...loadedMcpTools);
+				}
 			}
 		}
 		// Only top-level sessions own the global MCPManager. Subagents already
@@ -3214,7 +3243,12 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			// force-activated, so `--no-tools` or a list without `generate_image` must
 			// keep it out (issue #5305).
 			const imageGenRequested = !options.toolNames || options.toolNames.includes("generate_image");
-			if (cfgGenerateImageEnabled.get(settings) && imageGenRequested) {
+			if (
+				cfgGenerateImageEnabled.get(settings) &&
+				imageGenRequested &&
+				resolveCapabilityPolicies(cfgPromptProfile.get(settings), cfgPromptCapabilities.get(settings)).images !==
+					"disabled"
+			) {
 				const imageGenTools = await logger.time("getImageGenTools", () =>
 					getImageGenTools(modelRegistry, toolSession.getActiveModel?.()),
 				);
@@ -3668,6 +3702,11 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					: { mode: "full" },
 			);
 			const defaultPrompt = await buildSystemPromptInternal({
+				promptProfile: cfgPromptProfile.get(settings),
+				promptModulePolicies: cfgPromptModules.get(settings),
+				promptCapabilityPolicies: cfgPromptCapabilities.get(settings),
+				activatedPromptToolNames: [...activatedPromptToolNames],
+				tokenizerModel: agent?.state.model ?? model,
 				cwd: promptCwd,
 				additionalWorkspaceRoots: sessionManager.getAdditionalDirectories(),
 				xdevTools: toolSession.xdev ? xdevEntries(toolSession.xdev) : [],
@@ -3767,7 +3806,13 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				return tool?.defaultInactive === true || tool?.hidden === true;
 			}),
 		);
-		const requestedActiveToolNames = normalizedRequested.filter(name => name !== "goal");
+		const requestedActiveToolNames = normalizedRequested.filter(
+			name =>
+				name !== "goal" &&
+				(!isMCPToolName(name) ||
+					resolveCapabilityPolicies(cfgPromptProfile.get(settings), cfgPromptCapabilities.get(settings)).mcp !==
+						"disabled"),
+		);
 		const explicitlyRequestedToolNameSet = explicitlyRequestedToolNames
 			? new Set(explicitlyRequestedToolNames)
 			: undefined;
@@ -3792,7 +3837,13 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					...sdkCustomTools.map(t => t.name),
 					...registeredTools.map(t => t.definition.name),
 					...settingsGatedCustomEntries.keys(),
-				].filter(name => !defaultInactiveToolNames.has(name));
+				].filter(
+					name =>
+						!defaultInactiveToolNames.has(name) &&
+						(!isMCPToolName(name) ||
+							resolveCapabilityPolicies(cfgPromptProfile.get(settings), cfgPromptCapabilities.get(settings))
+								.mcp !== "disabled"),
+				);
 		for (const name of alwaysInclude) {
 			if (toolRegistry.has(name) && !initialToolNames.includes(name)) {
 				initialToolNames.push(name);
@@ -3866,12 +3917,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		}
 
 		setSessionActiveToolNames(initialToolNames);
-		const { systemPrompt } = await logger.time(
-			"buildSystemPrompt",
-			rebuildSystemPrompt,
-			initialToolNames,
-			toolRegistry,
-		);
+		const initialPrompt = await logger.time("buildSystemPrompt", rebuildSystemPrompt, initialToolNames, toolRegistry);
+		const { systemPrompt } = initialPrompt;
 
 		const promptTemplates = await promptTemplatesPromise;
 		toolSession.promptTemplates = promptTemplates;
@@ -4326,6 +4373,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			advisorStreamFn: settingsAwareStreamFn,
 			convertToLlm: convertToLlmFinal,
 			rebuildSystemPrompt,
+			basePromptComposition: initialPrompt.composition,
 			getXdevToolEntries: () => (toolSession.xdev ? xdevEntries(toolSession.xdev) : []),
 			xdev: toolSession.xdev,
 			presentationPinnedToolNames: explicitlyRequestedToolNameSet,
@@ -4405,6 +4453,24 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			}
 			if (session.isDisposed) return;
 			try {
+				if (
+					next.promptProfile !== previous.promptProfile ||
+					next.promptModules !== previous.promptModules ||
+					next.promptCapabilities !== previous.promptCapabilities
+				) {
+					await session.reconcileBuiltinTools({ refreshPrompt: false });
+					if (mcpManager) {
+						const browserAllowed =
+							cfgBrowserEnabled.get(settings) &&
+							resolveCapabilityPolicies(cfgPromptProfile.get(settings), cfgPromptCapabilities.get(settings))
+								.browser !== "disabled";
+						await mcpManager.reconcileBrowserFilter(browserAllowed);
+						const mcpAllowed =
+							resolveCapabilityPolicies(cfgPromptProfile.get(settings), cfgPromptCapabilities.get(settings))
+								.mcp !== "disabled";
+						await session.refreshMCPTools(mcpAllowed ? mcpManager.getTools() : []);
+					}
+				}
 				await session.refreshBaseSystemPrompt();
 			} catch (error) {
 				session.emitNotice("error", `Failed to rebuild the system prompt after a settings change: ${error}`);
@@ -4490,6 +4556,19 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				session.setToolBuiltIn(name, false);
 				session.setExtensionMCPTool(name, liveTool);
 				try {
+					if (
+						isMCPToolName(name) &&
+						resolveCapabilityPolicies(cfgPromptProfile.get(settings), cfgPromptCapabilities.get(settings)).mcp ===
+							"disabled"
+					) {
+						if (alreadyEnabled || mounted.includes(name)) {
+							await session.setActiveToolPresentation(
+								enabled.filter(enabledName => enabledName !== name),
+								mounted.filter(mountedName => mountedName !== name),
+							);
+						}
+						return;
+					}
 					if ((registered.definition.defaultInactive || registered.definition.hidden) && !explicitlyRequested) {
 						if (!alreadyEnabled) return;
 						await session.setActiveToolPresentation(
