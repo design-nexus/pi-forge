@@ -16,7 +16,7 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 		subcommands: [
 			{ name: "stats", description: "Show loaded modules and token counts" },
 			{ name: "compare", description: "Compare prompt profiles using this session's context and tools" },
-			{ name: "inspect", description: "Show the assembled system prompt" },
+			{ name: "inspect", description: "Show the assembled system prompt; supports --redact" },
 			{ name: "setup", description: "Configure a prompt profile and module policies" },
 		],
 		handle: async (command, runtime) => {
@@ -25,8 +25,8 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 				await runtime.output(promptStats(runtime.session));
 				return commandConsumed();
 			}
-			if (verb === "inspect" && !rest) {
-				await runtime.output(promptInspect(runtime.session));
+			if (verb === "inspect" && (!rest || rest === "--redact")) {
+				await runtime.output(promptInspect(runtime.session, { redact: rest === "--redact" }));
 				return commandConsumed();
 			}
 			if (verb === "compare" && !rest) {
@@ -37,7 +37,7 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 				await runtime.output("/prompt setup requires the interactive terminal UI.");
 				return commandConsumed();
 			}
-			return usage("Usage: /prompt [stats|compare|inspect|setup]", runtime);
+			return usage("Usage: /prompt [stats|compare|inspect [--redact]|setup]", runtime);
 		},
 		handleTui: async (command, runtime) => {
 			const { verb, rest } = parseSubcommand(command.args);
@@ -47,8 +47,8 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 				ctx.presentCommandOutput(new Markdown(replaceTabs(promptStats(ctx.session)), 1, 1, getMarkdownTheme()));
 				return;
 			}
-			if (verb === "inspect" && !rest) {
-				ctx.presentCommandOutput(new Markdown(replaceTabs(promptInspect(ctx.session)), 1, 1, getMarkdownTheme()));
+			if (verb === "inspect" && (!rest || rest === "--redact")) {
+				ctx.presentCommandOutput(new Markdown(replaceTabs(promptInspect(ctx.session, { redact: rest === "--redact" })), 1, 1, getMarkdownTheme()));
 				return;
 			}
 			if (verb === "compare" && !rest) {
@@ -56,7 +56,7 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 				return;
 			}
 			if (verb !== "setup" || rest) {
-				ctx.showError("Usage: /prompt [stats|compare|inspect|setup]");
+				ctx.showError("Usage: /prompt [stats|compare|inspect [--redact]|setup]");
 				return;
 			}
 			const overlayState: { handle?: { hide(): void } } = {};
@@ -67,12 +67,14 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 			};
 			const overlay = new PromptSetupOverlay(
 				ctx.session,
-				cfgPromptProfile.get(ctx.settings),
-				cfgPromptModules.get(ctx.settings),
-				cfgPromptCapabilities.get(ctx.settings),
+				ctx.session.promptSettingsOverride?.profile ?? cfgPromptProfile.get(ctx.settings),
+				ctx.session.promptSettingsOverride?.modules ?? cfgPromptModules.get(ctx.settings),
+				ctx.session.promptSettingsOverride?.capabilities ?? cfgPromptCapabilities.get(ctx.settings),
 				async (scope, profile, overrides, capabilities) => {
 					try {
-						if (scope === "project") {
+						if (scope === "session") {
+							await ctx.session.setPromptSettingsOverride({ profile, modules: overrides, capabilities });
+						} else if (scope === "project") {
 							ctx.settings.setProjectValue(cfgPromptProfile, profile);
 							ctx.settings.setProjectValue(cfgPromptModules, overrides);
 							ctx.settings.setProjectValue(cfgPromptCapabilities, capabilities);

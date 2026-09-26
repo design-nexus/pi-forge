@@ -15,7 +15,13 @@ import {
 	type PromptProfile,
 } from "./profiles";
 
-const EDITABLE_MODULES: readonly PromptModuleId[] = ["delegation", "workflow", "repo-context"];
+const EDITABLE_MODULES: readonly PromptModuleId[] = [
+	"delegation",
+	"workflow",
+	"workflow-cleanup",
+	"repo-context",
+	"prefix-bound-tools",
+];
 const PROFILE_NAMES: readonly PromptProfile[] = ["minimal", "coding", "agentic", "full", "custom"];
 const POLICIES: readonly PromptPolicy[] = ["always", "automatic", "disabled"];
 
@@ -31,7 +37,7 @@ export class PromptSetupOverlay extends OverlayPanel {
 	#selectedCapability: PromptCapabilityId = "lsp";
 	readonly #session: AgentSession;
 	readonly #save: (
-		scope: "user" | "project",
+		scope: "session" | "user" | "project",
 		profile: PromptProfile,
 		overrides: PromptModulePolicies,
 		capabilities: PromptCapabilityPolicies,
@@ -45,7 +51,7 @@ export class PromptSetupOverlay extends OverlayPanel {
 		overrides: PromptModulePolicies,
 		capabilities: PromptCapabilityPolicies,
 		save: (
-			scope: "user" | "project",
+			scope: "session" | "user" | "project",
 			profile: PromptProfile,
 			overrides: PromptModulePolicies,
 			capabilities: PromptCapabilityPolicies,
@@ -131,6 +137,7 @@ export class PromptSetupOverlay extends OverlayPanel {
 				break;
 			case "scope":
 				items = [
+					{ value: "session", label: "This session", description: "Temporary; not saved" },
 					{ value: "user", label: "User configuration", description: "Save for all projects" },
 					{ value: "project", label: "Project configuration", description: "Save for this project" },
 				];
@@ -169,7 +176,7 @@ export class PromptSetupOverlay extends OverlayPanel {
 					break;
 				case "scope":
 					void this.#save(
-						item.value as "user" | "project",
+						item.value as "session" | "user" | "project",
 						this.#profile,
 						this.#overrides,
 						this.#capabilityOverrides,

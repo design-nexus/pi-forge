@@ -28,6 +28,7 @@ import friendlyPersonality from "./prompts/system/personalities/friendly.md" wit
 import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
+import prefixBoundToolsPrompt from "./prompts/modules/prefix-bound-tools.md" with { type: "text" };
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import { composePrompt, type PromptComposition } from "./prompt-engine/compose";
 import type { PromptCapabilityPolicies, PromptModulePolicies, PromptProfile } from "./prompt-engine/profiles";
@@ -501,7 +502,7 @@ export interface BuildSystemPromptOptions {
 	/** Mounted tools used during this session, for automatic module activation. */
 	activatedPromptToolNames?: readonly string[];
 	/** Active model's tokenizer family for accounting. */
-	tokenizerModel?: Pick<Model, "tokenizer"> | null;
+	tokenizerModel?: Pick<Model, "tokenizer" | "provider" | "api" | "identity" | "thinking"> | null;
 	/** Custom system prompt (replaces default). */
 	customPrompt?: string;
 	/** Already-loaded custom system prompt text; bypasses path resolution. */
@@ -1058,6 +1059,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 			computerSafety,
 			project: projectPrompt || undefined,
 			repoContext: activeRepoContextPrompt || undefined,
+			modelModules: [{ id: "prefix-bound-tools", content: prefixBoundToolsPrompt.trim() }],
 		},
 		{
 			profile: promptProfile,

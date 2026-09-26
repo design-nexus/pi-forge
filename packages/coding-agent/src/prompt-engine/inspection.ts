@@ -51,8 +51,8 @@ export function promptCompare(session: AgentSession): string {
 	const active = new Set(toolNames);
 	const mountedToolNames = enabledNames.filter(name => !active.has(name));
 	const shared = {
-		overrides: cfgPromptModules.get(session.settings),
-		capabilities: cfgPromptCapabilities.get(session.settings),
+		overrides: { ...cfgPromptModules.get(session.settings), ...session.promptSettingsOverride?.modules },
+		capabilities: { ...cfgPromptCapabilities.get(session.settings), ...session.promptSettingsOverride?.capabilities },
 		model,
 		toolNames,
 		mountedToolNames,
@@ -90,13 +90,32 @@ export function promptCompare(session: AgentSession): string {
 
 export function promptStats(session: AgentSession): string {
 	const composition = session.promptComposition;
+	const sessionOverride = session.promptSettingsOverride;
+	const profile = sessionOverride?.profile ?? cfgPromptProfile.get(session.settings);
+	const profileSource = sessionOverride?.profile ? "session" : session.settings.getProvenance(cfgPromptProfile);
+	const moduleSource = sessionOverride?.modules ? "session" : session.settings.getProvenance(cfgPromptModules);
+	const capabilitySource = sessionOverride?.capabilities ? "session" : session.settings.getProvenance(cfgPromptCapabilities);
 	if (!composition) {
-		return `Profile: ${cfgPromptProfile.get(session.settings)}\nThe current prompt is an opaque SDK override; module accounting is unavailable.`;
+		return `Profile: ${profile} (${profileSource})\nThe current prompt is an opaque SDK override; module accounting is unavailable.`;
 	}
 	const lines = [
-		`Profile: ${composition.profile}`,
+		`Profile: ${composition.profile} · source: ${profileSource}`,
+		`Module policies source: ${moduleSource} · capability policies source: ${capabilitySource}`,
 		`System prompt text: ${composition.totalTokens.toLocaleString()} tokens`,
 	];
+	const history = session.promptCompositionHistory;
+	if (history.length) {
+		const startup = history[0];
+		const delta = composition.totalTokens - startup.totalTokens;
+		lines.push(`Startup prompt: ${startup.totalTokens.toLocaleString()} tokens · current delta: ${delta > 0 ? "+" : ""}${delta.toLocaleString()}`);
+		for (const change of history.slice(1).slice(-5)) {
+			const labels = [
+				...(change.added.length ? [`loaded ${change.added.join(", ")}`] : []),
+				...(change.removed.length ? [`unloaded ${change.removed.join(", ")}`] : []),
+			].join("; ") || "prompt refreshed";
+			lines.push(`Prompt change: ${change.deltaTokens > 0 ? "+" : ""}${change.deltaTokens.toLocaleString()} tokens · ${labels}`);
+		}
+	}
 	if (composition.sections.every(section => section.id === "opaque")) {
 		lines.push("Full comparison unavailable for a custom prompt.");
 	} else {
@@ -108,7 +127,7 @@ export function promptStats(session: AgentSession): string {
 	lines.push("", "Modules:");
 	for (const section of composition.sections) {
 		lines.push(
-			`- ${section.id}: ${section.active ? "loaded" : "available"} · ${section.policy} · ${section.tokens.toLocaleString()} tokens · ${section.reason}`,
+			`- ${section.id}: ${section.active ? "loaded" : "available"} · ${section.policy} · ${section.tokens.toLocaleString()} tokens · ${section.reason} · ${section.source}`,
 		);
 	}
 	lines.push("", "Capabilities (guidance tokens are counted in the modules above):");
@@ -121,16 +140,35 @@ export function promptStats(session: AgentSession): string {
 	return lines.join("\n");
 }
 
-export function promptInspect(session: AgentSession): string {
+export function promptInspect(session: AgentSession, options: { redact?: boolean } = {}): string {
+	if (options.redact && !session.obfuscator?.obfuscates()) {
+		return "Prompt inspection stopped: no configured secret redactor is active, so sensitive values cannot be safely redacted.";
+	}
 	const composition = session.promptComposition;
 	const base = composition?.sections.filter(section => section.active) ?? [];
+	const redact = (value: string): string => (options.redact ? (session.obfuscator?.obfuscate(value) ?? value) : value);
 	if (base.length === 0) {
-		return session.systemPrompt.map((content, index) => `--- Prompt block ${index + 1} ---\n${content}`).join("\n\n");
+		const sessionOverride = session.promptSettingsOverride;
+		const profileSource = sessionOverride?.profile ? "session" : session.settings.getProvenance(cfgPromptProfile);
+		const moduleSource = sessionOverride?.modules ? "session" : session.settings.getProvenance(cfgPromptModules);
+		const capabilitySource = sessionOverride?.capabilities ? "session" : session.settings.getProvenance(cfgPromptCapabilities);
+		const provenance = `Profile source: ${profileSource} · module policies source: ${moduleSource} · capability policies source: ${capabilitySource}\n\n`;
+		return session.systemPrompt
+			.map((content, index) => `${index === 0 ? provenance : ""}--- Prompt block ${index + 1} ---\n${redact(content)}`)
+			.join("\n\n");
 	}
-	const assembled = base.map(section => `--- ${section.id} (${section.reason}) ---\n${section.content}`).join("\n\n");
+	const sessionOverride = session.promptSettingsOverride;
+	const profileSource = sessionOverride?.profile ? "session" : session.settings.getProvenance(cfgPromptProfile);
+	const moduleSource = sessionOverride?.modules ? "session" : session.settings.getProvenance(cfgPromptModules);
+	const capabilitySource = sessionOverride?.capabilities ? "session" : session.settings.getProvenance(cfgPromptCapabilities);
+	const assembled = [
+		`Profile: ${session.promptComposition?.profile ?? cfgPromptProfile.get(session.settings)} · source: ${profileSource}`,
+		`Module policies source: ${moduleSource} · capability policies source: ${capabilitySource}`,
+		...base.map(section => `--- ${section.id} (${section.reason}; ${section.source}) ---\n${redact(section.content)}`),
+	].join("\n\n");
 	const basePrompt = base.map(section => section.content).join("");
 	const current = session.systemPrompt.join("");
 	return current === basePrompt
 		? assembled
-		: `${assembled}\n\n--- Current turn override or injected context ---\n${current}`;
+		: `${assembled}\n\n--- Current turn override or injected context ---\n${redact(current)}`;
 }

@@ -18,6 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import type { PromptComposition } from "../prompt-engine/compose";
+import type { PromptSessionOverrides } from "../prompt-engine/profiles";
 import { isPromise } from "node:util/types";
 
 import {
@@ -963,6 +964,7 @@ export class AgentSession implements SettingsScope {
 	#sessionStopContinuationCount = 0;
 	#sessionStopHookActive = false;
 	#obfuscator: SecretObfuscator | undefined;
+	#promptSettingsOverride: PromptSessionOverrides | undefined;
 	/** Last `skillful` value applied to this session; dedupes {@link setSkillful} and its setting watch. */
 	#skillfulApplied = false;
 	#checkpointState: CheckpointState | undefined = undefined;
@@ -5660,6 +5662,31 @@ export class AgentSession implements SettingsScope {
 
 	get promptComposition(): PromptComposition | undefined {
 		return this.#tools.basePromptComposition;
+	}
+
+	get promptCompositionHistory() {
+		return this.#tools.promptCompositionHistory;
+	}
+
+	get promptSettingsOverride(): PromptSessionOverrides | undefined {
+		return this.#promptSettingsOverride;
+	}
+
+	async setPromptSettingsOverride(overrides: PromptSessionOverrides | undefined): Promise<void> {
+		const previous = this.#promptSettingsOverride;
+		this.#promptSettingsOverride = overrides
+			? {
+					profile: overrides.profile,
+					modules: overrides.modules ? { ...overrides.modules } : undefined,
+					capabilities: overrides.capabilities ? { ...overrides.capabilities } : undefined,
+				}
+			: undefined;
+		try {
+			await this.refreshBaseSystemPrompt();
+		} catch (error) {
+			this.#promptSettingsOverride = previous;
+			throw error;
+		}
 	}
 
 	/** Marks streamed text as committed or buffered for turn-recovery replay decisions. */
