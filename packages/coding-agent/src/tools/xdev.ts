@@ -234,6 +234,8 @@ export interface XdevState {
 	readonly builtInNames: Set<string>;
 	/** Whether a name is active at the top level. */
 	readonly isActive: (name: string) => boolean;
+	/** Called after a mounted tool executes so its detailed prompt can load for the next request. */
+	onUsed?: (name: string) => Promise<void> | undefined;
 	/** Canonical renderer for a dispatched device name; mirrors {@link resolveXdevTool}. */
 	readonly resolve?: (name: string) => Tool | undefined;
 	/** Optional execution-only decorator, such as the ACP permission gate. */
@@ -475,6 +477,7 @@ export async function dispatchXdevTool(
 					},
 				}
 			: undefined;
+		await state.onUsed?.(canonical.name);
 		const result = await executable.execute(toolCallId, validated as never, signal, innerOnUpdate, executionContext);
 		return { result, xdev: { ...xdev, inner: result.details } };
 	} catch (error) {

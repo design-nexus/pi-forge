@@ -29,6 +29,10 @@ import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" w
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
 import { normalizeConcurrencyLimit } from "./task/parallel";
+import { composePrompt, type PromptComposition } from "./prompt-engine/compose";
+import type { PromptCapabilityPolicies, PromptModulePolicies, PromptProfile } from "./prompt-engine/profiles";
+import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "./prompt-engine/settings";
+import type { Model } from "@oh-my-pi/pi-ai";
 import type { ActiveRepoContext } from "@oh-my-pi/pi-tui/status-line/host";
 import { XD_URL_PREFIX } from "@oh-my-pi/pi-tui/tools/xd-url";
 import { resolveActiveRepoContext } from "./utils/active-repo-context";
@@ -63,6 +67,9 @@ import {
  * roots rebuild through their own reconcile instead.
  */
 export const cfgSystemPromptInputs = combine({
+	promptProfile: cfgPromptProfile,
+	promptModules: cfgPromptModules,
+	promptCapabilities: cfgPromptCapabilities,
 	personality: cfgPersonality,
 	includeModelInPrompt: cfgIncludeModelInPrompt,
 	includeWorkspaceTree: cfgIncludeWorkspaceTree,
@@ -485,6 +492,16 @@ export function projectSystemPromptToolMetadata(
 }
 
 export interface BuildSystemPromptOptions {
+	/** Prompt profile; Full preserves the bundled output. */
+	promptProfile?: PromptProfile;
+	/** Per-module policy overrides. */
+	promptModulePolicies?: PromptModulePolicies;
+	/** Per-capability activation policies. */
+	promptCapabilityPolicies?: PromptCapabilityPolicies;
+	/** Mounted tools used during this session, for automatic module activation. */
+	activatedPromptToolNames?: readonly string[];
+	/** Active model's tokenizer family for accounting. */
+	tokenizerModel?: Pick<Model, "tokenizer"> | null;
 	/** Custom system prompt (replaces default). */
 	customPrompt?: string;
 	/** Already-loaded custom system prompt text; bypasses path resolution. */
@@ -590,6 +607,8 @@ export interface BuildSystemPromptOptions {
 export interface BuildSystemPromptResult {
 	/** Ordered system prompt blocks. Providers should preserve entries as distinct messages/blocks. */
 	systemPrompt: string[];
+	/** Prompt sections and text-only token accounting for the committed render. */
+	composition?: PromptComposition;
 	/**
 	 * Names of `xd://` devices whose catalog/protocol section this prompt renders.
 	 * Empty/undefined when no catalog was emitted (no mounted devices, or a custom
@@ -635,6 +654,11 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	}
 
 	const {
+		promptProfile = "full",
+		promptModulePolicies,
+		promptCapabilityPolicies,
+		activatedPromptToolNames,
+		tokenizerModel,
 		customPrompt,
 		resolvedCustomPrompt: providedResolvedCustomPrompt,
 		tools,
@@ -1022,21 +1046,31 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		resolvedSystemPromptTemplate = undefined;
 		rendered = prompt.render(systemPromptTemplate, data);
 	}
-	const systemPrompt = [rendered];
-	if (computerEnabled) {
-		systemPrompt.push(computerSafetyPrompt.trim());
-	}
+	const computerSafety = computerEnabled ? computerSafetyPrompt.trim() : undefined;
 	// Literal overrides render context files and append text in their wrapper.
 	// Both the bundled template and user templates receive them in the footer.
 	const projectPrompt = prompt
 		.render(projectPromptTemplate, resolvedCustomPrompt ? { ...data, contextFiles: [], appendPrompt: "" } : data)
 		.trim();
-	if (projectPrompt) {
-		systemPrompt.push(projectPrompt);
-	}
-	if (activeRepoContextPrompt) {
-		systemPrompt.push(activeRepoContextPrompt);
-	}
+	const { systemPrompt, composition } = composePrompt(
+		{
+			base: rendered,
+			computerSafety,
+			project: projectPrompt || undefined,
+			repoContext: activeRepoContextPrompt || undefined,
+		},
+		{
+			profile: promptProfile,
+			overrides: promptModulePolicies,
+			capabilities: promptCapabilityPolicies,
+			model: tokenizerModel,
+			toolNames,
+			mountedToolNames: xdevTools.map(tool => tool.name),
+			activatedToolNames: activatedPromptToolNames,
+			browserAvailable: browserEnabled,
+			opaque: resolvedCustomPrompt !== undefined || resolvedSystemPromptTemplate !== undefined,
+		},
+	);
 
 	// Claim delivery only when the rendered block 0 actually carries the xd://
 	// section, so a template that references {{xdevDocs}} keeps mount-notice
@@ -1045,5 +1079,5 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		!resolvedCustomPrompt && xdevTools.length > 0 && rendered.includes("xd://")
 			? xdevTools.map(mounted => mounted.name)
 			: undefined;
-	return { systemPrompt, xdevCatalogNames };
+	return { systemPrompt, composition, xdevCatalogNames };
 }

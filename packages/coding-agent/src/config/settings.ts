@@ -527,6 +527,8 @@ export class Settings {
 	#project: RawSettings = {};
 	/** Last successfully loaded native .omp/config.yml contents. */
 	#projectFileSettings: RawSettings = {};
+	/** Generic project-layer setting paths awaiting a native .omp/config.yml save. */
+	#modifiedProjectSettings = new Set<string>();
 	/** Logical config paths whose malformed targets were moved aside. */
 	#quarantinedYamlTargets = new Map<string, string>();
 	/** Extra config.yml-style overlays passed by CLI */
@@ -837,6 +839,18 @@ export class Settings {
 		this.#fireIfChanged(setting, prev);
 	}
 
+	/** Persist a registered setting in the current project's .omp/config.yml layer. */
+	setProjectValue(setting: AnySetting, value: unknown): void {
+		setting.assertWritable(value);
+		const prev = setting.get(this);
+		setByPath(this.#project, setting.segments, value);
+		this.#modifiedProjectSettings.add(setting.id);
+		this.#persistedMutationGeneration++;
+		this.#rebuildMerged();
+		this.#fireIfChanged(setting, prev);
+		this.#queueProjectSave();
+	}
+
 	/**
 	 * Registry plumbing behind `Setting.unset`: removes `setting` from the global layer (the removal
 	 * is persisted in the background) and releases its soft pin, so the remaining layers — or else
@@ -1106,7 +1120,7 @@ export class Settings {
 		if (this.#modified.size > 0 || this.#modifiedGlobalModelRoles.size > 0) {
 			await this.#chainSave();
 		}
-		if (this.#modifiedProjectModelRoles.size > 0) {
+		if (this.#modifiedProjectModelRoles.size > 0 || this.#modifiedProjectSettings.size > 0) {
 			await this.#saveProjectNow();
 		}
 	}
@@ -3556,11 +3570,18 @@ export class Settings {
 	}
 
 	async #saveProjectNow(): Promise<void> {
-		if (this.#savesCancelled || !this.#persist || this.#modifiedProjectModelRoles.size === 0) return;
+		if (
+			this.#savesCancelled ||
+			!this.#persist ||
+			(this.#modifiedProjectModelRoles.size === 0 && this.#modifiedProjectSettings.size === 0)
+		)
+			return;
 
 		const projectConfigPath = path.join(getProjectAgentDir(this.#cwd), "config.yml");
 		const modifiedModelRoles = [...this.#modifiedProjectModelRoles];
+		const modifiedSettings = [...this.#modifiedProjectSettings];
 		this.#modifiedProjectModelRoles.clear();
+		this.#modifiedProjectSettings.clear();
 
 		try {
 			await fs.promises.mkdir(path.dirname(projectConfigPath), { recursive: true });
@@ -3575,6 +3596,12 @@ export class Settings {
 					const value = isRecord(projectRoles) ? projectRoles[role] : undefined;
 					setByPath(projectSettings, ["modelRoles", role], value);
 				}
+				for (const id of modifiedSettings) {
+					const segments = id.split(".");
+					const value = getByPath(this.#project, segments);
+					if (value === undefined) deleteByPath(projectSettings, segments);
+					else setByPath(projectSettings, segments, value);
+				}
 
 				await this.#writeYamlAtomically(writePath, projectSettings);
 				this.#projectFileSettings = structuredClone(projectSettings);
@@ -3585,6 +3612,7 @@ export class Settings {
 			for (const role of modifiedModelRoles) {
 				this.#modifiedProjectModelRoles.add(role);
 			}
+			for (const id of modifiedSettings) this.#modifiedProjectSettings.add(id);
 			throw error;
 		}
 

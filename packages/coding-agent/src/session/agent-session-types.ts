@@ -25,6 +25,7 @@ import type { AsyncJob, AsyncJobDeliveryState, AsyncJobManager } from "../async"
 import type { EffectiveExtensionRoots } from "../capability/types";
 import type { ModelRegistry } from "../config/model-registry";
 import type { PromptTemplate } from "../config/prompt-templates";
+import type { PromptComposition } from "../prompt-engine/compose";
 import type { Settings } from "../config/settings";
 import type { SkillsSettings } from "../extensibility/settings";
 import type { CursorMcpResourceAdapter } from "../cursor";
@@ -261,7 +262,8 @@ export interface AgentSessionConfig {
 	rebuildSystemPrompt?: (
 		toolNames: string[],
 		tools: Map<string, AgentTool>,
-	) => Promise<{ systemPrompt: string[]; xdevCatalogNames?: readonly string[] }>;
+	) => Promise<{ systemPrompt: string[]; composition?: PromptComposition; xdevCatalogNames?: readonly string[] }>;
+	basePromptComposition?: PromptComposition;
 	/** Tools mounted under `xd://`, for `/tools` display. */
 	getXdevToolEntries?: () => Array<{ name: string; summary: string }>;
 	/** `xd://` presentation state backed by the canonical tool map. */

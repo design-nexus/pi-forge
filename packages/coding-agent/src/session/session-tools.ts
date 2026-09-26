@@ -8,6 +8,9 @@ import type { EffectiveExtensionRoots } from "../capability/types";
 import type { ModelRegistry } from "../config/model-registry";
 import { formatModelString } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
+import type { PromptComposition } from "../prompt-engine/compose";
+import { resolveCapabilityPolicies } from "../prompt-engine/profiles";
+import { cfgPromptCapabilities, cfgPromptProfile } from "../prompt-engine/settings";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
 import { CustomToolAdapter } from "../extensibility/custom-tools/wrapper";
 import type { ExtensionRunner, SourceInfo, ToolInfo } from "../extensibility/extensions";
@@ -118,7 +121,8 @@ interface SessionToolsOptions {
 		toolNames: string[],
 		tools: Map<string, AgentTool>,
 		options?: { directToolNames?: readonly string[] },
-	) => Promise<{ systemPrompt: string[]; xdevCatalogNames?: readonly string[] }>;
+	) => Promise<{ systemPrompt: string[]; composition?: PromptComposition; xdevCatalogNames?: readonly string[] }>;
+	basePromptComposition?: PromptComposition;
 	getMcpServerInstructions?: () => Map<string, string> | undefined;
 	xdev?: XdevState;
 	setActiveToolNames?: (names: Iterable<string>) => void;
@@ -278,6 +282,7 @@ export class SessionTools {
 	#presentationPinnedToolNames: ReadonlySet<string> | undefined;
 	#runtimeSelectedToolNames: ReadonlySet<string> | undefined;
 	#baseSystemPrompt: string[];
+	#basePromptComposition?: PromptComposition;
 	/**
 	 * Per-turn system prompt returned by a `before_agent_start` extension hook
 	 * ("replace the system prompt for this turn"). While set, base-prompt
@@ -398,6 +403,7 @@ export class SessionTools {
 		if (this.#xdev) this.#xdev.decorateExecution = tool => this.#wrapToolForAcpPermission(tool);
 		this.#setActiveToolNames = options.setActiveToolNames;
 		this.#baseSystemPrompt = options.baseSystemPrompt;
+		this.#basePromptComposition = options.basePromptComposition;
 		this.#skills = options.skills ?? [];
 		this.#skillWarnings = options.skillWarnings ?? [];
 		this.#skillsSettings = options.skillsSettings;
@@ -424,9 +430,14 @@ export class SessionTools {
 		return this.#baseSystemPrompt;
 	}
 
+	get basePromptComposition(): PromptComposition | undefined {
+		return this.#basePromptComposition;
+	}
+
 	/** Replaces the controller-owned base prompt without applying it to the agent. */
 	setBaseSystemPrompt(prompt: string[]): void {
 		this.#baseSystemPrompt = prompt;
+		this.#basePromptComposition = undefined;
 	}
 
 	/**
@@ -1112,6 +1123,7 @@ export class SessionTools {
 		this.#codeModeDirectToolNames = codeMode.active ? appliedNames : undefined;
 
 		let rebuiltSystemPrompt: string[] | undefined;
+		let rebuiltPromptComposition: PromptComposition | undefined;
 		let rebuiltSignature: string | undefined;
 		let frozenSignature: string | undefined;
 		let rebuiltXdevCatalogNames: readonly string[] | undefined;
@@ -1165,6 +1177,7 @@ export class SessionTools {
 						),
 					);
 					rebuiltSystemPrompt = built.systemPrompt;
+					rebuiltPromptComposition = built.composition;
 					rebuiltSignature = signature;
 					rebuiltXdevCatalogNames = built.xdevCatalogNames;
 					candidateSkillHintVisible = candidate;
@@ -1209,6 +1222,7 @@ export class SessionTools {
 			if (rebuiltSystemPrompt && rebuiltSignature) {
 				if (this.#lastAppliedToolSignature !== undefined) this.#host.clearInheritedProviderPromptCacheKey();
 				this.#baseSystemPrompt = rebuiltSystemPrompt;
+				this.#basePromptComposition = rebuiltPromptComposition;
 				this.#host.clearMemoryPromotionSnapshot();
 				this.#applyAgentSystemPrompt(this.#baseSystemPrompt);
 				invalidateToolSchemaMetadata(this.#host.agent.state.tools);
@@ -1821,6 +1835,7 @@ export class SessionTools {
 				// snapshot, so only carry the prompt forward.
 				if (this.#baseSystemPrompt !== previousBaseSystemPrompt) return true;
 				this.#baseSystemPrompt = built.systemPrompt;
+				this.#basePromptComposition = built.composition;
 				this.#skillHintVisible = candidate;
 				this.#setBasePromptXdevNames(built.xdevCatalogNames);
 				this.#host.clearMemoryPromotionSnapshot();
@@ -2036,7 +2051,14 @@ export class SessionTools {
 			return (extensionRunner ? new ExtensionToolWrapper(wrapped, extensionRunner) : wrapped) as AgentTool;
 		});
 		const managerToolSet = new Set(managerTools);
-		const reconciledTools = deduplicateMCPToolsByName([...this.#extensionMcpTools.values(), ...managerTools]);
+		const mcpAllowed =
+			resolveCapabilityPolicies(
+				cfgPromptProfile.get(this.#host.settings),
+				cfgPromptCapabilities.get(this.#host.settings),
+			).mcp !== "disabled";
+		const reconciledTools = mcpAllowed
+			? deduplicateMCPToolsByName([...this.#extensionMcpTools.values(), ...managerTools])
+			: [];
 
 		for (const name of this.#toolRegistry.keys()) {
 			if (isMCPToolName(name)) this.#toolRegistry.delete(name);

@@ -21,6 +21,8 @@ import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@oh-my
 import type { Usage } from "@oh-my-pi/pi-ai";
 import { $env, logger, prompt } from "@oh-my-pi/pi-utils";
 import type { ToolSession } from "..";
+import { resolveCapabilityPolicies, resolvePromptPolicies } from "../prompt-engine/profiles";
+import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "../prompt-engine/settings";
 import type { EffectiveExtensionRoots } from "../capability/types";
 import type { Theme } from "@oh-my-pi/pi-tui/theme";
 import subagentUserPromptTemplate from "../prompts/system/subagent-user-prompt.md" with { type: "text" };
@@ -559,7 +561,15 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	readonly label = "Task";
 	readonly summary = "Spawn subagents to complete delegated tasks";
 	readonly strict = false;
-	readonly loadMode = "essential";
+	get loadMode(): "essential" | "discoverable" {
+		// Prefix-bound thinking providers keep a stable prompt after the first assistant
+		// turn, so they need delegation guidance before the first possible task call.
+		if (this.session.getActiveModel?.()?.thinking?.prefixBinding === true) return "essential";
+		const profile = cfgPromptProfile.get(this.session.settings);
+		const delegation = resolvePromptPolicies(profile, cfgPromptModules.get(this.session.settings)).delegation;
+		const subagents = resolveCapabilityPolicies(profile, cfgPromptCapabilities.get(this.session.settings)).subagents;
+		return delegation === "automatic" || subagents === "automatic" ? "discoverable" : "essential";
+	}
 	// Arktype validates model calls against the active wire schema, but the flat
 	// single-spawn schema carries `"+": "delete"`: a batch `{ context, tasks[] }`
 	// payload has those keys stripped, then fails on the now-missing `task` with

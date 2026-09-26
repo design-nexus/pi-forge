@@ -17,6 +17,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
+import type { PromptComposition } from "../prompt-engine/compose";
 import { isPromise } from "node:util/types";
 
 import {
@@ -1806,6 +1807,7 @@ export class AgentSession implements SettingsScope {
 			xdev: config.xdev,
 			setActiveToolNames: config.setActiveToolNames,
 			baseSystemPrompt: this.agent.state.systemPrompt,
+			basePromptComposition: config.basePromptComposition,
 			skills: config.skills,
 			skillWarnings: config.skillWarnings,
 			skillsSettings: config.skillsSettings,
@@ -5654,6 +5656,10 @@ export class AgentSession implements SettingsScope {
 	/** Current effective system prompt blocks (includes any per-turn extension modifications) */
 	get systemPrompt(): string[] {
 		return this.agent.state.systemPrompt;
+	}
+
+	get promptComposition(): PromptComposition | undefined {
+		return this.#tools.basePromptComposition;
 	}
 
 	/** Marks streamed text as committed or buffered for turn-recovery replay decisions. */
