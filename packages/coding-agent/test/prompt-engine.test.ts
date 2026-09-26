@@ -73,9 +73,10 @@ describe("prompt composition", () => {
 			"tool-policy",
 			"workflow",
 			"testing",
-			"workflow",
+			"workflow-cleanup",
 			"delivery",
 			"project",
+			"prefix-bound-tools",
 		]);
 		expect(minimal.composition?.totalTokens).toBeLessThan(full.composition?.totalTokens ?? 0);
 	});

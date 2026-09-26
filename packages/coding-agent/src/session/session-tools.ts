@@ -133,6 +133,14 @@ interface SessionToolsOptions {
 	skillsReloadable?: boolean;
 }
 
+export interface PromptCompositionChange {
+	time: number;
+	totalTokens: number;
+	deltaTokens: number;
+	added: string[];
+	removed: string[];
+}
+
 interface SystemPromptPreparation {
 	systemPrompt: string[];
 	/** Publish staged state at validated delivery; false declines the prepared turn without mutation. */
@@ -283,6 +291,7 @@ export class SessionTools {
 	#runtimeSelectedToolNames: ReadonlySet<string> | undefined;
 	#baseSystemPrompt: string[];
 	#basePromptComposition?: PromptComposition;
+	#promptCompositionHistory: PromptCompositionChange[] = [];
 	/**
 	 * Per-turn system prompt returned by a `before_agent_start` extension hook
 	 * ("replace the system prompt for this turn"). While set, base-prompt
@@ -404,6 +413,15 @@ export class SessionTools {
 		this.#setActiveToolNames = options.setActiveToolNames;
 		this.#baseSystemPrompt = options.baseSystemPrompt;
 		this.#basePromptComposition = options.basePromptComposition;
+		if (options.basePromptComposition) {
+			this.#promptCompositionHistory.push({
+				time: Date.now(),
+				totalTokens: options.basePromptComposition.totalTokens,
+				deltaTokens: 0,
+				added: options.basePromptComposition.sections.filter(section => section.active).map(section => section.id),
+				removed: [],
+			});
+		}
 		this.#skills = options.skills ?? [];
 		this.#skillWarnings = options.skillWarnings ?? [];
 		this.#skillsSettings = options.skillsSettings;
@@ -432,6 +450,25 @@ export class SessionTools {
 
 	get basePromptComposition(): PromptComposition | undefined {
 		return this.#basePromptComposition;
+	}
+
+	get promptCompositionHistory(): readonly PromptCompositionChange[] {
+		return this.#promptCompositionHistory;
+	}
+
+	#recordPromptComposition(composition: PromptComposition): void {
+		const previous = this.#basePromptComposition;
+		if (previous === composition) return;
+		const before = new Set(previous?.sections.filter(section => section.active).map(section => section.id) ?? []);
+		const after = new Set(composition.sections.filter(section => section.active).map(section => section.id));
+		this.#promptCompositionHistory.push({
+			time: Date.now(),
+			totalTokens: composition.totalTokens,
+			deltaTokens: composition.totalTokens - (previous?.totalTokens ?? 0),
+			added: [...after].filter(id => !before.has(id)),
+			removed: [...before].filter(id => !after.has(id)),
+		});
+		if (this.#promptCompositionHistory.length > 50) this.#promptCompositionHistory.splice(1, 1);
 	}
 
 	/** Replaces the controller-owned base prompt without applying it to the agent. */
@@ -1222,6 +1259,7 @@ export class SessionTools {
 			if (rebuiltSystemPrompt && rebuiltSignature) {
 				if (this.#lastAppliedToolSignature !== undefined) this.#host.clearInheritedProviderPromptCacheKey();
 				this.#baseSystemPrompt = rebuiltSystemPrompt;
+				if (rebuiltPromptComposition) this.#recordPromptComposition(rebuiltPromptComposition);
 				this.#basePromptComposition = rebuiltPromptComposition;
 				this.#host.clearMemoryPromotionSnapshot();
 				this.#applyAgentSystemPrompt(this.#baseSystemPrompt);
@@ -1835,6 +1873,7 @@ export class SessionTools {
 				// snapshot, so only carry the prompt forward.
 				if (this.#baseSystemPrompt !== previousBaseSystemPrompt) return true;
 				this.#baseSystemPrompt = built.systemPrompt;
+				if (built.composition) this.#recordPromptComposition(built.composition);
 				this.#basePromptComposition = built.composition;
 				this.#skillHintVisible = candidate;
 				this.#setBasePromptXdevNames(built.xdevCatalogNames);

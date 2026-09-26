@@ -1,6 +1,7 @@
 import type { Model } from "@oh-my-pi/pi-ai";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
 import {
+	PROMPT_MODULES,
 	resolvePromptPolicies,
 	resolveCapabilityPolicies,
 	PROMPT_CAPABILITY_IDS,
@@ -19,6 +20,12 @@ export interface PromptSection {
 	active: boolean;
 	reason: string;
 	tokens: number;
+	source: "bundled" | "model" | "custom";
+}
+
+export interface PromptModuleContent {
+	id: PromptModuleId;
+	content: string;
 }
 
 export interface PromptComposition {
@@ -36,6 +43,7 @@ interface SectionDraft {
 	id: PromptSection["id"];
 	content: string;
 	available: boolean;
+	source?: "model";
 }
 
 /** Split the already-rendered bundled template; concatenating all sections reproduces its exact bytes. */
@@ -47,7 +55,7 @@ export function splitBundledPrompt(rendered: string): SectionDraft[] {
 		{ id: "delegation", marker: "# Delegation" },
 		{ id: "workflow", marker: "§ Workflow" },
 		{ id: "testing", marker: "# 5. Verify" },
-		{ id: "workflow", marker: "# 6. Cleanup" },
+		{ id: "workflow-cleanup", marker: "# 6. Cleanup" },
 		{ id: "delivery", marker: "§ Delivery" },
 	];
 	const positions = headings
@@ -73,7 +81,7 @@ export interface ComposePromptOptions {
 	profile: PromptProfile;
 	overrides?: PromptModulePolicies;
 	capabilities?: PromptCapabilityPolicies;
-	model?: Pick<Model, "tokenizer"> | null;
+	model?: Pick<Model, "tokenizer" | "provider" | "api" | "identity" | "thinking"> | null;
 	toolNames?: readonly string[];
 	mountedToolNames?: readonly string[];
 	activatedToolNames?: readonly string[];
@@ -86,6 +94,19 @@ export interface ComposePromptBlocks {
 	computerSafety?: string;
 	project?: string;
 	repoContext?: string;
+	modelModules?: readonly PromptModuleContent[];
+}
+
+function modelModuleApplies(id: PromptModuleId, model: ComposePromptOptions["model"]): boolean {
+	const applicability = PROMPT_MODULES.find(module => module.id === id)?.modelApplicability;
+	if (!applicability || !model) return false;
+	return (
+		(!applicability.providers || applicability.providers.includes(model.provider)) &&
+		(!applicability.apis || applicability.apis.includes(model.api)) &&
+		(!applicability.classes || applicability.classes.includes(model.identity?.class ?? "")) &&
+		(!applicability.families || applicability.families.includes(model.identity?.family ?? "")) &&
+		(applicability.prefixBinding === undefined || applicability.prefixBinding === (model.thinking?.prefixBinding === true))
+	);
 }
 
 /** Resolve policies over rendered content and report text tokens without changing provider block shape. */
@@ -136,6 +157,10 @@ export function composePrompt(
 	const originalBlocks = [blocks.base, blocks.computerSafety, blocks.project, blocks.repoContext].filter(
 		(value): value is string => value !== undefined,
 	);
+	const modelBlocks = (blocks.modelModules ?? [])
+		.filter(module => modelModuleApplies(module.id, options.model))
+		.map(module => module.content);
+	const fullBlocks = options.opaque ? originalBlocks : [...originalBlocks, ...modelBlocks];
 	const drafts: SectionDraft[] = options.opaque
 		? originalBlocks.map(content => ({ id: "opaque", content, available: true }))
 		: [
@@ -147,11 +172,19 @@ export function composePrompt(
 				...(blocks.repoContext
 					? [{ id: "repo-context" as const, content: blocks.repoContext, available: true }]
 					: []),
+				...(blocks.modelModules ?? []).map(module => ({
+					id: module.id,
+					content: module.content,
+					available: modelModuleApplies(module.id, options.model),
+					source: "model" as const,
+				})),
 			];
 	const sections = drafts.map(draft => {
 		const policy =
 			draft.id === "opaque"
 				? "always"
+				: PROMPT_MODULES.find(module => module.id === draft.id)?.modelApplicability
+					? policies[draft.id]
 				: draft.id === "delegation" && capabilityPolicies.subagents === "disabled"
 					? "disabled"
 					: draft.id === "testing"
@@ -164,16 +197,21 @@ export function composePrompt(
 								: capabilityPolicies.git
 							: policies[draft.id];
 		const active =
-			policy === "always" ||
-			(policy === "automatic" &&
-				(draft.id === "delegation"
-					? directTools.has("task") || activatedTools.has("task")
-					: draft.id === "testing"
-						? directTools.has("bash") || options.browserAvailable === true
-						: draft.available));
+			draft.available &&
+			(policy === "always" ||
+				(policy === "automatic" &&
+					(draft.id === "delegation"
+						? directTools.has("task") || activatedTools.has("task")
+						: draft.id === "testing"
+							? directTools.has("bash") || options.browserAvailable === true
+							: draft.available)));
 		const reason =
 			draft.id === "opaque"
 				? "custom prompt"
+				: PROMPT_MODULES.find(module => module.id === draft.id)?.modelApplicability
+					? active
+						? "model metadata matched"
+						: "model metadata did not match"
 				: policy === "disabled"
 					? "disabled by policy"
 					: draft.id === "delegation"
@@ -196,6 +234,7 @@ export function composePrompt(
 			active,
 			reason,
 			tokens: tokenizer.countTokens(draft.content, "strict"),
+			source: draft.id === "opaque" ? "custom" : ("source" in draft ? draft.source : "bundled"),
 		} satisfies PromptSection;
 	});
 	const systemPrompt = options.opaque
@@ -205,7 +244,17 @@ export function composePrompt(
 					.filter(
 						section =>
 							section.active &&
-							["core", "runtime", "tool-policy", "delegation", "workflow", "testing", "delivery"].includes(
+							[
+								"core",
+								"runtime",
+								"tool-policy",
+								"delegation",
+								"workflow",
+								"workflow-cleanup",
+								"testing",
+								"delivery",
+								"prefix-bound-tools",
+							].includes(
 								section.id,
 							),
 					)
@@ -222,7 +271,7 @@ export function composePrompt(
 			sections,
 			capabilities,
 			totalTokens: tokenizer.countTokens(systemPrompt, "strict"),
-			fullTokens: tokenizer.countTokens(originalBlocks, "strict"),
+			fullTokens: tokenizer.countTokens(fullBlocks, "strict"),
 		},
 	};
 }

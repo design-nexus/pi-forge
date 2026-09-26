@@ -3701,10 +3701,11 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					? { mode: "compact", toolNames: [...toolNames, ...mountedPromptToolNames] }
 					: { mode: "full" },
 			);
+			const sessionPromptOverride = session?.promptSettingsOverride;
 			const defaultPrompt = await buildSystemPromptInternal({
-				promptProfile: cfgPromptProfile.get(settings),
-				promptModulePolicies: cfgPromptModules.get(settings),
-				promptCapabilityPolicies: cfgPromptCapabilities.get(settings),
+				promptProfile: sessionPromptOverride?.profile ?? cfgPromptProfile.get(settings),
+				promptModulePolicies: { ...cfgPromptModules.get(settings), ...sessionPromptOverride?.modules },
+				promptCapabilityPolicies: { ...cfgPromptCapabilities.get(settings), ...sessionPromptOverride?.capabilities },
 				activatedPromptToolNames: [...activatedPromptToolNames],
 				tokenizerModel: agent?.state.model ?? model,
 				cwd: promptCwd,
