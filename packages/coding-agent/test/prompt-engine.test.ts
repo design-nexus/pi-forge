@@ -10,7 +10,7 @@ import {
 	cfgPromptModules,
 	cfgPromptProfile,
 } from "@oh-my-pi/pi-coding-agent/prompt-engine/settings";
-import { promptInspect, promptStats } from "@oh-my-pi/pi-coding-agent/prompt-engine/inspection";
+import { promptCompare, promptInspect, promptStats } from "@oh-my-pi/pi-coding-agent/prompt-engine/inspection";
 import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
@@ -79,6 +79,33 @@ describe("prompt composition", () => {
 			"prefix-bound-tools",
 		]);
 		expect(minimal.composition?.totalTokens).toBeLessThan(full.composition?.totalTokens ?? 0);
+	});
+
+	it("preserves a runtime rule that contains a bundled section heading", async () => {
+		using dir = TempDir.createSync("@omp-prompt-heading-rule-");
+		const inputs = promptOptions(dir.join("project"), {
+			promptProfile: "minimal",
+			rules: [
+				{
+					name: "heading-rule",
+					path: dir.join("heading-rule.md"),
+					description: "Rule text before heading\n§ Workflow\nPreserve this runtime rule.",
+				},
+			],
+		});
+		const result = await buildSystemPrompt(inputs);
+		expect(result.systemPrompt.join("\n")).toContain("Preserve this runtime rule.");
+		expect(result.composition?.sections.find(section => section.id === "runtime")?.content).toContain(
+			"Preserve this runtime rule.",
+		);
+		expect(result.composition?.sections.filter(section => section.id === "workflow")).toHaveLength(1);
+		const full = await buildSystemPrompt({ ...inputs, promptProfile: "full" });
+		const renderedTemplate = await buildSystemPrompt({
+			...inputs,
+			promptProfile: "full",
+			systemPromptTemplate: bundledTemplate,
+		});
+		expect(full.systemPrompt).toEqual(renderedTemplate.systemPrompt);
 	});
 
 	it("keeps a discovered SYSTEM_TEMPLATE.md opaque under a smaller profile", async () => {
@@ -198,6 +225,44 @@ it("reconciles a changed profile into both the callable task tool and the next b
 		expect(stats).toContain("System prompt text:");
 		expect(stats).toContain("subagents: active");
 		expect(promptInspect(session)).toContain("--- delegation (");
+	} finally {
+		await session.dispose();
+		authStorage.close();
+	}
+});
+
+it("does not count a disabled model module in the Full profile comparison", async () => {
+	using dir = TempDir.createSync("@omp-prompt-model-compare-");
+	const cwd = dir.join("project");
+	const settings = Settings.isolated();
+	cfgPromptModules.set(settings, { "prefix-bound-tools": "disabled" });
+	const authStorage = await AuthStorage.create(":memory:");
+	const modelRegistry = new ModelRegistry(authStorage, dir.join("models.yml"));
+	const { session } = await createAgentSession({
+		cwd,
+		agentDir: dir.join("agent"),
+		authStorage,
+		modelRegistry,
+		settings,
+		sessionManager: SessionManager.inMemory(cwd),
+		model: getBundledModel("anthropic", "claude-fable-5-1"),
+		disableExtensionDiscovery: true,
+		skills: [],
+		contextFiles: [],
+		promptTemplates: [],
+		slashCommands: [],
+		enableMCP: false,
+		enableLsp: false,
+		skipPythonPreflight: true,
+	});
+	try {
+		expect(session.promptComposition?.sections.find(section => section.id === "prefix-bound-tools")?.active).toBe(
+			false,
+		);
+		const fullRow = promptCompare(session)
+			.split("\n")
+			.find(line => line.startsWith("| full |"));
+		expect(fullRow).toContain(`| ${session.promptComposition?.totalTokens.toLocaleString()} |`);
 	} finally {
 		await session.dispose();
 		authStorage.close();

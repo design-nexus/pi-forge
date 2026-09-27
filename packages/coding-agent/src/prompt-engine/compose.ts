@@ -46,33 +46,53 @@ interface SectionDraft {
 	source?: "model";
 }
 
-/** Split the already-rendered bundled template; concatenating all sections reproduces its exact bytes. */
-export function splitBundledPrompt(rendered: string): SectionDraft[] {
-	const headings: Array<{ id: PromptModuleId; marker: string }> = [
-		{ id: "core", marker: "§ Role" },
-		{ id: "runtime", marker: "§ Runtime" },
-		{ id: "tool-policy", marker: "§ Tool Policy" },
-		{ id: "delegation", marker: "# Delegation" },
-		{ id: "workflow", marker: "§ Workflow" },
-		{ id: "testing", marker: "# 5. Verify" },
-		{ id: "workflow-cleanup", marker: "# 6. Cleanup" },
-		{ id: "delivery", marker: "§ Delivery" },
-	];
-	const positions = headings
-		.map(({ id, marker }) => ({ id, position: rendered.indexOf(marker) }))
-		.filter(entry => entry.position >= 0)
-		.sort((a, b) => a.position - b.position);
-	if (positions.length === 0 || positions[0].id !== "core") {
-		return [{ id: "opaque", content: rendered, available: true }];
+const BUNDLED_BOUNDARIES = [
+	{ key: "core", id: "core" },
+	{ key: "runtime", id: "runtime" },
+	{ key: "toolPolicy", id: "tool-policy" },
+	{ key: "delegation", id: "delegation", optional: true },
+	{ key: "workflow", id: "workflow" },
+	{ key: "testing", id: "testing" },
+	{ key: "workflowCleanup", id: "workflow-cleanup" },
+	{ key: "delivery", id: "delivery" },
+] as const satisfies readonly { key: string; id: PromptModuleId; optional?: boolean }[];
+
+export type BundledPromptMarkers = Record<(typeof BUNDLED_BOUNDARIES)[number]["key"], string>;
+
+/** One render's markers are unique to its template, so user content cannot impersonate a section boundary. */
+export function createBundledPromptMarkers(): BundledPromptMarkers {
+	const nonce = crypto.randomUUID();
+	return Object.fromEntries(
+		BUNDLED_BOUNDARIES.map(({ key }) => [key, `\uE000${nonce}:${key}\uE001`]),
+	) as BundledPromptMarkers;
+}
+
+/** Remove rendered boundaries while retaining the exact original prompt bytes in ordered sections. */
+export function splitBundledPrompt(rendered: string, markers: BundledPromptMarkers): PromptModuleContent[] {
+	const positions: Array<{ id: PromptModuleId; position: number; length: number }> = [];
+	for (const boundary of BUNDLED_BOUNDARIES) {
+		const marker = markers[boundary.key];
+		const position = rendered.indexOf(marker);
+		if (position < 0) {
+			if ("optional" in boundary && boundary.optional) continue;
+			throw new Error(`Bundled prompt section missing: ${boundary.id}`);
+		}
+		if (positions.length > 0 && position <= positions[positions.length - 1].position) {
+			throw new Error(`Bundled prompt section out of order: ${boundary.id}`);
+		}
+		if (rendered.indexOf(marker, position + marker.length) >= 0) {
+			throw new Error(`Bundled prompt section repeated: ${boundary.id}`);
+		}
+		positions.push({ id: boundary.id, position, length: marker.length });
 	}
-	const drafts: SectionDraft[] = [];
+	const drafts: PromptModuleContent[] = [];
 	if (positions[0].position > 0) {
-		drafts.push({ id: "core", content: rendered.slice(0, positions[0].position), available: true });
+		drafts.push({ id: "core", content: rendered.slice(0, positions[0].position) });
 	}
 	for (let i = 0; i < positions.length; i++) {
-		const start = positions[i].position;
+		const start = positions[i].position + positions[i].length;
 		const end = positions[i + 1]?.position ?? rendered.length;
-		drafts.push({ id: positions[i].id, content: rendered.slice(start, end), available: true });
+		drafts.push({ id: positions[i].id, content: rendered.slice(start, end) });
 	}
 	return drafts;
 }
@@ -91,6 +111,7 @@ export interface ComposePromptOptions {
 
 export interface ComposePromptBlocks {
 	base: string;
+	bundledSections?: readonly PromptModuleContent[];
 	computerSafety?: string;
 	project?: string;
 	repoContext?: string;
@@ -105,7 +126,8 @@ function modelModuleApplies(id: PromptModuleId, model: ComposePromptOptions["mod
 		(!applicability.apis || applicability.apis.includes(model.api)) &&
 		(!applicability.classes || applicability.classes.includes(model.identity?.class ?? "")) &&
 		(!applicability.families || applicability.families.includes(model.identity?.family ?? "")) &&
-		(applicability.prefixBinding === undefined || applicability.prefixBinding === (model.thinking?.prefixBinding === true))
+		(applicability.prefixBinding === undefined ||
+			applicability.prefixBinding === (model.thinking?.prefixBinding === true))
 	);
 }
 
@@ -114,6 +136,9 @@ export function composePrompt(
 	blocks: ComposePromptBlocks,
 	options: ComposePromptOptions,
 ): { systemPrompt: string[]; composition: PromptComposition } {
+	if (!options.opaque && !blocks.bundledSections) {
+		throw new Error("Bundled prompt sections are required for composition");
+	}
 	const tokenizer = new Tokenizer(options.model);
 	const policies = resolvePromptPolicies(options.profile, options.overrides);
 	const capabilityPolicies = resolveCapabilityPolicies(options.profile, options.capabilities);
@@ -164,7 +189,7 @@ export function composePrompt(
 	const drafts: SectionDraft[] = options.opaque
 		? originalBlocks.map(content => ({ id: "opaque", content, available: true }))
 		: [
-				...splitBundledPrompt(blocks.base),
+				...(blocks.bundledSections ?? []).map(section => ({ ...section, available: true })),
 				...(blocks.computerSafety
 					? [{ id: "computer-safety" as const, content: blocks.computerSafety, available: true }]
 					: []),
@@ -185,17 +210,17 @@ export function composePrompt(
 				? "always"
 				: PROMPT_MODULES.find(module => module.id === draft.id)?.modelApplicability
 					? policies[draft.id]
-				: draft.id === "delegation" && capabilityPolicies.subagents === "disabled"
-					? "disabled"
-					: draft.id === "testing"
-						? policies.testing === "disabled"
-							? "disabled"
-							: capabilityPolicies.testing
-						: draft.id === "repo-context"
-							? policies["repo-context"] === "disabled"
+					: draft.id === "delegation" && capabilityPolicies.subagents === "disabled"
+						? "disabled"
+						: draft.id === "testing"
+							? policies.testing === "disabled"
 								? "disabled"
-								: capabilityPolicies.git
-							: policies[draft.id];
+								: capabilityPolicies.testing
+							: draft.id === "repo-context"
+								? policies["repo-context"] === "disabled"
+									? "disabled"
+									: capabilityPolicies.git
+								: policies[draft.id];
 		const active =
 			draft.available &&
 			(policy === "always" ||
@@ -212,21 +237,21 @@ export function composePrompt(
 					? active
 						? "model metadata matched"
 						: "model metadata did not match"
-				: policy === "disabled"
-					? "disabled by policy"
-					: draft.id === "delegation"
-						? active
-							? directTools.has("task")
-								? "task tool active"
-								: "task device activated"
-							: "task tool not active"
-						: draft.id === "testing"
+					: policy === "disabled"
+						? "disabled by policy"
+						: draft.id === "delegation"
 							? active
-								? "verification tools available"
-								: "verification tools unavailable"
-							: draft.id === "repo-context"
-								? "active repository context"
-								: "configured by profile";
+								? directTools.has("task")
+									? "task tool active"
+									: "task device activated"
+								: "task tool not active"
+							: draft.id === "testing"
+								? active
+									? "verification tools available"
+									: "verification tools unavailable"
+								: draft.id === "repo-context"
+									? "active repository context"
+									: "configured by profile";
 		return {
 			id: draft.id,
 			content: draft.content,
@@ -234,7 +259,7 @@ export function composePrompt(
 			active,
 			reason,
 			tokens: tokenizer.countTokens(draft.content, "strict"),
-			source: draft.id === "opaque" ? "custom" : ("source" in draft ? draft.source : "bundled"),
+			source: draft.id === "opaque" ? "custom" : (draft.source ?? "bundled"),
 		} satisfies PromptSection;
 	});
 	const systemPrompt = options.opaque
@@ -254,9 +279,7 @@ export function composePrompt(
 								"testing",
 								"delivery",
 								"prefix-bound-tools",
-							].includes(
-								section.id,
-							),
+							].includes(section.id),
 					)
 					.map(section => section.content)
 					.join(""),

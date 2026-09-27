@@ -1,32 +1,34 @@
 import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
 import { stringifyJson } from "@oh-my-pi/pi-utils";
 import type { AgentSession } from "../session/agent-session";
-import { composePrompt } from "./compose";
+import { composePrompt, type ComposePromptBlocks } from "./compose";
 import { PROMPT_CAPABILITY_IDS, type PromptProfile } from "./profiles";
 import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "./settings";
 
 const COMPARABLE_PROFILES: readonly PromptProfile[] = ["full", "minimal", "coding", "agentic"];
 
-function promptBlocks(session: AgentSession): {
-	base: string;
-	computerSafety?: string;
-	project?: string;
-	repoContext?: string;
-} | null {
+function promptBlocks(session: AgentSession): ComposePromptBlocks | null {
 	const sections = session.promptComposition?.sections;
 	if (!sections?.length || sections.some(section => section.id === "opaque")) return null;
 	const separate = new Map(
 		sections.filter(section => section.id !== "opaque").map(section => [section.id, section.content]),
 	);
-	const base = sections
-		.filter(section => !["computer-safety", "project", "repo-context", "opaque"].includes(section.id))
-		.map(section => section.content)
-		.join("");
+	const bundledSections = sections.flatMap(section =>
+		section.source === "bundled" &&
+		section.id !== "opaque" &&
+		!["computer-safety", "project", "repo-context"].includes(section.id)
+			? [{ id: section.id, content: section.content }]
+			: [],
+	);
 	return {
-		base,
+		base: bundledSections.map(section => section.content).join(""),
+		bundledSections,
 		computerSafety: separate.get("computer-safety"),
 		project: separate.get("project"),
 		repoContext: separate.get("repo-context"),
+		modelModules: sections.flatMap(section =>
+			section.source === "model" && section.id !== "opaque" ? [{ id: section.id, content: section.content }] : [],
+		),
 	};
 }
 
@@ -94,7 +96,9 @@ export function promptStats(session: AgentSession): string {
 	const profile = sessionOverride?.profile ?? cfgPromptProfile.get(session.settings);
 	const profileSource = sessionOverride?.profile ? "session" : session.settings.getProvenance(cfgPromptProfile);
 	const moduleSource = sessionOverride?.modules ? "session" : session.settings.getProvenance(cfgPromptModules);
-	const capabilitySource = sessionOverride?.capabilities ? "session" : session.settings.getProvenance(cfgPromptCapabilities);
+	const capabilitySource = sessionOverride?.capabilities
+		? "session"
+		: session.settings.getProvenance(cfgPromptCapabilities);
 	if (!composition) {
 		return `Profile: ${profile} (${profileSource})\nThe current prompt is an opaque SDK override; module accounting is unavailable.`;
 	}
@@ -107,13 +111,18 @@ export function promptStats(session: AgentSession): string {
 	if (history.length) {
 		const startup = history[0];
 		const delta = composition.totalTokens - startup.totalTokens;
-		lines.push(`Startup prompt: ${startup.totalTokens.toLocaleString()} tokens · current delta: ${delta > 0 ? "+" : ""}${delta.toLocaleString()}`);
+		lines.push(
+			`Startup prompt: ${startup.totalTokens.toLocaleString()} tokens · current delta: ${delta > 0 ? "+" : ""}${delta.toLocaleString()}`,
+		);
 		for (const change of history.slice(1).slice(-5)) {
-			const labels = [
-				...(change.added.length ? [`loaded ${change.added.join(", ")}`] : []),
-				...(change.removed.length ? [`unloaded ${change.removed.join(", ")}`] : []),
-			].join("; ") || "prompt refreshed";
-			lines.push(`Prompt change: ${change.deltaTokens > 0 ? "+" : ""}${change.deltaTokens.toLocaleString()} tokens · ${labels}`);
+			const labels =
+				[
+					...(change.added.length ? [`loaded ${change.added.join(", ")}`] : []),
+					...(change.removed.length ? [`unloaded ${change.removed.join(", ")}`] : []),
+				].join("; ") || "prompt refreshed";
+			lines.push(
+				`Prompt change: ${change.deltaTokens > 0 ? "+" : ""}${change.deltaTokens.toLocaleString()} tokens · ${labels}`,
+			);
 		}
 	}
 	if (composition.sections.every(section => section.id === "opaque")) {
@@ -151,20 +160,28 @@ export function promptInspect(session: AgentSession, options: { redact?: boolean
 		const sessionOverride = session.promptSettingsOverride;
 		const profileSource = sessionOverride?.profile ? "session" : session.settings.getProvenance(cfgPromptProfile);
 		const moduleSource = sessionOverride?.modules ? "session" : session.settings.getProvenance(cfgPromptModules);
-		const capabilitySource = sessionOverride?.capabilities ? "session" : session.settings.getProvenance(cfgPromptCapabilities);
+		const capabilitySource = sessionOverride?.capabilities
+			? "session"
+			: session.settings.getProvenance(cfgPromptCapabilities);
 		const provenance = `Profile source: ${profileSource} · module policies source: ${moduleSource} · capability policies source: ${capabilitySource}\n\n`;
 		return session.systemPrompt
-			.map((content, index) => `${index === 0 ? provenance : ""}--- Prompt block ${index + 1} ---\n${redact(content)}`)
+			.map(
+				(content, index) => `${index === 0 ? provenance : ""}--- Prompt block ${index + 1} ---\n${redact(content)}`,
+			)
 			.join("\n\n");
 	}
 	const sessionOverride = session.promptSettingsOverride;
 	const profileSource = sessionOverride?.profile ? "session" : session.settings.getProvenance(cfgPromptProfile);
 	const moduleSource = sessionOverride?.modules ? "session" : session.settings.getProvenance(cfgPromptModules);
-	const capabilitySource = sessionOverride?.capabilities ? "session" : session.settings.getProvenance(cfgPromptCapabilities);
+	const capabilitySource = sessionOverride?.capabilities
+		? "session"
+		: session.settings.getProvenance(cfgPromptCapabilities);
 	const assembled = [
 		`Profile: ${session.promptComposition?.profile ?? cfgPromptProfile.get(session.settings)} · source: ${profileSource}`,
 		`Module policies source: ${moduleSource} · capability policies source: ${capabilitySource}`,
-		...base.map(section => `--- ${section.id} (${section.reason}; ${section.source}) ---\n${redact(section.content)}`),
+		...base.map(
+			section => `--- ${section.id} (${section.reason}; ${section.source}) ---\n${redact(section.content)}`,
+		),
 	].join("\n\n");
 	const basePrompt = base.map(section => section.content).join("");
 	const current = session.systemPrompt.join("");

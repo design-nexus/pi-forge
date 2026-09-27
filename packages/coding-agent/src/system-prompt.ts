@@ -30,7 +30,12 @@ import projectPromptTemplate from "./prompts/system/project-prompt.md" with { ty
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
 import prefixBoundToolsPrompt from "./prompts/modules/prefix-bound-tools.md" with { type: "text" };
 import { normalizeConcurrencyLimit } from "./task/parallel";
-import { composePrompt, type PromptComposition } from "./prompt-engine/compose";
+import {
+	composePrompt,
+	createBundledPromptMarkers,
+	splitBundledPrompt,
+	type PromptComposition,
+} from "./prompt-engine/compose";
 import type { PromptCapabilityPolicies, PromptModulePolicies, PromptProfile } from "./prompt-engine/profiles";
 import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "./prompt-engine/settings";
 import type { Model } from "@oh-my-pi/pi-ai";
@@ -1033,9 +1038,11 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const selectedTemplate = resolvedCustomPrompt
 		? customSystemPromptTemplate
 		: (resolvedSystemPromptTemplate ?? systemPromptTemplate);
+	const sectionMarkers = createBundledPromptMarkers();
+	let bundledPrompt = resolvedCustomPrompt === undefined && resolvedSystemPromptTemplate === undefined;
 	let rendered: string;
 	try {
-		rendered = prompt.render(selectedTemplate, data);
+		rendered = prompt.render(selectedTemplate, bundledPrompt ? { ...data, sectionMarkers } : data);
 	} catch (error) {
 		if (resolvedSystemPromptTemplate === undefined) throw error;
 		if (!hasDiscoveredTemplate) {
@@ -1045,8 +1052,11 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 			error: String(error),
 		});
 		resolvedSystemPromptTemplate = undefined;
-		rendered = prompt.render(systemPromptTemplate, data);
+		bundledPrompt = true;
+		rendered = prompt.render(systemPromptTemplate, { ...data, sectionMarkers });
 	}
+	const bundledSections = bundledPrompt ? splitBundledPrompt(rendered, sectionMarkers) : undefined;
+	if (bundledSections) rendered = bundledSections.map(section => section.content).join("");
 	const computerSafety = computerEnabled ? computerSafetyPrompt.trim() : undefined;
 	// Literal overrides render context files and append text in their wrapper.
 	// Both the bundled template and user templates receive them in the footer.
@@ -1056,6 +1066,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 	const { systemPrompt, composition } = composePrompt(
 		{
 			base: rendered,
+			bundledSections,
 			computerSafety,
 			project: projectPrompt || undefined,
 			repoContext: activeRepoContextPrompt || undefined,
