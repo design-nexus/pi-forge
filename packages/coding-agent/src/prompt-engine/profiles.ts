@@ -1,3 +1,5 @@
+import type { Model } from "@oh-my-pi/pi-ai";
+
 /** Policies for sections of the bundled system prompt. */
 export type PromptPolicy = "always" | "automatic" | "disabled";
 export type PromptProfile = "minimal" | "coding" | "agentic" | "full" | "custom";
@@ -37,13 +39,28 @@ export const PROMPT_MODULES: readonly PromptModuleDefinition[] = [
 	{ id: "runtime", name: "Runtime", description: "Live tools, skills, and environment context.", required: true },
 	{ id: "tool-policy", name: "Tool Policy", description: "Rules for using available tools.", required: true },
 	{ id: "delegation", name: "Delegation", description: "Planning and subagent guidance.", required: false },
-	{ id: "workflow", name: "Workflow", description: "Scope, research, decomposition, and implementation.", required: false },
+	{
+		id: "workflow",
+		name: "Workflow",
+		description: "Scope, research, decomposition, and implementation.",
+		required: false,
+	},
 	{ id: "workflow-cleanup", name: "Workflow Cleanup", description: "Post-change cleanup guidance.", required: false },
 	{ id: "testing", name: "Testing", description: "Verification guidance.", required: false },
 	{ id: "delivery", name: "Delivery", description: "Completion and reporting requirements.", required: true },
 	{ id: "project", name: "Project", description: "Project instructions and local context.", required: true },
-	{ id: "computer-safety", name: "Computer Safety", description: "Host desktop interaction constraints.", required: true },
-	{ id: "repo-context", name: "Repository Context", description: "Active repository-specific guidance.", required: false },
+	{
+		id: "computer-safety",
+		name: "Computer Safety",
+		description: "Host desktop interaction constraints.",
+		required: true,
+	},
+	{
+		id: "repo-context",
+		name: "Repository Context",
+		description: "Active repository-specific guidance.",
+		required: false,
+	},
 	{
 		id: "prefix-bound-tools",
 		name: "Prefix-bound Tools",
@@ -54,6 +71,25 @@ export const PROMPT_MODULES: readonly PromptModuleDefinition[] = [
 ];
 
 export const PROMPT_MODULE_IDS: readonly PromptModuleId[] = PROMPT_MODULES.map(module => module.id);
+
+/** Resolve module selectors from structured catalog model facts. */
+export function applicablePromptModelModuleIds(
+	model: Pick<Model, "provider" | "api" | "identity" | "thinking"> | null | undefined,
+): PromptModuleId[] {
+	if (!model) return [];
+	return PROMPT_MODULES.filter(module => {
+		const applicability = module.modelApplicability;
+		return (
+			applicability !== undefined &&
+			(!applicability.providers || applicability.providers.includes(model.provider)) &&
+			(!applicability.apis || applicability.apis.includes(model.api)) &&
+			(!applicability.classes || applicability.classes.includes(model.identity?.class ?? "")) &&
+			(!applicability.families || applicability.families.includes(model.identity?.family ?? "")) &&
+			(applicability.prefixBinding === undefined ||
+				applicability.prefixBinding === (model.thinking?.prefixBinding === true))
+		);
+	}).map(module => module.id);
+}
 
 export type PromptModulePolicies = Partial<Record<PromptModuleId, PromptPolicy>>;
 export type PromptCapabilityId =
@@ -184,7 +220,9 @@ export function resolvePromptPolicies(
 			id,
 			REQUIRED.has(id)
 				? "always"
-				: (overrides[id] ?? selected[id] ?? (PROMPT_MODULES.find(module => module.id === id)?.modelApplicability ? "automatic" : "always")),
+				: (overrides[id] ??
+					selected[id] ??
+					(PROMPT_MODULES.find(module => module.id === id)?.modelApplicability ? "automatic" : "always")),
 		]),
 	) as Record<PromptModuleId, PromptPolicy>;
 }

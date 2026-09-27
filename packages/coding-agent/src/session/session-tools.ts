@@ -9,7 +9,7 @@ import type { ModelRegistry } from "../config/model-registry";
 import { formatModelString } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import type { PromptComposition } from "../prompt-engine/compose";
-import { resolveCapabilityPolicies } from "../prompt-engine/profiles";
+import { applicablePromptModelModuleIds, resolveCapabilityPolicies } from "../prompt-engine/profiles";
 import { cfgPromptCapabilities, cfgPromptProfile } from "../prompt-engine/settings";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
 import { CustomToolAdapter } from "../extensibility/custom-tools/wrapper";
@@ -809,8 +809,10 @@ export class SessionTools {
 	#currentPromptModelKey(): string | undefined {
 		const activeModel = this.#host.model();
 		if (!activeModel) return undefined;
-		if (cfgIncludeModelInPrompt.get(this.#host.settings)) return formatModelString(activeModel);
-		return `delegation-bias:${resolveDelegationBias(activeModel)}`;
+		const modelKey = cfgIncludeModelInPrompt.get(this.#host.settings)
+			? formatModelString(activeModel)
+			: `delegation-bias:${resolveDelegationBias(activeModel)}`;
+		return JSON.stringify([modelKey, applicablePromptModelModuleIds(activeModel)]);
 	}
 
 	/** Rebuilds model-dependent tool prompts after a model change. */
