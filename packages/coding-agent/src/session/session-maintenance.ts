@@ -1039,6 +1039,8 @@ export class SessionMaintenance {
 	 * the owning frame the moment the entry lands, so a late rejection (a
 	 * `session_compact` hook or `onComplete` throwing after the append) still
 	 * resumes the interrupted turn exactly as the direct path does.
+	 * @param interruptedSystemPrompt Internal: the live request's prompt, retained
+	 * across abort cleanup and nested method fallbacks.
 	 */
 	async compact(
 		customInstructions?: string,
@@ -1046,7 +1048,9 @@ export class SessionMaintenance {
 		methodOffset = 0,
 		retryController?: AbortController,
 		onCommitted?: () => void,
+		interruptedSystemPrompt?: string[],
 	): Promise<CompactionResult> {
+		const remoteSystemPrompt = interruptedSystemPrompt ?? [...this.#host.agent.state.systemPrompt];
 		const ownsCompactionController = retryController === undefined;
 		if (this.#compactionAbortController && this.#compactionAbortController !== retryController) {
 			throw new Error("Compaction already in progress");
@@ -1198,6 +1202,7 @@ export class SessionMaintenance {
 					selectedMethodIndex + 1,
 					compactionAbortController,
 					markCommitted,
+					remoteSystemPrompt,
 				);
 			}
 			const pathEntries = this.#host.sessionManager.getBranch();
@@ -1413,7 +1418,7 @@ export class SessionMaintenance {
 							// The prompt the live turn actually sent — a per-turn
 							// `before_agent_start` override included — so a provider-native
 							// compaction shares the live request's cached prefix.
-							remoteSystemPrompt: this.#host.agent.state.systemPrompt,
+							remoteSystemPrompt,
 							convertToLlm: messages => this.#host.convertToLlmForSideRequest(messages),
 							codexCompaction,
 						},
@@ -1493,6 +1498,7 @@ export class SessionMaintenance {
 					selectedMethodIndex + 1,
 					compactionAbortController,
 					markCommitted,
+					remoteSystemPrompt,
 				);
 			}
 			options?.onError?.(err);
@@ -4802,7 +4808,9 @@ export class SessionMaintenance {
 								{
 									promptOverride: this.#host.obfuscateTextForProvider(compactionPrep.hookPrompt),
 									extraContext: compactionPrep.hookContext,
-									remoteSystemPrompt: this.#host.agent.state.systemPrompt,
+									remoteSystemPrompt: this.#host.agent.lastModelCallSystemPrompt
+										? [...this.#host.agent.lastModelCallSystemPrompt]
+										: this.#host.agent.state.systemPrompt,
 									metadata: this.#host.agent.metadataForProvider(candidate.provider),
 									initiatorOverride: "agent",
 									convertToLlm: messages => this.#host.convertToLlmForSideRequest(messages),

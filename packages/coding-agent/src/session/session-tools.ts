@@ -497,9 +497,11 @@ export class SessionTools {
 		this.#host.agent.setSystemPrompt(prompt);
 	}
 
-	/** Drops the active per-turn override; later rebuilds fall back to the base prompt. */
+	/** Drops the active per-turn override and restores the current base prompt. */
 	clearTurnSystemPromptOverride(): void {
+		const hadOverride = this.#turnSystemPromptOverride !== undefined;
 		this.#turnSystemPromptOverride = undefined;
+		if (hadOverride) this.#host.agent.setSystemPrompt(this.#baseSystemPrompt);
 	}
 
 	/** Skills currently rendered into the system prompt. */

@@ -17,6 +17,7 @@ import {
 import { ExtensionToolWrapper } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/wrapper";
 import type { MCPManager } from "@oh-my-pi/pi-coding-agent/mcp/manager";
 import * as memoryBackendModule from "@oh-my-pi/pi-coding-agent/memory-backend";
+import { promptInspect } from "@oh-my-pi/pi-coding-agent/prompt-engine/inspection";
 import { initializeExtensions } from "@oh-my-pi/pi-coding-agent/modes/runtime-init";
 import {
 	type CreateAgentSessionOptions,
@@ -474,6 +475,13 @@ describe("createAgentSession defaultInactive tool activation", () => {
 			expect(session.getActiveToolNames()).not.toContain("late_active_tool");
 			expect(session.systemPrompt.join("\n")).toContain("late_active_tool");
 			expect(session.systemPrompt.join("\n")).not.toContain("late_inactive_tool");
+			expect(
+				session.promptComposition?.sections
+					.filter(section => section.active)
+					.map(section => section.content)
+					.join(""),
+			).toContain("late_active_tool");
+			expect(promptInspect(session)).not.toContain("Current turn override or injected context");
 		} finally {
 			await session.dispose();
 		}
