@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
+import { type } from "@oh-my-pi/omptype";
+import type { AgentTool } from "@oh-my-pi/pi-agent-core";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
@@ -223,9 +225,62 @@ it("reconciles a changed profile into both the callable task tool and the next b
 		expect(session.systemPrompt.join("\n")).toContain("# Delegation");
 		expect(session.promptComposition?.profile).toBe("full");
 		const stats = promptStats(session);
-		expect(stats).toContain("System prompt text:");
+		expect(stats).toContain("Base system prompt text (local estimate):");
 		expect(stats).toContain("subagents: active");
 		expect(promptInspect(session)).toContain("--- delegation (");
+	} finally {
+		await session.dispose();
+		authStorage.close();
+	}
+});
+
+it("separates provider-reported request usage from estimated module text", async () => {
+	using dir = TempDir.createSync("@omp-prompt-usage-");
+	const cwd = dir.join("project");
+	const authStorage = await AuthStorage.create(":memory:");
+	const modelRegistry = new ModelRegistry(authStorage, dir.join("models.yml"));
+	const { session } = await createAgentSession({
+		cwd,
+		agentDir: dir.join("agent"),
+		authStorage,
+		modelRegistry,
+		settings: Settings.isolated(),
+		sessionManager: SessionManager.inMemory(cwd),
+		model: getBundledModel("openai", "gpt-4o-mini"),
+		disableExtensionDiscovery: true,
+		skills: [],
+		contextFiles: [],
+		promptTemplates: [],
+		slashCommands: [],
+		enableMCP: false,
+		enableLsp: false,
+		skipPythonPreflight: true,
+	});
+	try {
+		session.agent.appendMessage({
+			role: "assistant",
+			content: [{ type: "text", text: "Done" }],
+			api: "openai-responses",
+			provider: "openai",
+			model: "gpt-4o-mini",
+			stopReason: "stop",
+			usage: {
+				input: 900,
+				output: 20,
+				cacheRead: 300,
+				cacheWrite: 34,
+				totalTokens: 1_254,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			timestamp: Date.now(),
+		});
+		const stats = promptStats(session);
+		expect(stats).toContain(
+			"Last provider-reported prompt: 1,234 tokens (input 900 · cache read 300 · cache write 34",
+		);
+		expect(stats).toContain("Modules (local text estimates; providers do not report per-module tokens):");
+		session.agent.setSystemPrompt(["Turn-specific context"]);
+		expect(promptStats(session)).toContain("Effective system prompt text (local estimate):");
 	} finally {
 		await session.dispose();
 		authStorage.close();
@@ -314,6 +369,62 @@ it("refreshes model modules across a model switch when model names are hidden", 
 		expect(modelModule()?.active).toBe(false);
 		expect(session.systemPrompt.join("\n")).not.toContain("# Prefix-bound tool roster");
 		expect(session.promptCompositionHistory.some(change => change.removed.includes("prefix-bound-tools"))).toBe(true);
+	} finally {
+		await session.dispose();
+		authStorage.close();
+	}
+});
+
+it("tracks RPC host tool refresh in the wire schema estimate and prompt inspection", async () => {
+	using dir = TempDir.createSync("@omp-prompt-rpc-tools-");
+	const cwd = dir.join("project");
+	const authStorage = await AuthStorage.create(":memory:");
+	const modelRegistry = new ModelRegistry(authStorage, dir.join("models.yml"));
+	const { session } = await createAgentSession({
+		cwd,
+		agentDir: dir.join("agent"),
+		authStorage,
+		modelRegistry,
+		settings: Settings.isolated(),
+		sessionManager: SessionManager.inMemory(cwd),
+		model: getBundledModel("openai", "gpt-4o-mini"),
+		disableExtensionDiscovery: true,
+		skills: [],
+		contextFiles: [],
+		promptTemplates: [],
+		slashCommands: [],
+		enableMCP: false,
+		enableLsp: false,
+		skipPythonPreflight: true,
+	});
+	const rpcTool: AgentTool = {
+		name: "rpc_probe",
+		label: "RPC Probe",
+		description: "Inspect a host-owned resource",
+		parameters: type({ resource: "string" }),
+		async execute() {
+			return { content: [{ type: "text", text: "ready" }] };
+		},
+	};
+	const toolTokens = () =>
+		Number(
+			promptCompare(session)
+				.split("\n")
+				.find(line => line.startsWith("| full |"))
+				?.split("|")[3]
+				?.trim()
+				.replaceAll(",", ""),
+		);
+	try {
+		const before = toolTokens();
+		await session.refreshRpcHostTools([rpcTool]);
+		expect(session.agent.state.tools.map(tool => tool.name)).toContain("rpc_probe");
+		expect(toolTokens()).toBeGreaterThan(before);
+		expect(promptInspect(session)).not.toContain("Current turn override or injected context");
+		await session.refreshRpcHostTools([]);
+		expect(session.agent.state.tools.map(tool => tool.name)).not.toContain("rpc_probe");
+		expect(toolTokens()).toBe(before);
+		expect(promptInspect(session)).not.toContain("Current turn override or injected context");
 	} finally {
 		await session.dispose();
 		authStorage.close();

@@ -484,6 +484,15 @@ export class Agent {
 	#cursorToolResultDrain: CursorToolResultEntry[] | undefined;
 
 	streamFn: StreamFn;
+	#recordingStreamFn: StreamFn = (model, context, options) => {
+		this.#lastModelCallSystemPrompt = [...(context.systemPrompt ?? [])];
+		return this.streamFn(model, context, options);
+	};
+	#lastModelCallSystemPrompt: string[] | undefined;
+	/** System prompt supplied to the most recent provider call in this session. */
+	get lastModelCallSystemPrompt(): readonly string[] | undefined {
+		return this.#lastModelCallSystemPrompt;
+	}
 	getApiKey?: (model: Model) => Promise<ApiKey | undefined> | ApiKey | undefined;
 	/** Prepare actual queue deliveries after dequeue gates; commit runs only while ownership remains valid. */
 	prepareQueuedMessages?: PrepareQueuedMessages;
@@ -1091,6 +1100,7 @@ export class Agent {
 	}
 
 	setModel(model: Model) {
+		this.#lastModelCallSystemPrompt = undefined;
 		this.#state.model = model;
 		this.#syncTokenizer(model);
 	}
@@ -1327,6 +1337,7 @@ export class Agent {
 	}
 
 	reset() {
+		this.#lastModelCallSystemPrompt = undefined;
 		if (this.#queuedMessageClaims.steering || this.#queuedMessageClaims.followUp) {
 			this.#abortController?.abort();
 			this.#abortController = undefined;
@@ -1738,8 +1749,8 @@ export class Agent {
 
 		try {
 			const stream = messages
-				? agentLoop(messages, context, config, loopSignal, this.streamFn)
-				: agentLoopContinue(context, config, loopSignal, this.streamFn);
+				? agentLoop(messages, context, config, loopSignal, this.#recordingStreamFn)
+				: agentLoopContinue(context, config, loopSignal, this.#recordingStreamFn);
 
 			for await (const event of stream) {
 				if (this.#abortController !== loopAbortController) return;

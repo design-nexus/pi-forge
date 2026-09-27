@@ -76,6 +76,7 @@ describe("async speculative compaction", () => {
 				focus: string,
 				options?: { autoTriggered?: boolean; signal?: AbortSignal },
 			) => Promise<{ document: string } | undefined>;
+			abort?: () => Promise<void>;
 		} = {},
 	): SessionMaintenance {
 		agent = new Agent({
@@ -152,7 +153,7 @@ describe("async speculative compaction", () => {
 			runRecoveryCompactionWithRollback: async () => ({ deferredHandoff: false, continuationScheduled: false }),
 			parseRetryAfterMsFromError: () => undefined,
 			setModelTemporary: async () => {},
-			abort: async () => {},
+			abort: options.abort ?? (async () => {}),
 			abortHandoff: () => {},
 		} as unknown as SessionMaintenanceHost;
 		return new SessionMaintenance(host);
@@ -650,6 +651,26 @@ describe("async speculative compaction", () => {
 		for (const call of compactSpy.mock.calls) {
 			expect(call[5]?.remoteSystemPrompt).toEqual(["per-turn override"]);
 		}
+	});
+
+	it("preserves an interrupted turn's override for manual provider compaction after abort cleanup", async () => {
+		maintenance = createMaintenance({
+			asyncEnabled: false,
+			abort: async () => agent.setSystemPrompt(["Test"]),
+		});
+		const compactSpy = vi.spyOn(compactionModule, "compact").mockImplementation(async preparation => ({
+			summary: "summary",
+			firstKeptEntryId: preparation.firstKeptEntryId,
+			tokensBefore: preparation.tokensBefore,
+			details: {},
+		}));
+		agent.setSystemPrompt(["per-turn override"]);
+
+		await maintenance.compact();
+
+		expect(agent.state.systemPrompt).toEqual(["Test"]);
+		expect(compactSpy).toHaveBeenCalledTimes(1);
+		expect(compactSpy.mock.calls[0]?.[5]?.remoteSystemPrompt).toEqual(["per-turn override"]);
 	});
 
 	it("defers a threshold pass that jumped past the band, then commits the armed result for free", async () => {

@@ -9,6 +9,7 @@ import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream"
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import type { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { convertToLlm } from "@oh-my-pi/pi-coding-agent/session/messages";
@@ -29,6 +30,7 @@ type ObservedPromptCall = {
 	callIndex: number;
 	toolChoice: string | undefined;
 	messageTexts: string[];
+	systemPrompt: string[];
 };
 
 type WaitForCall = (predicate: (call: ObservedPromptCall) => boolean) => Promise<ObservedPromptCall>;
@@ -89,8 +91,8 @@ function createAssistantResponse(text: string) {
 }
 
 /** Short-circuit the LLM summary so compaction completes without a network call. */
-function stubCompaction(firstKeptEntryId?: string): void {
-	vi.spyOn(compactionModule, "compact").mockImplementation(async preparation => ({
+function stubCompaction(firstKeptEntryId?: string) {
+	return vi.spyOn(compactionModule, "compact").mockImplementation(async preparation => ({
 		summary: "compacted",
 		shortSummary: undefined,
 		firstKeptEntryId: firstKeptEntryId ?? preparation.firstKeptEntryId,
@@ -156,7 +158,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 
 	async function createHarness(
 		settingsOverride: Record<string, unknown> = {},
-		opts: { agentId?: string; agentKind?: "main" | "sub"; model?: Model } = {},
+		opts: { agentId?: string; agentKind?: "main" | "sub"; model?: Model; turnPromptOverride?: string } = {},
 	): Promise<Harness> {
 		const observedCalls: ObservedPromptCall[] = [];
 		const waiters: Array<{
@@ -224,6 +226,7 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 					callIndex: observedCalls.length,
 					toolChoice: getToolChoiceName(options?.toolChoice),
 					messageTexts: context.messages.map(message => getMessageText(message)),
+					systemPrompt: [...(context.systemPrompt ?? [])],
 				};
 				observedCalls.push(call);
 				for (let i = waiters.length - 1; i >= 0; i--) {
@@ -249,12 +252,24 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		]);
 		if (todoTool) toolRegistry.set(todoTool.name, todoTool as unknown as AgentTool);
 
+		let overrideDelivered = false;
 		const session = new AgentSession({
 			agent,
 			sessionManager,
 			settings,
 			modelRegistry,
 			toolRegistry,
+			extensionRunner: opts.turnPromptOverride
+				? ({
+						emitBeforeAgentStart: async () => {
+							if (overrideDelivered) return undefined;
+							overrideDelivered = true;
+							return { systemPrompt: [opts.turnPromptOverride] };
+						},
+						emit: async () => undefined,
+						hasHandlers: () => false,
+					} as unknown as ExtensionRunner)
+				: undefined,
 			agentId: opts.agentId,
 			agentKind: opts.agentKind,
 		});
@@ -295,6 +310,17 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		emitHighUsageTurn(session);
 		return waitForCall(call => call.callIndex > 0);
 	}
+
+	it("compacts with the prompt sent by an overridden turn, then resumes on the base prompt", async () => {
+		const { session, waitForCall, observedCalls } = await createHarness({}, { turnPromptOverride: "turn override" });
+		const compactSpy = stubCompaction();
+
+		const continuation = await runToContinuation(session, waitForCall);
+
+		expect(observedCalls[0]?.systemPrompt).toEqual(["turn override"]);
+		expect(compactSpy.mock.calls[0]?.[5]?.remoteSystemPrompt).toEqual(["turn override"]);
+		expect(continuation.systemPrompt).toEqual(["Test"]);
+	});
 
 	it("re-injects the eager task reminder on the auto-continuation turn (task.eager always)", async () => {
 		const { session, waitForCall } = await createHarness();

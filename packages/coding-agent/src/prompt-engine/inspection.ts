@@ -1,4 +1,5 @@
 import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
+import { calculatePromptTokens } from "@oh-my-pi/pi-agent-core/compaction";
 import { stringifyJson } from "@oh-my-pi/pi-utils";
 import type { AgentSession } from "../session/agent-session";
 import { composePrompt, type ComposePromptBlocks } from "./compose";
@@ -105,14 +106,31 @@ export function promptStats(session: AgentSession): string {
 	const lines = [
 		`Profile: ${composition.profile} · source: ${profileSource}`,
 		`Module policies source: ${moduleSource} · capability policies source: ${capabilitySource}`,
-		`System prompt text: ${composition.totalTokens.toLocaleString()} tokens`,
+		`Base system prompt text (local estimate): ${composition.totalTokens.toLocaleString()} tokens`,
 	];
+	const basePrompt = composition.sections
+		.filter(section => section.active)
+		.map(section => section.content)
+		.join("");
+	const effectivePrompt = session.systemPrompt.join("");
+	if (effectivePrompt !== basePrompt) {
+		const effectiveTokens = new Tokenizer(session.agent.state.model).countTokens(session.systemPrompt, "strict");
+		lines.push(`Effective system prompt text (local estimate): ${effectiveTokens.toLocaleString()} tokens`);
+	}
+	const lastUsage = session.getLastAssistantMessage()?.usage;
+	if (lastUsage) {
+		lines.push(
+			`Last provider-reported prompt: ${calculatePromptTokens(lastUsage).toLocaleString()} tokens (input ${lastUsage.input.toLocaleString()} · cache read ${lastUsage.cacheRead.toLocaleString()} · cache write ${lastUsage.cacheWrite.toLocaleString()}; includes messages, tool schemas, and provider framing)`,
+		);
+	} else {
+		lines.push("Last provider-reported prompt: unavailable before an assistant response");
+	}
 	const history = session.promptCompositionHistory;
 	if (history.length) {
 		const startup = history[0];
 		const delta = composition.totalTokens - startup.totalTokens;
 		lines.push(
-			`Startup prompt: ${startup.totalTokens.toLocaleString()} tokens · current delta: ${delta > 0 ? "+" : ""}${delta.toLocaleString()}`,
+			`Startup prompt (local estimate): ${startup.totalTokens.toLocaleString()} tokens · current delta: ${delta > 0 ? "+" : ""}${delta.toLocaleString()}`,
 		);
 		for (const change of history.slice(1).slice(-5)) {
 			const labels =
@@ -121,7 +139,7 @@ export function promptStats(session: AgentSession): string {
 					...(change.removed.length ? [`unloaded ${change.removed.join(", ")}`] : []),
 				].join("; ") || "prompt refreshed";
 			lines.push(
-				`Prompt change: ${change.deltaTokens > 0 ? "+" : ""}${change.deltaTokens.toLocaleString()} tokens · ${labels}`,
+				`Prompt change (local estimate): ${change.deltaTokens > 0 ? "+" : ""}${change.deltaTokens.toLocaleString()} tokens · ${labels}`,
 			);
 		}
 	}
@@ -129,11 +147,11 @@ export function promptStats(session: AgentSession): string {
 		lines.push("Full comparison unavailable for a custom prompt.");
 	} else {
 		lines.push(
-			`Full sections with the same tools: ${composition.fullTokens.toLocaleString()} text tokens`,
+			`Full sections with the same tools (local estimate): ${composition.fullTokens.toLocaleString()} text tokens`,
 			`Estimated text savings: ${Math.max(0, composition.fullTokens - composition.totalTokens).toLocaleString()} tokens`,
 		);
 	}
-	lines.push("", "Modules:");
+	lines.push("", "Modules (local text estimates; providers do not report per-module tokens):");
 	for (const section of composition.sections) {
 		lines.push(
 			`- ${section.id}: ${section.active ? "loaded" : "available"} · ${section.policy} · ${section.tokens.toLocaleString()} tokens · ${section.reason} · ${section.source}`,

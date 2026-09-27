@@ -5,6 +5,7 @@ import { createMockModel, type MockResponseSource } from "@oh-my-pi/pi-ai/provid
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import type { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
+import { promptInspect } from "@oh-my-pi/pi-coding-agent/prompt-engine/inspection";
 import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { convertToLlm } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
@@ -111,6 +112,7 @@ describe("AgentSession before_agent_start system prompt override", () => {
 		// override must still reach the provider instead of the rebuilt base.
 		expect(systemPrompts).toHaveLength(1);
 		expect(systemPrompts[0]).toEqual([OVERRIDE]);
+		expect(session.systemPrompt).toEqual([REBUILT_BASE]);
 	});
 
 	it("falls back to the rebuilt base once the turn ends", async () => {
@@ -123,5 +125,17 @@ describe("AgentSession before_agent_start system prompt override", () => {
 		// rebuild applies the base prompt rather than leaking the stale override.
 		await session.refreshBaseSystemPrompt();
 		expect(session.systemPrompt).toEqual([REBUILT_BASE]);
+	});
+
+	it("exposes the base prompt as soon as the overridden turn settles", async () => {
+		const { session, systemPrompts } = createSession([{ content: ["Done"] }]);
+
+		await session.prompt("hello");
+		await session.waitForIdle();
+
+		expect(systemPrompts).toEqual([[OVERRIDE]]);
+		expect(session.systemPrompt).toEqual(["initial-base"]);
+		expect(promptInspect(session)).toContain("initial-base");
+		expect(promptInspect(session)).not.toContain(OVERRIDE);
 	});
 });
