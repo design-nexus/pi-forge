@@ -45,4 +45,12 @@ A Minimal prompt with a runtime rule containing a line `§ Workflow` lost the re
 
 The bundled static template now emits unique temporary section markers when rendered by `buildSystemPrompt()`. The builder removes them and passes ordered sections to `composePrompt()`. `/prompt compare` reuses those section identities rather than parsing headings again. Custom `SYSTEM.md` and `SYSTEM_TEMPLATE.md` remain opaque. The Full prompt is byte-identical to rendering the same template without markers, including in the collision fixture; the offline benchmark token counts above are unchanged.
 
-Focused verification: `bun test packages/coding-agent/test/prompt-engine.test.ts` passed 10/10, and `bun test packages/coding-agent/test/system-prompt-template.test.ts` passed 21/21. The remaining dependency-ready Step 1 task is a live model-switch/tool-change lifecycle check: verify model module activation, prompt composition and stats, and callable tool state across both directions of a switch before building a task-intent capability router.
+Focused verification: `bun test packages/coding-agent/test/prompt-engine.test.ts` passed 10/10, and `bun test packages/coding-agent/test/system-prompt-template.test.ts` passed 21/21.
+
+## Third Step 1 slice: model and tool lifecycle
+
+With `includeModelInPrompt` disabled, switching a live session from bundled `anthropic/claude-fable-5` to `anthropic/claude-fable-5-1` left the `prefix-bound-tools` module inactive. Both models have the same delegation bias, so `SessionTools.#currentPromptModelKey()` did not see a change. The live regression test failed before the fix.
+
+`applicablePromptModelModuleIds()` now resolves selectors from catalog model facts once for composition and for the model refresh key. The live test confirms module activation and `/prompt stats` history after switching to the prefix-bound model, confirms that disabling subagents removes the callable `task` tool without removing the applicable model module, and confirms module removal after switching back. No provider request or credential refresh was needed for the fixture.
+
+Focused verification: `bun test packages/coding-agent/test/prompt-engine.test.ts` passed 11/11, package `bun run check:types` passed, and touched-file formatting passed. Root `bun check` still stops on pre-existing formatting in `sdk.ts` and `slash-commands/builtin-prompt.ts`. The next dependency-ready Step 1 task is to exercise extension and RPC/ACP tool refresh against prompt composition and effective prompt inspection, then decide whether a capability-router contract can reuse those activation events unchanged.

@@ -14,6 +14,7 @@ import { promptCompare, promptInspect, promptStats } from "@oh-my-pi/pi-coding-a
 import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
+import { cfgIncludeModelInPrompt } from "@oh-my-pi/pi-coding-agent/session/settings";
 import { buildSystemPrompt, type BuildSystemPromptOptions } from "@oh-my-pi/pi-coding-agent/system-prompt";
 import { CONFIG_DIR_NAME, getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
 import bundledTemplate from "../src/prompts/system/system-prompt.md" with { type: "text" };
@@ -263,6 +264,56 @@ it("does not count a disabled model module in the Full profile comparison", asyn
 			.split("\n")
 			.find(line => line.startsWith("| full |"));
 		expect(fullRow).toContain(`| ${session.promptComposition?.totalTokens.toLocaleString()} |`);
+	} finally {
+		await session.dispose();
+		authStorage.close();
+	}
+});
+
+it("refreshes model modules across a model switch when model names are hidden", async () => {
+	using dir = TempDir.createSync("@omp-prompt-model-switch-");
+	const cwd = dir.join("project");
+	const settings = Settings.isolated();
+	cfgIncludeModelInPrompt.set(settings, false);
+	const authStorage = await AuthStorage.create(":memory:");
+	authStorage.keys.setRuntime("anthropic", "test-key");
+	const modelRegistry = new ModelRegistry(authStorage, dir.join("models.yml"));
+	const firstModel = getBundledModel("anthropic", "claude-fable-5");
+	const prefixBoundModel = getBundledModel("anthropic", "claude-fable-5-1");
+	const { session } = await createAgentSession({
+		cwd,
+		agentDir: dir.join("agent"),
+		authStorage,
+		modelRegistry,
+		settings,
+		sessionManager: SessionManager.inMemory(cwd),
+		model: firstModel,
+		disableExtensionDiscovery: true,
+		skills: [],
+		contextFiles: [],
+		promptTemplates: [],
+		slashCommands: [],
+		enableMCP: false,
+		enableLsp: false,
+		skipPythonPreflight: true,
+	});
+	try {
+		const modelModule = () =>
+			session.promptComposition?.sections.find(section => section.id === "prefix-bound-tools");
+		expect(modelModule()?.active).toBe(false);
+		await session.setModelTemporary(prefixBoundModel);
+		expect(modelModule()?.active).toBe(true);
+		expect(session.systemPrompt.join("\n")).toContain("# Prefix-bound tool roster");
+		expect(promptStats(session)).toContain("prefix-bound-tools: loaded");
+		expect(session.promptCompositionHistory.some(change => change.added.includes("prefix-bound-tools"))).toBe(true);
+		cfgPromptCapabilities.set(settings, { subagents: "disabled" });
+		await session.reconcileBuiltinTools();
+		expect(session.getEnabledToolNames()).not.toContain("task");
+		expect(modelModule()?.active).toBe(true);
+		await session.setModelTemporary(firstModel);
+		expect(modelModule()?.active).toBe(false);
+		expect(session.systemPrompt.join("\n")).not.toContain("# Prefix-bound tool roster");
+		expect(session.promptCompositionHistory.some(change => change.removed.includes("prefix-bound-tools"))).toBe(true);
 	} finally {
 		await session.dispose();
 		authStorage.close();

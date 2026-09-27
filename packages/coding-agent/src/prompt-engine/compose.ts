@@ -2,6 +2,7 @@ import type { Model } from "@oh-my-pi/pi-ai";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
 import {
 	PROMPT_MODULES,
+	applicablePromptModelModuleIds,
 	resolvePromptPolicies,
 	resolveCapabilityPolicies,
 	PROMPT_CAPABILITY_IDS,
@@ -118,19 +119,6 @@ export interface ComposePromptBlocks {
 	modelModules?: readonly PromptModuleContent[];
 }
 
-function modelModuleApplies(id: PromptModuleId, model: ComposePromptOptions["model"]): boolean {
-	const applicability = PROMPT_MODULES.find(module => module.id === id)?.modelApplicability;
-	if (!applicability || !model) return false;
-	return (
-		(!applicability.providers || applicability.providers.includes(model.provider)) &&
-		(!applicability.apis || applicability.apis.includes(model.api)) &&
-		(!applicability.classes || applicability.classes.includes(model.identity?.class ?? "")) &&
-		(!applicability.families || applicability.families.includes(model.identity?.family ?? "")) &&
-		(applicability.prefixBinding === undefined ||
-			applicability.prefixBinding === (model.thinking?.prefixBinding === true))
-	);
-}
-
 /** Resolve policies over rendered content and report text tokens without changing provider block shape. */
 export function composePrompt(
 	blocks: ComposePromptBlocks,
@@ -141,6 +129,7 @@ export function composePrompt(
 	}
 	const tokenizer = new Tokenizer(options.model);
 	const policies = resolvePromptPolicies(options.profile, options.overrides);
+	const applicableModelModules = new Set(applicablePromptModelModuleIds(options.model));
 	const capabilityPolicies = resolveCapabilityPolicies(options.profile, options.capabilities);
 	const directTools = new Set(options.toolNames ?? []);
 	const mountedTools = new Set(options.mountedToolNames ?? []);
@@ -183,7 +172,7 @@ export function composePrompt(
 		(value): value is string => value !== undefined,
 	);
 	const modelBlocks = (blocks.modelModules ?? [])
-		.filter(module => modelModuleApplies(module.id, options.model))
+		.filter(module => applicableModelModules.has(module.id))
 		.map(module => module.content);
 	const fullBlocks = options.opaque ? originalBlocks : [...originalBlocks, ...modelBlocks];
 	const drafts: SectionDraft[] = options.opaque
@@ -200,7 +189,7 @@ export function composePrompt(
 				...(blocks.modelModules ?? []).map(module => ({
 					id: module.id,
 					content: module.content,
-					available: modelModuleApplies(module.id, options.model),
+					available: applicableModelModules.has(module.id),
 					source: "model" as const,
 				})),
 			];
