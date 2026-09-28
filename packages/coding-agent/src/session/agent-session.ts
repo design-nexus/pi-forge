@@ -18,7 +18,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import type { GovernorDecision } from "../governor/decision";
-import { inspectGovernorDecision, previewGovernorDecision, type GovernorPreviewRequest } from "../governor/session";
+import { latestGovernorSnapshot, recordGovernorDecision } from "../governor/ledger";
+import type { GovernorRevisionTrigger, GovernorSnapshot } from "../governor/revision";
+import {
+	cfgGovernorBudgetInputs,
+	inspectGovernorDecision,
+	previewGovernorDecision,
+	type GovernorPreviewRequest,
+} from "../governor/session";
 import type { PromptComposition } from "../prompt-engine/compose";
 import {
 	routeDelegationCapability,
@@ -1529,7 +1536,7 @@ export class AgentSession implements SettingsScope {
 			sessionId: () => this.sessionId,
 			promptGeneration: () => this.#promptGeneration,
 			resolveActiveEditMode: () => this.#tools.resolveActiveEditMode(),
-			syncAfterModelChange: previousEditMode => this.#tools.syncAfterModelChange(previousEditMode),
+			syncAfterModelChange: previousEditMode => this.#syncAfterModelChange(previousEditMode),
 			setModelWithProviderSessionReset: model => this.#setModelWithProviderSessionReset(model),
 			clearActiveRetryFallback: () => this.#recovery.clearActiveRetryFallback(),
 			clearInheritedProviderPromptCacheKey: () => this.#clearInheritedProviderPromptCacheKey(),
@@ -1580,7 +1587,7 @@ export class AgentSession implements SettingsScope {
 			sessionMessageAlreadyPersisted: message => this.#sessionMessageAlreadyPersisted(message),
 			setModelWithProviderSessionReset: model => this.#setModelWithProviderSessionReset(model),
 			resolveActiveEditMode: () => this.#tools.resolveActiveEditMode(),
-			syncAfterModelChange: previousEditMode => this.#tools.syncAfterModelChange(previousEditMode),
+			syncAfterModelChange: previousEditMode => this.#syncAfterModelChange(previousEditMode),
 			resetCurrentResponsesProviderSession: reason => this.#resetCurrentResponsesProviderSession(reason),
 			maybeAutoRedeemReset: activeBlockUnblockAtMs => this.#maybeAutoRedeemReset(activeBlockUnblockAtMs),
 			runAutoCompaction: (reason, willRetry, deferred, allowDefer, options) =>
@@ -1800,6 +1807,9 @@ export class AgentSession implements SettingsScope {
 			captureMemoryPromotionSnapshot: prompt => this.#memory.capturePromotionSnapshot(prompt),
 			emitNotice: (level, message, source) => this.emitNotice(level, message, source),
 			notifyCommandMetadataChanged: () => this.#notifyCommandMetadataChanged(),
+			onToolAvailabilityChanged: () => {
+				this.#reconcileGovernor("availability");
+			},
 			localProtocolOptions: () => this.#localProtocolOptions(),
 		};
 		this.#tools = new SessionTools(sessionToolsHost, {
@@ -2145,6 +2155,7 @@ export class AgentSession implements SettingsScope {
 		this.#unsubscribeAgent = this.agent.subscribe(this.#handleAgentEvent);
 		// Re-evaluate append-only context mode when the setting changes at runtime.
 		cfgProviderAppendOnlyContext.listen(this, () => this.#syncAppendOnlyContext(this.model));
+		cfgGovernorBudgetInputs.listen(this, () => this.#reconcileGovernor("budget"));
 		cfgModelRoles.listen(this, () => this.#advisors.reconcileModelRoles());
 		// Re-derive the active model's effective context window when the
 		// extended-context setting flips at runtime: the registry re-clamps (or
@@ -5697,6 +5708,26 @@ export class AgentSession implements SettingsScope {
 		return decision ? inspectGovernorDecision(decision) : undefined;
 	}
 
+	getGovernorSnapshot(): GovernorSnapshot | undefined {
+		return latestGovernorSnapshot(this.sessionManager);
+	}
+
+	#reconcileGovernor(trigger: GovernorRevisionTrigger): void {
+		try {
+			const snapshot = this.getGovernorSnapshot();
+			if (snapshot) this.recordGovernorDecision({ signals: snapshot.signals }, trigger);
+		} catch (error) {
+			logger.warn("Governor revision failed", { trigger, error: String(error) });
+		}
+	}
+
+	recordGovernorDecision(
+		request: GovernorPreviewRequest,
+		trigger: GovernorRevisionTrigger,
+	): GovernorSnapshot | undefined {
+		return recordGovernorDecision(this, request, trigger);
+	}
+
 	selectToolCapability(request: ToolCapabilityRouteRequest): ToolCapabilityRouteDecision {
 		return selectToolCapability(this, request);
 	}
@@ -5967,8 +5998,9 @@ export class AgentSession implements SettingsScope {
 	}
 
 	/** Rebuilds the stable base prompt, optionally discarding a stale asynchronous rebuild. */
-	refreshBaseSystemPrompt(commitIf?: () => boolean): Promise<void> {
-		return this.#tools.refreshBaseSystemPrompt(commitIf);
+	async refreshBaseSystemPrompt(commitIf?: () => boolean): Promise<void> {
+		await this.#tools.refreshBaseSystemPrompt(commitIf);
+		if (!commitIf) this.#reconcileGovernor("availability");
 	}
 
 	/** Replaces connected MCP tools and enables them immediately. */
@@ -8991,6 +9023,11 @@ export class AgentSession implements SettingsScope {
 	// =========================================================================
 	// Model Management
 	// =========================================================================
+
+	async #syncAfterModelChange(previousEditMode: EditMode): Promise<void> {
+		await this.#tools.syncAfterModelChange(previousEditMode);
+		this.#reconcileGovernor("availability");
+	}
 
 	/**
 	 * Set model directly.
