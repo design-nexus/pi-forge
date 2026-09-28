@@ -81,6 +81,7 @@ export interface SessionToolsHost {
 	captureMemoryPromotionSnapshot(prompt: string[]): void;
 	emitNotice(level: "info" | "warning" | "error", message: string, source?: string): void;
 	notifyCommandMetadataChanged(): void;
+	onToolAvailabilityChanged?(toolName: string): void;
 	localProtocolOptions(): LocalProtocolOptions;
 	/** Publishes the current Codex Code Mode tool exposure snapshot for turn metadata; undefined clears it. */
 	setCodeModeNamespacesInfo?(info: unknown): void;
@@ -692,9 +693,19 @@ export class SessionTools {
 	/** Serializes every registry and presentation mutation for this session. */
 	runToolRegistryMutation<T>(mutation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
 		if (this.#toolRegistryMutationScope.getStore()) return untilAborted(signal, mutation);
-		const serialized = this.#toolRegistryMutationTail.then(() => {
+		const serialized = this.#toolRegistryMutationTail.then(async () => {
 			signal?.throwIfAborted();
-			return this.#toolRegistryMutationScope.run(true, mutation);
+			const taskAvailableBefore = this.#toolRegistry.has("task") && this.getEnabledToolNames().includes("task");
+			const result = await this.#toolRegistryMutationScope.run(true, mutation);
+			const taskAvailableAfter = this.#toolRegistry.has("task") && this.getEnabledToolNames().includes("task");
+			if (taskAvailableBefore !== taskAvailableAfter && !this.#host.isDisposed()) {
+				try {
+					this.#host.onToolAvailabilityChanged?.("task");
+				} catch (error) {
+					logger.warn("Tool availability listener failed", { error: String(error) });
+				}
+			}
+			return result;
 		});
 		const operation = untilAborted(signal, serialized);
 		this.#toolRegistryMutationTail = serialized.then(

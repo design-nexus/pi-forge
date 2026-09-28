@@ -13,6 +13,18 @@ export interface GovernorThresholds {
 	confidenceFloor: number;
 }
 
+export interface GovernorBandBudget {
+	maxWorkers: number;
+	contextShare: number;
+}
+
+export const DEFAULT_GOVERNOR_BAND_BUDGETS: Record<TaskBand, GovernorBandBudget> = {
+	trivial: { maxWorkers: 0, contextShare: 0.1 },
+	normal: { maxWorkers: 0, contextShare: 0.2 },
+	complex: { maxWorkers: 2, contextShare: 0.35 },
+	massive: { maxWorkers: 4, contextShare: 0.5 },
+};
+
 export const DEFAULT_GOVERNOR_THRESHOLDS: GovernorThresholds = {
 	trivialMaxFiles: 1,
 	complexMinFiles: 5,
@@ -31,6 +43,7 @@ export interface GovernorDecisionInput {
 		confidence: number;
 	};
 	thresholds?: GovernorThresholds;
+	bandBudgets?: Partial<Record<TaskBand, Partial<GovernorBandBudget>>>;
 	current: { role: string; model: Model; effort?: Effort };
 	/** Already resolved, authorized role assignments; the policy never discovers models. */
 	availableRoles?: Readonly<Record<string, { model: Model; effort?: Effort | "off" } | undefined>>;
@@ -77,29 +90,21 @@ const BAND_POLICY = {
 		planningDepth: "none",
 		verification: "relevant_check",
 		reviewer: "none",
-		maxWorkers: 0,
-		contextShare: 0.1,
 	},
 	normal: {
 		planningDepth: "brief",
 		verification: "targeted_checks",
 		reviewer: "risk_based",
-		maxWorkers: 0,
-		contextShare: 0.2,
 	},
 	complex: {
 		planningDepth: "milestones",
 		verification: "targeted_checks",
 		reviewer: "risk_based",
-		maxWorkers: 2,
-		contextShare: 0.35,
 	},
 	massive: {
 		planningDepth: "dependency_graph",
 		verification: "integration_checks",
 		reviewer: "independent",
-		maxWorkers: 4,
-		contextShare: 0.5,
 	},
 } as const;
 
@@ -166,6 +171,13 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 		evidence.push("explicit task band");
 	}
 	const policy = BAND_POLICY[band];
+	const defaultBudget = DEFAULT_GOVERNOR_BAND_BUDGETS[band];
+	const budget = input.bandBudgets?.[band];
+	const maxWorkers = Math.min(defaultBudget.maxWorkers, nonNegative(budget?.maxWorkers ?? defaultBudget.maxWorkers));
+	const requestedContextShare = budget?.contextShare ?? defaultBudget.contextShare;
+	const contextShare = Number.isFinite(requestedContextShare)
+		? Math.max(0, Math.min(1, requestedContextShare))
+		: defaultBudget.contextShare;
 	const requestedRole = input.overrides?.pinnedRole ?? input.overrides?.role;
 	let modelRole = input.current.role;
 	let model = input.current.model;
@@ -191,7 +203,7 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 	const allowedWorkers =
 		input.capabilities.subagentsAllowed && input.capabilities.taskToolAvailable && model.supportsTools !== false
 			? Math.min(
-					policy.maxWorkers,
+					maxWorkers,
 					independentTasks,
 					taskLimit,
 					input.overrides?.maxWorkers === undefined ? Infinity : nonNegative(input.overrides.maxWorkers),
@@ -203,7 +215,7 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 	const executionMode: ExecutionMode =
 		workerCount > 1 ? "parallel" : band === "complex" || band === "massive" ? "planned" : "direct";
 	const contextWindowTokens = model === input.current.model ? input.contextWindowTokens : (model.contextWindow ?? 0);
-	const contextBudgetTokens = Math.floor(nonNegative(contextWindowTokens) * policy.contextShare);
+	const contextBudgetTokens = Math.floor(nonNegative(contextWindowTokens) * contextShare);
 	return {
 		version: 1,
 		band,

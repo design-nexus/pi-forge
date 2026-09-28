@@ -1,6 +1,7 @@
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
 import { concreteThinkingLevel, toReasoningEffort } from "@oh-my-pi/pi-tui/thinking";
+import { combine } from "../config/registry";
 import type { AgentSession } from "../session/agent-session";
 import { cfgPromptCapabilities, cfgPromptProfile } from "../prompt-engine/settings";
 import { resolveCapabilityPolicies } from "../prompt-engine/profiles";
@@ -11,7 +12,15 @@ import {
 	type GovernorDecision,
 	type GovernorDecisionInput,
 } from "./decision";
-import { cfgAdaptiveMode, cfgAdaptiveThresholds } from "./settings";
+import { cfgAdaptiveBands, cfgAdaptiveMode, cfgAdaptiveThresholds } from "./settings";
+
+export const cfgGovernorBudgetInputs = combine({
+	mode: cfgAdaptiveMode,
+	thresholds: cfgAdaptiveThresholds,
+	bandBudgets: cfgAdaptiveBands,
+	taskMaxEffort: cfgTaskMaxEffort,
+	taskMaxConcurrency: cfgTaskMaxConcurrency,
+});
 
 export interface GovernorPreviewRequest {
 	signals: GovernorDecisionInput["signals"];
@@ -51,6 +60,7 @@ export function previewGovernorDecision(
 		enabled: true,
 		signals: request.signals,
 		thresholds,
+		bandBudgets: cfgAdaptiveBands.get(session.settings),
 		current: { role: currentRole, model, effort: toReasoningEffort(session.thinkingLevel) },
 		availableRoles: requestedRole
 			? { [requestedRole]: resolvedRole?.model ? { model: resolvedRole.model, effort: roleEffort } : undefined }

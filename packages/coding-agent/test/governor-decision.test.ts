@@ -128,6 +128,24 @@ it("treats OMP's zero concurrency limit as unlimited while retaining the policy 
 	expect(decision?.executionMode).toBe("parallel");
 });
 
+it("applies configured band budgets without exceeding the hard worker cap", () => {
+	const decision = decideGovernor(
+		decisionInput({
+			signals: { fileCount: 6, independentTasks: 3, dependencyEdges: 1, highRisk: false, confidence: 0.9 },
+			bandBudgets: { complex: { maxWorkers: 1, contextShare: 0.25 } },
+		}),
+	);
+	expect(decision).toMatchObject({ band: "complex", workerCount: 1, contextBudgetTokens: 25_000 });
+	const bounded = decideGovernor(
+		decisionInput({
+			signals: { fileCount: 6, independentTasks: 3, dependencyEdges: 1, highRisk: false, confidence: 0.9 },
+			bandBudgets: { complex: { maxWorkers: 10 } },
+			overrides: { workerCount: 10 },
+		}),
+	);
+	expect(bounded?.workerCount).toBe(2);
+});
+
 it("preserves defaults when adaptive policy is off and does not invent unsupported effort", () => {
 	expect(decideGovernor(decisionInput({ enabled: false }))).toBeUndefined();
 	const noTools = { ...model, supportsTools: false, reasoning: false, thinking: undefined };
