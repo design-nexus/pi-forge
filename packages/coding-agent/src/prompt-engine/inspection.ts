@@ -1,4 +1,5 @@
 import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
+import type { AgentTool } from "@oh-my-pi/pi-agent-core";
 import { calculatePromptTokens } from "@oh-my-pi/pi-agent-core/compaction";
 import { stringifyJson } from "@oh-my-pi/pi-utils";
 import type { AgentSession } from "../session/agent-session";
@@ -33,9 +34,9 @@ function promptBlocks(session: AgentSession): ComposePromptBlocks | null {
 	};
 }
 
-function countToolSchemaTokens(session: AgentSession, tokenizer: Tokenizer): number {
+export function estimateToolSchemaTokens(tools: readonly AgentTool[], tokenizer: Tokenizer): number {
 	const fragments: string[] = [];
-	for (const tool of session.agent.state.tools) {
+	for (const tool of tools) {
 		fragments.push(tool.name, tool.description, stringifyJson(tool.parameters) ?? "");
 	}
 	return tokenizer.countTokens(fragments);
@@ -61,7 +62,7 @@ export function promptCompare(session: AgentSession): string {
 		mountedToolNames,
 		browserAvailable: session.promptComposition?.capabilities.browser.available === true,
 	};
-	const toolSchemaTokens = countToolSchemaTokens(session, tokenizer);
+	const toolSchemaTokens = estimateToolSchemaTokens(session.agent.state.tools, tokenizer);
 	const rows = COMPARABLE_PROFILES.map(profile => {
 		const { composition } = composePrompt(blocks, { ...shared, profile });
 		return {

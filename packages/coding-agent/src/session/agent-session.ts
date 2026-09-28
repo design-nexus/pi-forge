@@ -17,7 +17,19 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
+import type { GovernorDecision } from "../governor/decision";
+import { inspectGovernorDecision, previewGovernorDecision, type GovernorPreviewRequest } from "../governor/session";
 import type { PromptComposition } from "../prompt-engine/compose";
+import {
+	routeDelegationCapability,
+	routeToolCapability,
+	selectDelegationCapability,
+	selectToolCapability,
+	type DelegationRouteDecision,
+	type DelegationRouteRequest,
+	type ToolCapabilityRouteDecision,
+	type ToolCapabilityRouteRequest,
+} from "../prompt-engine/capability-router";
 import type { PromptSessionOverrides } from "../prompt-engine/profiles";
 import { isPromise } from "node:util/types";
 
@@ -5567,6 +5579,10 @@ export class AgentSession implements SettingsScope {
 		return this.#models.thinkingLevel;
 	}
 
+	get thinkingLevelCeiling(): Effort | undefined {
+		return this.#models.thinkingLevelCeiling;
+	}
+
 	/** The selector the user configured: `auto` when auto mode is active, else the effective level. */
 	configuredThinkingLevel(): ConfiguredThinkingLevel | undefined {
 		return this.#models.configuredThinkingLevel();
@@ -5670,6 +5686,31 @@ export class AgentSession implements SettingsScope {
 
 	get promptSettingsOverride(): PromptSessionOverrides | undefined {
 		return this.#promptSettingsOverride;
+	}
+
+	previewGovernorDecision(request: GovernorPreviewRequest): GovernorDecision | undefined {
+		return previewGovernorDecision(this, request);
+	}
+
+	inspectGovernorDecision(request: GovernorPreviewRequest): string | undefined {
+		const decision = this.previewGovernorDecision(request);
+		return decision ? inspectGovernorDecision(decision) : undefined;
+	}
+
+	selectToolCapability(request: ToolCapabilityRouteRequest): ToolCapabilityRouteDecision {
+		return selectToolCapability(this, request);
+	}
+
+	routeToolCapability(request: ToolCapabilityRouteRequest): Promise<ToolCapabilityRouteDecision> {
+		return routeToolCapability(this, request);
+	}
+
+	selectDelegationCapability(request: DelegationRouteRequest): DelegationRouteDecision {
+		return selectDelegationCapability(this, request);
+	}
+
+	routeDelegationCapability(request: DelegationRouteRequest): Promise<DelegationRouteDecision> {
+		return routeDelegationCapability(this, request);
 	}
 
 	async setPromptSettingsOverride(overrides: PromptSessionOverrides | undefined): Promise<void> {

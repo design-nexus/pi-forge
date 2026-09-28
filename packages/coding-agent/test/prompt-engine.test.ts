@@ -234,6 +234,160 @@ it("reconciles a changed profile into both the callable task tool and the next b
 	}
 });
 
+it("routes a discovered task tool on structured delegation intent without overriding policy", async () => {
+	using dir = TempDir.createSync("@omp-delegation-route-");
+	const cwd = dir.join("project");
+	const settings = Settings.isolated();
+	cfgPromptProfile.set(settings, "minimal");
+	const authStorage = await AuthStorage.create(":memory:");
+	const modelRegistry = new ModelRegistry(authStorage, dir.join("models.yml"));
+	const { session } = await createAgentSession({
+		cwd,
+		agentDir: dir.join("agent"),
+		authStorage,
+		modelRegistry,
+		settings,
+		sessionManager: SessionManager.inMemory(cwd),
+		model: getBundledModel("openai", "gpt-4o-mini"),
+		disableExtensionDiscovery: true,
+		skills: [],
+		contextFiles: [],
+		promptTemplates: [],
+		slashCommands: [],
+		enableMCP: false,
+		enableLsp: false,
+		skipPythonPreflight: true,
+	});
+	try {
+		const parallel = { intent: "parallel_work", signal: "task_transition", contextBudgetTokens: 0 } as const;
+		expect(session.getMountedXdevToolNames()).toContain("task");
+		expect(session.getActiveToolNames()).not.toContain("task");
+		expect(session.selectToolCapability({ id: "debugger", signal: "explicit" })).toMatchObject({
+			id: "debugger",
+			toolName: "debug",
+			state: "discoverable",
+			selected: true,
+		});
+		await session.setPromptSettingsOverride({ capabilities: { debugger: "disabled" } });
+		expect(session.selectToolCapability({ id: "debugger", signal: "explicit" })).toMatchObject({
+			state: "disabled",
+			selected: false,
+		});
+		await session.setPromptSettingsOverride(undefined);
+		expect(await session.routeToolCapability({ id: "debugger", signal: "explicit" })).toMatchObject({
+			state: "active",
+			selected: true,
+			reason: "explicit capability request",
+		});
+		expect(session.getActiveToolNames()).toContain("debug");
+		expect(await session.routeToolCapability({ id: "debugger", signal: "explicit" })).toMatchObject({
+			state: "active",
+			selected: false,
+		});
+		expect(session.selectDelegationCapability(parallel)).toMatchObject({
+			state: "discoverable",
+			selected: false,
+			reason: "activation exceeds context budget",
+		});
+		const discovery = session.selectDelegationCapability({ intent: "parallel_work", signal: "task_transition" });
+		expect(discovery.estimatedToolSchemaTokens).toBeGreaterThan(0);
+		expect(discovery.estimatedActivationTokens).toBe(
+			(discovery.estimatedGuidanceTokens ?? 0) + (discovery.estimatedToolSchemaTokens ?? 0),
+		);
+		expect(
+			session.selectDelegationCapability({
+				intent: "parallel_work",
+				signal: "task_transition",
+				contextBudgetTokens: discovery.estimatedGuidanceTokens,
+			}),
+		).toMatchObject({ selected: false, reason: "activation exceeds context budget" });
+		expect(
+			session.selectDelegationCapability({
+				intent: "parallel_work",
+				signal: "task_transition",
+				contextBudgetTokens: discovery.estimatedActivationTokens,
+			}),
+		).toMatchObject({ selected: true });
+		await session.setPromptSettingsOverride({ capabilities: { subagents: "disabled" } });
+		expect(session.selectDelegationCapability({ intent: "parallel_work", signal: "explicit" })).toMatchObject({
+			state: "disabled",
+			selected: false,
+		});
+		await session.setPromptSettingsOverride(undefined);
+		const model = session.agent.state.model;
+		if (!model) throw new Error("Expected model");
+		session.agent.setModel({ ...model, supportsTools: false });
+		expect(session.selectDelegationCapability({ intent: "parallel_work", signal: "explicit" })).toMatchObject({
+			state: "unavailable",
+			selected: false,
+		});
+		const prefixBoundModel = getBundledModel("anthropic", "claude-fable-5-1");
+		if (!prefixBoundModel) throw new Error("Expected prefix-bound model");
+		session.agent.setModel(prefixBoundModel);
+		session.agent.appendMessage({
+			role: "assistant",
+			content: [{ type: "text", text: "Earlier response" }],
+			api: prefixBoundModel.api,
+			provider: prefixBoundModel.provider,
+			model: prefixBoundModel.id,
+			stopReason: "stop",
+			usage: {
+				input: 1,
+				output: 1,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 2,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			timestamp: Date.now(),
+		});
+		expect(session.selectDelegationCapability({ intent: "parallel_work", signal: "explicit" })).toMatchObject({
+			state: "unavailable",
+			selected: false,
+			reason: "model binds its tool roster after the first assistant response",
+		});
+		session.agent.replaceMessages([]);
+		session.agent.setModel(model);
+		const activated = await session.routeDelegationCapability({
+			intent: "single_task",
+			signal: "explicit",
+			contextBudgetTokens: 0,
+		});
+		expect(activated).toMatchObject({ state: "active", selected: true, source: "built-in" });
+		expect(session.getActiveToolNames()).toContain("task");
+		expect(session.promptComposition?.sections.find(section => section.id === "delegation")?.active).toBe(true);
+		const historyLength = session.promptCompositionHistory.length;
+		expect(await session.routeDelegationCapability({ intent: "parallel_work", signal: "explicit" })).toMatchObject({
+			state: "active",
+			selected: false,
+		});
+		expect(session.promptCompositionHistory).toHaveLength(historyLength);
+		await session.setActiveToolPresentation(
+			session.getEnabledToolNames().filter(name => name !== "task"),
+			session.getMountedXdevToolNames().filter(name => name !== "task"),
+		);
+		expect(session.selectDelegationCapability({ intent: "parallel_work", signal: "task_transition" })).toMatchObject({
+			state: "discoverable",
+			selected: false,
+			reason: "task tool was not enabled",
+		});
+		expect(await session.routeDelegationCapability({ intent: "parallel_work", signal: "explicit" })).toMatchObject({
+			state: "active",
+			selected: true,
+		});
+		cfgPromptCapabilities.set(settings, { subagents: "disabled" });
+		await session.reconcileBuiltinTools();
+		expect(session.selectDelegationCapability({ intent: "parallel_work", signal: "explicit" })).toMatchObject({
+			state: "disabled",
+			selected: false,
+		});
+		expect(session.getEnabledToolNames()).not.toContain("task");
+	} finally {
+		await session.dispose();
+		authStorage.close();
+	}
+});
+
 it("separates provider-reported request usage from estimated module text", async () => {
 	using dir = TempDir.createSync("@omp-prompt-usage-");
 	const cwd = dir.join("project");
