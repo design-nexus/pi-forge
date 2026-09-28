@@ -7,6 +7,7 @@ import { all, type AnySetting, Setting } from "./registry";
 import * as modesSettings from "../modes/settings";
 import * as sessionSettings from "../session/settings";
 import * as promptEngineSettings from "../prompt-engine/settings";
+import * as governorSettings from "../governor/settings";
 import * as advisorSettings from "../advisor/settings";
 import * as configModelSettings from "./model-settings";
 import * as sessionContextSettings from "../session/context-settings";
@@ -46,6 +47,7 @@ const DOMAINS: readonly Readonly<Record<string, unknown>>[] = [
 	modesSettings,
 	sessionSettings,
 	promptEngineSettings,
+	governorSettings,
 	advisorSettings,
 	sessionContextSettings,
 	memoryBackendSettings,

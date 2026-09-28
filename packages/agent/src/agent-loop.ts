@@ -2702,6 +2702,7 @@ interface PreparedToolCall {
 	/** Transform failure retained for execution's scheduled error result. */
 	transformError?: unknown;
 	validationErrorMessage?: string;
+	validationErrorCode?: "tool_not_found";
 	blocked?: boolean;
 	blockReason?: string;
 	prepareError?: unknown;
@@ -2867,6 +2868,7 @@ async function prepareToolCallDispatch(
 		const validate = (args: Record<string, unknown>): Record<string, unknown> | undefined => {
 			try {
 				if (!tool) {
+					entry.validationErrorCode = "tool_not_found";
 					throw new Error(formatToolNotFoundMessage(toolCall.name, context.tools, suggestFallbackToolNames?.()));
 				}
 				return validateToolArguments(tool, { ...toolCall, arguments: args });
@@ -3091,6 +3093,7 @@ async function executeToolCalls(
 			toolResultMessage: undefined as ToolResultMessage | undefined,
 			resultEmitted: false,
 			validationErrorMessage: prepared.validationErrorMessage,
+			validationErrorCode: prepared.validationErrorCode,
 			blocked: prepared.blocked === true,
 			blockReason: prepared.blockReason,
 			prepareError: prepared.prepareError,
@@ -3249,7 +3252,11 @@ async function executeToolCalls(
 				record,
 				{
 					content: [{ type: "text" as const, text: record.validationErrorMessage }],
-					details: { isError: true, error: record.validationErrorMessage },
+					details: {
+						isError: true,
+						error: record.validationErrorMessage,
+						...(record.validationErrorCode ? { errorCode: record.validationErrorCode } : {}),
+					},
 				},
 				true,
 			);

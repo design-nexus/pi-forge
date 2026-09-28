@@ -1,5 +1,6 @@
 import type { Model } from "@oh-my-pi/pi-ai";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
+import { TOOL_CAPABILITY_CATALOG } from "./capability-catalog";
 import {
 	PROMPT_MODULES,
 	applicablePromptModelModuleIds,
@@ -134,19 +135,9 @@ export function composePrompt(
 	const directTools = new Set(options.toolNames ?? []);
 	const mountedTools = new Set(options.mountedToolNames ?? []);
 	const activatedTools = new Set(options.activatedToolNames ?? []);
-	const capabilityTools: Partial<Record<PromptCapabilityId, string>> = {
-		lsp: "lsp",
-		git: "bash",
-		testing: "bash",
-		subagents: "task",
-		browser: "eval",
-		debugger: "debug",
-		github: "github",
-		images: "generate_image",
-	};
 	const capabilities = Object.fromEntries(
 		PROMPT_CAPABILITY_IDS.map(id => {
-			const tool = capabilityTools[id];
+			const tool = TOOL_CAPABILITY_CATALOG[id as keyof typeof TOOL_CAPABILITY_CATALOG]?.toolName;
 			const direct = tool ? directTools.has(tool) : [...directTools].some(name => name.startsWith("mcp__"));
 			const mounted = tool ? mountedTools.has(tool) : [...mountedTools].some(name => name.startsWith("mcp__"));
 			const available = id === "browser" ? options.browserAvailable === true : direct || mounted;
