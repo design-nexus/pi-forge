@@ -51,7 +51,15 @@ function isGovernorSnapshot(value: unknown): value is GovernorSnapshot {
 				(signals.runtime.failedMutations === undefined ||
 					(typeof signals.runtime.failedMutations === "number" &&
 						Number.isSafeInteger(signals.runtime.failedMutations) &&
-						signals.runtime.failedMutations >= 0)))) &&
+						signals.runtime.failedMutations >= 0)) &&
+				(signals.runtime.stalledToolMs === undefined ||
+					(typeof signals.runtime.stalledToolMs === "number" &&
+						Number.isSafeInteger(signals.runtime.stalledToolMs) &&
+						signals.runtime.stalledToolMs >= 0)) &&
+				(signals.runtime.stalledExplorationCalls === undefined ||
+					(typeof signals.runtime.stalledExplorationCalls === "number" &&
+						Number.isSafeInteger(signals.runtime.stalledExplorationCalls) &&
+						signals.runtime.stalledExplorationCalls >= 0)))) &&
 		typeof signals.highRisk === "boolean" &&
 		(value.overrides === undefined || isRecord(value.overrides)) &&
 		decision.version === 1 &&

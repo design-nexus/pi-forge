@@ -16,6 +16,7 @@
  * - history:// - Index of all registry + on-disk agents (id, status, kind, last activity)
  * - history://<agentId> - Concise markdown transcript of that agent
  * - history://current/full - Full, caller-bound current branch history (experimental)
+ * - history://current/entry/<id> - One caller-bound branch entry by durable ID (experimental)
  */
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { AssistantMessage } from "@oh-my-pi/pi-ai";
@@ -56,14 +57,24 @@ interface RefLookup {
 	preferredArtifactDir?: string;
 }
 
-/** True for `history://current/<path>`; throws unless the route is exactly `current/full`. */
-function isCurrentFullRoute(url: InternalUrl): boolean {
+type CurrentBranchRoute = { kind: "full" } | { kind: "entry"; entryId: string };
+
+/** Parse caller-bound `history://current` paths without falling through to a named agent. */
+function currentBranchRoute(url: InternalUrl): CurrentBranchRoute | undefined {
 	const agentId = url.rawHost || url.hostname;
-	if (agentId.toLowerCase() !== "current" || !url.pathname || url.pathname === "/") return false;
-	if (url.pathname !== "/full" || url.search || url.hash) {
-		throw new Error("Invalid history://current route; use exactly history://current/full (selectors may follow it)");
+	if (agentId.toLowerCase() !== "current" || !url.pathname || url.pathname === "/") return undefined;
+	if (!url.search && !url.hash && url.pathname === "/full") return { kind: "full" };
+	const match = !url.search && !url.hash ? /^\/entry\/([^/]+)$/.exec(url.pathname) : null;
+	if (match) {
+		let entryId: string;
+		try {
+			entryId = decodeURIComponent(match[1]);
+		} catch {
+			throw new Error("Invalid history://current entry ID");
+		}
+		if (entryId && !entryId.includes("/") && !entryId.includes("\0")) return { kind: "entry", entryId };
 	}
-	return true;
+	throw new Error("Invalid history://current route; use current/full or current/entry/<id> (selectors may follow)");
 }
 
 /** Humanize a last-activity timestamp as `Ns/Nm/Nh/Nd ago`. */
@@ -280,6 +291,12 @@ export function formatCurrentBranchFullHistory(entries: readonly SessionEntry[])
 	return `${lines.join("\n").trim()}\n`;
 }
 
+function formatCurrentBranchEntry(entry: SessionEntry): string {
+	const lines = ["# Current branch entry", "", "Source: caller-bound live session branch.", ""];
+	renderRawEntry(lines, entry);
+	return `${lines.join("\n").trim()}\n`;
+}
+
 /**
  * Handler for history:// URLs.
  *
@@ -297,11 +314,11 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 
 	/**
 	 * The JSONL session file the transcript is rendered from. The index and
-	 * `history://current/full` render from memory, so they locate to null, as
+	 * `history://current` routes render from memory, so they locate to null, as
 	 * do live agents without a session file and unknown ids.
 	 */
 	async locate(url: InternalUrl, context?: ResolveContext): Promise<string | null> {
-		if (isCurrentFullRoute(url)) return null;
+		if (currentBranchRoute(url)) return null;
 		const agentId = url.rawHost || url.hostname;
 		if (!agentId) return null;
 		const { ref, preferredArtifactDir } = await this.#lookup(agentId, context);
@@ -340,27 +357,34 @@ export class HistoryProtocolHandler implements ProtocolHandler {
 		return { ref, visible, preferredArtifactDir };
 	}
 
-	#resolveCurrentFull(url: InternalUrl, context: ResolveContext | undefined): InternalResource {
+	#resolveCurrent(url: InternalUrl, route: CurrentBranchRoute, context: ResolveContext | undefined): InternalResource {
 		if (!context?.experimentalContextManagement) {
 			throw new Error(
-				"history://current/full is available only when compaction.experimentalContextManagement is enabled",
+				"history://current is available only when compaction.experimentalContextManagement is enabled",
 			);
 		}
 		const branch = context.getSessionBranch?.();
 		if (!branch) {
-			throw new Error("history://current/full requires a bound live session branch");
+			throw new Error("history://current requires a bound live session branch");
 		}
-		const content = formatCurrentBranchFullHistory(branch);
+		const entry = route.kind === "entry" ? branch.find(candidate => candidate.id === route.entryId) : undefined;
+		if (route.kind === "entry" && !entry) throw new Error(`Current branch entry not found: ${route.entryId}`);
+		const content = entry ? formatCurrentBranchEntry(entry) : formatCurrentBranchFullHistory(branch);
 		return {
 			url: url.href,
 			content,
 			contentType: "text/markdown",
 			size: Buffer.byteLength(content, "utf-8"),
-			notes: ["Source: caller-bound live session branch (full, uncompacted)"],
+			notes: [
+				entry
+					? "Source: caller-bound live session branch entry"
+					: "Source: caller-bound live session branch (full, uncompacted)",
+			],
 		};
 	}
 	async resolve(url: InternalUrl, context?: ResolveContext): Promise<InternalResource> {
-		if (isCurrentFullRoute(url)) return this.#resolveCurrentFull(url, context);
+		const route = currentBranchRoute(url);
+		if (route) return this.#resolveCurrent(url, route, context);
 		const agentId = url.rawHost || url.hostname;
 		if (!agentId) {
 			const visible = AgentRegistry.global()

@@ -2798,6 +2798,17 @@ export class AgentSession implements SettingsScope {
 
 	/** Emit an event to all listeners */
 	#emit(event: AgentSessionEvent): void {
+		if (event.type === "thinking_level_changed" && cfgAdaptiveMode.get(this.settings) !== "off") {
+			const snapshot = this.getGovernorSnapshot();
+			const model = this.model;
+			if (
+				snapshot &&
+				model &&
+				snapshot.decision.model.provider === model.provider &&
+				snapshot.decision.model.id === model.id
+			)
+				this.#reconcileGovernor("budget");
+		}
 		// Copy array before iteration to avoid mutation during iteration.
 		const listeners = [...this.#eventListeners];
 		for (const l of listeners) {

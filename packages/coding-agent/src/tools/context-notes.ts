@@ -9,7 +9,9 @@ import type {
 import {
 	CONTEXT_NOTES_ENTRY_TYPE,
 	getContextNotes,
+	isContextNotesSourceIds,
 	MAX_CONTEXT_NOTES_BYTES,
+	renderContextNotes,
 	type ContextNotesEntry,
 } from "../session/context-notes";
 import contextNotesDescription from "../prompts/tools/context-notes.md" with { type: "text" };
@@ -22,6 +24,7 @@ import { cfgCompactionExperimentalContextManagement } from "../session/context-s
 
 const contextNotesSchema = type({
 	"text?": type("string").describe("Entire replacement notebook text. Omit to read; use an empty string to clear."),
+	"sourceEntryIds?": type("string").array().describe("Active-branch entry IDs supporting this replacement notebook."),
 });
 
 const newContextSchema = type({});
@@ -33,6 +36,7 @@ export interface ContextNotesToolDetails {
 	entryId?: string;
 	text: string;
 	bytes?: number;
+	sourceEntryIds?: string[];
 }
 
 export interface NewContextToolDetails {
@@ -106,12 +110,32 @@ export class ContextNotesTool implements AgentTool<typeof contextNotesSchema, Co
 			throw new ToolError("context_notes text must be a string.");
 		}
 		if (params.text === undefined) {
-			const notes = getContextNotes(manager.getBranch());
+			if (params.sourceEntryIds !== undefined) throw new ToolError("sourceEntryIds requires replacement text.");
+			const branch = manager.getBranch();
+			const notes = getContextNotes(branch);
 			return {
-				content: [{ type: "text", text: notes?.text ?? "No context notes are stored for this session branch." }],
-				details: notes ? { entryId: notes.entryId, text: notes.text } : { entryId: undefined, text: "" },
+				content: [
+					{
+						type: "text",
+						text: notes?.sourceEntryIds
+							? renderContextNotes(branch)
+							: (notes?.text ?? "No context notes are stored for this session branch."),
+					},
+				],
+				details: notes
+					? {
+							entryId: notes.entryId,
+							text: notes.text,
+							...(notes.sourceEntryIds ? { sourceEntryIds: notes.sourceEntryIds } : {}),
+						}
+					: { entryId: undefined, text: "" },
 			};
 		}
+		const sourceEntryIds = params.sourceEntryIds;
+		if (sourceEntryIds !== undefined && !isContextNotesSourceIds(sourceEntryIds))
+			throw new ToolError("Context note sources must be distinct active-branch entry IDs within the source limit.");
+		if (params.text === "" && sourceEntryIds && sourceEntryIds.length > 0)
+			throw new ToolError("Clearing context notes cannot retain source entry IDs.");
 
 		const bytes = Buffer.byteLength(params.text, "utf8");
 		if (bytes > MAX_CONTEXT_NOTES_BYTES) {
@@ -121,7 +145,12 @@ export class ContextNotesTool implements AgentTool<typeof contextNotesSchema, Co
 		}
 
 		const ownerId = this.session.getSessionId?.();
-		const branchLeafId = manager.getBranch().at(-1)?.id;
+		const branch = manager.getBranch();
+		const branchLeafId = branch.at(-1)?.id;
+		const branchIds = new Set(branch.map(entry => entry.id));
+		if (sourceEntryIds?.some(id => !branchIds.has(id))) {
+			throw new ToolError("Context note source entry is not on the active session branch.");
+		}
 		await manager.ensureOnDisk();
 		throwIfAborted(signal);
 		const currentManager = getExperimentalContextSession(this.session);
@@ -136,12 +165,20 @@ export class ContextNotesTool implements AgentTool<typeof contextNotesSchema, Co
 			throw new ToolError("Experimental context notes were not saved because the session branch changed.");
 		}
 
-		const data: ContextNotesEntry = { version: 1, text: params.text };
+		const data: ContextNotesEntry =
+			sourceEntryIds && sourceEntryIds.length > 0
+				? { version: 2, text: params.text, sourceEntryIds: [...sourceEntryIds] }
+				: { version: 1, text: params.text };
 		const entryId = manager.appendCustomEntry(CONTEXT_NOTES_ENTRY_TYPE, data);
 		await manager.flush();
 		return {
 			content: [{ type: "text", text: "Context notes saved." }],
-			details: { entryId, text: params.text, bytes },
+			details: {
+				entryId,
+				text: params.text,
+				bytes,
+				...(data.version === 2 ? { sourceEntryIds: data.sourceEntryIds } : {}),
+			},
 		};
 	}
 }

@@ -98,7 +98,13 @@ import {
 	resolveRoleModelFull,
 } from "./role-models";
 import type { SessionContext } from "./session-context";
-import { buildSessionContext, getLatestCompactionEntry, getOpenAiRemoteCompactionPayload } from "./session-context";
+import {
+	buildSessionContext,
+	getLatestCompactionEntry,
+	getOpenAiRemoteCompactionPayload,
+	TODO_CONTINUITY_MESSAGE_TYPE,
+} from "./session-context";
+import { CONTEXT_NOTES_ENTRY_TYPE } from "./context-notes";
 import type { CompactionEntry, SessionEntry } from "./session-entries";
 import type { SessionManager } from "./session-manager";
 import type { ShakeMode, ShakeResult } from "./shake-types";
@@ -3499,6 +3505,30 @@ export class SessionMaintenance {
 		return { kind: "needsLlm", hookContext, hookPrompt, preserveData };
 	}
 
+	/** Count journal-backed context that compaction preparation does not carry in its recent-message tail. */
+	#snapcompactInjectedContextTokens(firstKeptEntryId: string): number {
+		const branch = this.#host.sessionManager.getBranch();
+		const leaf = branch.at(-1);
+		if (!leaf) return 0;
+		const pending: CompactionEntry = {
+			type: "compaction",
+			id: `${leaf.id}:snapcompact-frame-budget`,
+			parentId: leaf.id,
+			timestamp: new Date().toISOString(),
+			summary: "",
+			shortSummary: "",
+			firstKeptEntryId,
+			tokensBefore: 0,
+			method: "snapcompact",
+		};
+		const injected = buildSessionContext([...branch, pending]).messages.filter(
+			message =>
+				message.role === "custom" &&
+				(message.customType === CONTEXT_NOTES_ENTRY_TYPE || message.customType === TODO_CONTINUITY_MESSAGE_TYPE),
+		);
+		return this.#tokenizer.countMessages(convertToLlm(injected));
+	}
+
 	/**
 	 * Cap on snapcompact frames the post-compaction context can carry without
 	 * busting the model window. Mirrors the per-frame token charge used by the
@@ -3547,6 +3577,7 @@ export class SessionMaintenance {
 			this.#host.settings.revision,
 		);
 		baseTokens += this.#tokenizer.countMessages(preparation.recentMessages);
+		baseTokens += this.#snapcompactInjectedContextTokens(preparation.firstKeptEntryId);
 		const totalBudget = ctxWindow - reserve;
 		// Skip iff there is no headroom whatsoever; a text-only archive costs
 		// far less than the cap reserve below, so any positive residual is
@@ -3601,10 +3632,9 @@ export class SessionMaintenance {
 	/**
 	 * Project the post-compaction context size of a snapcompact result: kept
 	 * recent messages + the summary message with its re-attached frames + the
-	 * fixed non-message overhead (system prompt + tools). Mirrors how the
-	 * compacted context is rebuilt, so the estimate matches the wire shape, and
-	 * lets the caller decide whether snapcompact brought the context under the
-	 * window or should fall back to an LLM summary.
+	 * fixed non-message overhead (system prompt + tools). Compare that estimate
+	 * with a journal-backed synthetic rebuild so context injected after compaction
+	 * is counted while pending, not-yet-journaled messages remain covered.
 	 */
 	#projectSnapcompactContextTokens(
 		preparation: CompactionPreparation,
@@ -3624,11 +3654,35 @@ export class SessionMaintenance {
 				blocks,
 			},
 		);
-		let tokens =
-			computeNonMessageTokens(this.#host.nonMessageTokenSource(), this.#tokenizer, this.#host.settings.revision) +
-			this.#tokenizer.countMessage(summaryMessage);
+		const nonMessageTokens = computeNonMessageTokens(
+			this.#host.nonMessageTokenSource(),
+			this.#tokenizer,
+			this.#host.settings.revision,
+		);
+		let tokens = nonMessageTokens + this.#tokenizer.countMessage(summaryMessage);
 		tokens += this.#tokenizer.countMessages(preparation.recentMessages, options);
-		return tokens;
+		tokens += this.#snapcompactInjectedContextTokens(result.firstKeptEntryId);
+		// The kept-tail estimate above includes pending messages that may not be
+		// journaled yet. Charge journal-backed notebook and todo content alongside
+		// that tail, then also check the complete rebuilt branch for other changes.
+		const branch = this.#host.sessionManager.getBranch();
+		const leaf = branch.at(-1);
+		if (!leaf) return tokens;
+		const pending: CompactionEntry = {
+			type: "compaction",
+			id: `${leaf.id}:snapcompact-tokens-projection`,
+			parentId: leaf.id,
+			timestamp: new Date().toISOString(),
+			summary: result.summary,
+			shortSummary: result.shortSummary,
+			firstKeptEntryId: result.firstKeptEntryId,
+			tokensBefore: result.tokensBefore,
+			method: "snapcompact",
+			preserveData: result.preserveData,
+		};
+		const rebuilt = buildSessionContext([...branch, pending]);
+		const rebuiltTokens = nonMessageTokens + this.#tokenizer.countMessages(convertToLlm(rebuilt.messages), options);
+		return Math.max(tokens, rebuiltTokens);
 	}
 
 	/**
@@ -3924,7 +3978,11 @@ export class SessionMaintenance {
 	 * Returns 0 when not even one frame fits that budget — the rebuild could
 	 * never create headroom, so the caller must not append it.
 	 */
-	#computeSnapcompactRescueMaxFrames(settings: EngineCompactionSettings, keptTailTokens: number): number {
+	#computeSnapcompactRescueMaxFrames(
+		settings: EngineCompactionSettings,
+		keptTailTokens: number,
+		firstKeptEntryId: string,
+	): number {
 		const ctxWindow = this.#model?.contextWindow ?? 0;
 		if (ctxWindow <= 0) {
 			return Math.min(
@@ -3944,7 +4002,9 @@ export class SessionMaintenance {
 		const edgeCap = snapcompact.geometry(shape).capacity;
 		const textEdgeTokens = Math.ceil((2 * edgeCap * 1.15) / 4);
 		const SUMMARY_TEMPLATE_TOKENS = 2000;
-		const frameBudget = recoveryBandTokens - baseTokens - keptTailTokens - textEdgeTokens - SUMMARY_TEMPLATE_TOKENS;
+		const injectedTokens = this.#snapcompactInjectedContextTokens(firstKeptEntryId);
+		const frameBudget =
+			recoveryBandTokens - baseTokens - keptTailTokens - injectedTokens - textEdgeTokens - SUMMARY_TEMPLATE_TOKENS;
 		if (frameBudget < snapcompact.FRAME_TOKEN_ESTIMATE) return 0;
 		// Same hard caps as #computeSnapcompactMaxFrames: a threshold-derived
 		// count above the per-request payload or provider image budget would
@@ -4018,7 +4078,7 @@ export class SessionMaintenance {
 		if (!archive || archive.frames.length <= 1) return undefined;
 		const archiveText = snapcompact.archiveSourceText(archive);
 		if (!archiveText) return undefined;
-		const maxFrames = this.#computeSnapcompactRescueMaxFrames(settings, keptTailTokens);
+		const maxFrames = this.#computeSnapcompactRescueMaxFrames(settings, keptTailTokens, staleEntry.firstKeptEntryId);
 		if (maxFrames < 1 || maxFrames >= archive.frames.length) return undefined;
 
 		const staleDetails = staleEntry.details as snapcompact.CompactionDetails | undefined;

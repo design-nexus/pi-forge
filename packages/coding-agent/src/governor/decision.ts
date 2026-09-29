@@ -15,6 +15,7 @@ export interface GovernorThresholds {
 	confidenceFloor: number;
 	runtimeNormalPressure: number;
 	runtimeComplexPressure: number;
+	runtimeStagnationMs: number;
 }
 
 export interface GovernorBandBudget {
@@ -30,6 +31,8 @@ export interface GovernorRuntimeSignals {
 	verificationFailures?: number;
 	failedWorkers?: number;
 	failedMutations?: number;
+	stalledToolMs?: number;
+	stalledExplorationCalls?: number;
 }
 
 export const DEFAULT_GOVERNOR_BAND_BUDGETS: Record<TaskBand, GovernorBandBudget> = {
@@ -48,6 +51,7 @@ export const DEFAULT_GOVERNOR_THRESHOLDS: GovernorThresholds = {
 	confidenceFloor: 0.6,
 	runtimeNormalPressure: 0.4,
 	runtimeComplexPressure: 0.7,
+	runtimeStagnationMs: 120_000,
 };
 
 export interface GovernorDecisionInput {
@@ -241,6 +245,15 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 			band = "normal";
 			evidence.push("recent exploration and tool failures increased effort pressure");
 		}
+	}
+	if (
+		runtime &&
+		band === "trivial" &&
+		(runtime.stalledExplorationCalls ?? 0) >= 4 &&
+		(runtime.stalledToolMs ?? 0) >= thresholds.runtimeStagnationMs
+	) {
+		band = "normal";
+		evidence.push("prolonged exploration without recorded progress raised effort");
 	}
 	if (input.overrides?.band) {
 		band = input.overrides.band;

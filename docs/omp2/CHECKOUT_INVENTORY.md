@@ -22,7 +22,7 @@ The provider-facing prompt remains `string[]`. A composition snapshot explains t
 | --- | --- | --- |
 | Prompt Engine | **Partial.** Profiles, module metadata, settings, session overrides, `/prompt` commands, and token accounting exist. The heading collision documented below is fixed with explicit render markers. | Extend lifecycle coverage across model/tool/extension/override changes and distinguish prompt guidance changes from callable-tool policy. |
 | Dynamic capability routing | **Partial.** Tool gates, `xd://`, skill discovery, and lazy activation exist. | One deterministic task/role selection contract with explanations and budget, using those existing routes. |
-| Context Manager | **Available but not integrated.** Notes, handoff, compaction, recovery, and memory retrieval exist independently. | A sourced bounded working set and retention checks across compaction/resume. |
+| Context Manager | **Partial.** Notes, handoff, compaction, recovery, and memory retrieval exist. Rebuilt model context now restores a compact reminder for todo state hidden by compaction. | A sourced bounded working set and retention checks across compaction/resume. |
 | Agent Orchestrator | **Available but not integrated.** Native subagents, worktree isolation, workpool, advisor, and review exist. | A thin task graph and coordinator after capability and context contracts settle. |
 | Verification loop | **Partial.** Checks and review can be invoked, but there is no unified check evidence and finite repair state for changed tasks. | Link commands, results, revisions, repair attempts, and reviewer findings. |
 | Evaluation | **Partial.** Offline prompt fixtures and the prior live token comparison exist. | Matched task outcomes, quality, regressions, latency, and cost before claiming a performance gain. |
@@ -242,3 +242,57 @@ Verification: 19 focused Governor and async-delivery tests passed, including an 
 Recent failed `edit` and `write` calls now provide a separate mutation-failure count. Two failures can raise a trivial decision to normal; three can raise a lower band to complex. The signal uses the current-turn, 16-result window, so successful subsequent work can let the decision return to its scope-based band. One failed edit alone does not change the band, and unrelated shell errors do not count as failed mutations.
 
 Verification: 16 focused Governor tests and coding-agent type checking passed. The live-session fixture covers escalation after two failed edits and a failed write, then recovery after those failures leave the window. This is decision feedback; it does not schedule a repair attempt.
+
+## Todo progress de-escalation
+
+The Governor's todo scope now counts remaining items: pending, in-progress, and blocked tasks. Completed and abandoned items no longer keep the task in a higher band. A change in the remaining count records a todo revision even when both counts map to the same band, so inspection and later budget revisions use current scope. Todo status still does not establish dependency or parallelism facts.
+
+Verification: four focused Governor session and revision tests passed, and coding-agent type checking passed. The live-session fixture covers a four-item complex todo becoming one remaining item, then zero remaining items while the band stays trivial.
+
+## Thinking-level reconciliation
+
+A session thinking-level change now revises an existing inspected Governor decision after the model's effort changes. The revision uses the `budget` trigger; a model switch still uses its existing `availability` path after tool and prompt synchronization. Off mode does no Governor lookup. This keeps the recorded effort aligned with an operator selection or an auto-thinking resolution, within the existing effort ceilings. It does not make the task band choose or apply a new reasoning level.
+
+Verification: the focused Governor session test covers low-to-high selection and the existing model-switch availability transition. Coding-agent type checking passed.
+
+## Workpool batch failure feedback
+
+A drained workpool can complete its aggregate background job while one or more worker batches failed. It now reports the failed-batch count in the job's settled details. The existing async-result delivery persists that typed count, and the Governor combines it with other recent task-worker failures without double-counting an aggregate job that itself failed. The count is bounded before it enters the runtime signal. The workpool's completed aggregate status and its per-item result text remain available to callers.
+
+Verification: 33 focused workpool, async-delivery, and Governor session tests passed; coding-agent type checking passed. The tests cover the actual workpool job delivery, the persisted delivery field, and escalation from a completed aggregate with two failed batches.
+
+## Todo continuity after compaction
+
+When a compaction removes the latest unfinished todo snapshot from the model's rebuilt context, the context builder adds a hidden reminder with the remaining and blocked counts, the next actionable task when its label is short, and a pointer to `todo view` for the complete list. This derives from the canonical branch snapshot; it is not persisted as a new todo update or displayed in transcripts. Completed lists, retained todo tool results, and a later `/clear` boundary produce no reminder. Todo phases still provide no task dependency graph, so this does not change Governor parallelism.
+
+Verification: 41 focused context-builder tests passed; coding-agent type checking, targeted lint, formatting, and diff checks passed. The new cases cover compacted unfinished work, transcript isolation, a completed list, a reset boundary, a retained tool result, and an oversized task label.
+
+## Recorded execution stagnation
+
+The opt-in Governor now tracks bounded foreground `bash` wall time and exploration calls since the last successful edit, write, completed todo item, or declared passing check in the current turn's recent result window. Four exploratory calls and at least 120 seconds of recorded shell execution without those progress events can raise a trivial task to normal. A later progress event resets the stagnation signal so the task can de-escalate. The threshold is configurable through `adaptive.thresholds.runtimeStagnationMs`; invalid or missing timing data is ignored. This uses recorded tool execution time, not idle wall-clock time or an inferred failure from command output.
+
+Verification: 19 focused Governor decision and session tests passed; coding-agent type checking, targeted lint, formatting, and diff checks passed. The new cases cover bounded duration, the progress reset, exploration predating that reset, reversible policy routing, and rejection of a zero-duration threshold.
+
+## Sourced context notebook entries
+
+The experimental `context_notes` tool can now save up to 16 active-branch entry IDs alongside a notebook revision. The IDs are validated before the write, stored in a backward-compatible revision format, and shown in both the rebuilt model context and a later notebook read. The notebook directs the agent to `history://current/full` to inspect the referenced raw entries. Text-only revisions remain unchanged; empty text clears the notebook and cannot retain references. Invalid or foreign source IDs are rejected, and a stored source reference that no longer resolves on the branch is ignored when read. These links identify supporting history, not proof that a notebook claim is correct.
+
+Verification: 18 focused notebook and experimental rollover tests passed; coding-agent type checking, targeted lint, formatting, and diff checks passed. Tests cover foreign and duplicate IDs, resume, three rollover boundaries, readback, clear behavior, and a malformed persisted reference.
+
+## Direct recovery of cited history
+
+`history://current/entry/<id>` now renders one entry from the caller's live active branch, including entries before compaction. It uses the same experimental context-management gate and live-branch binding as `history://current/full`; unknown or off-branch IDs fail instead of falling back to a named agent's transcript. Notebook source links point to the direct route, so recovering one cited finding no longer requires loading the entire raw branch into context. The full-history route and named-agent `history://current` behavior remain available.
+
+Verification: 41 focused history, notebook, and experimental rollover tests passed; coding-agent type checking, targeted lint, formatting, and diff checks passed. The tests cover direct reads after three rollovers, route isolation, disabled and unbound sessions, malformed paths, and existing named-agent behavior.
+
+## Snapcompact budget for rebuilt context
+
+The snapcompact frame cap now charges notebook and todo continuity messages from a synthetic context rebuild before choosing how many frames to archive. The same charge applies when shrinking an oversized archive during dead-end recovery. If those messages already exhaust the window, snapcompact is skipped before rendering frames. The pre-commit fit check charges them alongside the kept tail and compares that sum with a synthetic post-compaction rebuild, using the larger value. This covers a notebook update during local rendering before a compaction entry is committed. Focused regressions cover a reduced frame cap, an over-budget notebook skipping rendering, and a notebook arriving during rendering that causes the result to be rejected.
+
+Verification: 18 focused snapcompact budget, frame-rescue, and no-reduction tests passed; coding-agent type checking and targeted formatting/lint checks passed. The broader auto-compaction progress suite passed 43/43 before this frame-cap adjustment.
+
+## Retained-context telemetry
+
+The live context breakdown now measures notebook and todo continuity messages separately. `/context` displays each as a subset of message tokens while preserving the same used-token total, so a large retained notebook is visible without presenting it as extra provider cost. The categories use the active agent messages after context rebuild; an authored notebook revision that has not entered the current model context is not charged as active context. A live compaction regression also exposed an oversized notebook fixture that exceeded the existing 16 KiB validation limit; the fixture now uses a valid revision and proves the retained-note count is nonzero.
+
+Verification: 19 focused coding-agent budget and context-consolidation tests and 20 TUI context-usage tests passed; coding-agent and TUI type checks, targeted formatting/lint checks, and diff checks passed. No matched provider token measurement was run for these local categories.

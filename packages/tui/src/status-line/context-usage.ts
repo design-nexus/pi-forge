@@ -54,6 +54,8 @@ export interface ContextUsageSession extends NonMessageTokenSource {
 				systemContextTokens: number;
 				systemPromptTokens: number;
 				usedTokens: number;
+				retainedNotesTokens?: number;
+				todoContinuityTokens?: number;
 		  }
 		| undefined;
 }
@@ -75,7 +77,14 @@ const CELL_FILLED_MESSAGES = "⛃";
 const CELL_FREE = "⛶";
 const CELL_BUFFER = "⛝";
 
-type CategoryId = "systemPrompt" | "systemContext" | "systemTools" | "skills" | "messages";
+type CategoryId =
+	| "systemPrompt"
+	| "systemContext"
+	| "systemTools"
+	| "skills"
+	| "retainedNotes"
+	| "todoContinuity"
+	| "messages";
 
 interface CategoryInfo {
 	id: CategoryId;
@@ -418,6 +427,8 @@ export function computeContextBreakdown(session: ContextUsageSession, options: C
 	let systemContextTokens = 0;
 	let systemPromptTokens = 0;
 	let usedTokens = 0;
+	let retainedNotesTokens = 0;
+	let todoContinuityTokens = 0;
 
 	if (breakdown) {
 		messagesTokens = breakdown.messagesTokens;
@@ -426,6 +437,11 @@ export function computeContextBreakdown(session: ContextUsageSession, options: C
 		systemContextTokens = breakdown.systemContextTokens;
 		systemPromptTokens = breakdown.systemPromptTokens;
 		usedTokens = breakdown.usedTokens;
+		retainedNotesTokens = Math.min(messagesTokens, Math.max(0, breakdown.retainedNotesTokens ?? 0));
+		todoContinuityTokens = Math.min(
+			messagesTokens - retainedNotesTokens,
+			Math.max(0, breakdown.todoContinuityTokens ?? 0),
+		);
 	} else {
 		// Category split needs a messages-only number, so this walk stays local:
 		// an anchored total folds the system prompt and tool schemas into it.
@@ -450,9 +466,23 @@ export function computeContextBreakdown(session: ContextUsageSession, options: C
 		},
 		{ id: "skills", label: "Skills", tokens: skillsTokens, color: "success", glyph: CELL_FILLED },
 		{
+			id: "retainedNotes",
+			label: "Retained notes",
+			tokens: retainedNotesTokens,
+			color: "customMessageLabel",
+			glyph: CELL_FILLED_MESSAGES,
+		},
+		{
+			id: "todoContinuity",
+			label: "Todo continuity",
+			tokens: todoContinuityTokens,
+			color: "customMessageLabel",
+			glyph: CELL_FILLED_MESSAGES,
+		},
+		{
 			id: "messages",
 			label: "Messages",
-			tokens: messagesTokens,
+			tokens: messagesTokens - retainedNotesTokens - todoContinuityTokens,
 			color: "userMessageText",
 			glyph: CELL_FILLED_MESSAGES,
 		},

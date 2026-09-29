@@ -48,7 +48,16 @@ export function reviseGovernorDecision(
 ): GovernorSnapshot | undefined {
 	const overridesChanged = !Bun.deepEquals(previous?.overrides, overrides);
 	const sourceChanged = previous?.signalSource !== signalSource;
-	if (previous && samePolicy(previous.decision, decision) && !overridesChanged && !sourceChanged) return undefined;
+	const todoProgressChanged =
+		signalSource === "todo" && previous?.signalSource === "todo" && previous.signals.taskCount !== signals.taskCount;
+	if (
+		previous &&
+		samePolicy(previous.decision, decision) &&
+		!overridesChanged &&
+		!sourceChanged &&
+		!todoProgressChanged
+	)
+		return undefined;
 	if (
 		previous &&
 		trigger === "scope" &&

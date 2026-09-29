@@ -5,6 +5,7 @@ import {
 	CONTEXT_NOTES_ENTRY_TYPE,
 	getContextNotes,
 	MAX_CONTEXT_NOTES_BYTES,
+	renderContextNotes,
 } from "@oh-my-pi/pi-coding-agent/session/context-notes";
 import type { ContextNotesEntry } from "@oh-my-pi/pi-coding-agent/session/context-notes";
 import type { CustomEntry, ResetBoundaryEntry, SessionEntry } from "@oh-my-pi/pi-coding-agent/session/session-entries";
@@ -49,6 +50,44 @@ function toolSession(
 }
 
 describe("experimental context notes", () => {
+	it("retains active-branch source references across resume and rejects foreign entry IDs", async () => {
+		using tempDir = TempDir.createSync("@omp-context-notes-sources-");
+		const sessionDir = path.join(tempDir.path(), "sessions");
+		const manager = SessionManager.create(tempDir.path(), sessionDir);
+		const settings = Settings.isolated({ "compaction.experimentalContextManagement": true });
+		const tool = ContextNotesTool.createIf(toolSession(settings, manager));
+		if (!tool) throw new Error("expected context notes tool");
+		const sourceId = manager.appendMessage({ role: "user", content: "Preserve API compatibility", timestamp: 1 });
+		await expect(
+			tool.execute("foreign", { text: "API must stay compatible", sourceEntryIds: ["other-branch"] }),
+		).rejects.toThrow("not on the active session branch");
+		await expect(
+			tool.execute("duplicate", { text: "API must stay compatible", sourceEntryIds: [sourceId, sourceId] }),
+		).rejects.toThrow("distinct active-branch entry IDs");
+		await expect(
+			tool.execute("unsafe-link", { text: "API must stay compatible", sourceEntryIds: ["`unsafe`"] }),
+		).rejects.toThrow("distinct active-branch entry IDs");
+		const saved = await tool.execute("sourced", { text: "API must stay compatible", sourceEntryIds: [sourceId] });
+		expect(saved.details?.sourceEntryIds).toEqual([sourceId]);
+		const read = await tool.execute("read-sourced", {});
+		expect(read.content).toMatchObject([{ type: "text", text: expect.stringContaining(sourceId) }]);
+		await expect(tool.execute("clear-with-sources", { text: "", sourceEntryIds: [sourceId] })).rejects.toThrow(
+			"cannot retain source entry IDs",
+		);
+		const file = manager.getSessionFile();
+		if (!file) throw new Error("expected persisted session file");
+		const reopened = await SessionManager.open(file, sessionDir);
+		try {
+			expect(getContextNotes(reopened.getBranch())).toMatchObject({
+				text: "API must stay compatible",
+				sourceEntryIds: [sourceId],
+			});
+			expect(renderContextNotes(reopened.getBranch())).toContain(sourceId);
+		} finally {
+			await reopened.close();
+			await manager.close();
+		}
+	});
 	it("rejects an oversized UTF-8 replacement while retaining the current notebook revision", async () => {
 		const sessionManager = SessionManager.inMemory();
 		const settings = Settings.isolated({ "compaction.experimentalContextManagement": true });
@@ -100,6 +139,15 @@ describe("experimental context notes", () => {
 		expect(getContextNotes(branchB)).toEqual({ entryId: "b", text: "branch B context" });
 		expect(getContextNotes(resetBranch)).toEqual({ entryId: "after", text: "fresh context" });
 		expect(getContextNotes([shared, resetEntry("clear", "base")])).toBeUndefined();
+	});
+
+	it("ignores a persisted notebook revision whose source is absent from its branch", () => {
+		const previous = noteEntry("first", null, "verified earlier note");
+		const corrupt: CustomEntry<ContextNotesEntry> = {
+			...noteEntry("second", "first", "unsupported later note"),
+			data: { version: 2, text: "unsupported later note", sourceEntryIds: ["missing"] },
+		};
+		expect(getContextNotes([previous, corrupt])).toEqual({ entryId: "first", text: "verified earlier note" });
 	});
 
 	it("persists a replacement for resume and refuses disabled or parent-bound tool sessions", async () => {

@@ -17,7 +17,8 @@ import {
 	type NonMessageTokenSource,
 } from "@oh-my-pi/pi-tui/status-line/context-usage";
 import type { ContextUsageBreakdown, SessionStats } from "./agent-session-types";
-import { getLatestCompactionEntry } from "./session-context";
+import { getLatestCompactionEntry, TODO_CONTINUITY_MESSAGE_TYPE } from "./session-context";
+import { CONTEXT_NOTES_ENTRY_TYPE } from "./context-notes";
 import type { ModelUsageEntry, SessionEntry } from "./session-entries";
 import type { SessionManager } from "./session-manager";
 import { cfgSkillful } from "./settings";
@@ -241,6 +242,12 @@ export class SessionStatsTracker {
 		}
 
 		const activeMessages = this.#host.agent.state.messages;
+		const retainedNotesTokens = this.#tokenizer.countMessages(
+			activeMessages.filter(message => message.role === "custom" && message.customType === CONTEXT_NOTES_ENTRY_TYPE),
+		);
+		const todoContinuityTokens = this.#tokenizer.countMessages(
+			activeMessages.filter(message => message.role === "custom" && message.customType === TODO_CONTINUITY_MESSAGE_TYPE),
+		);
 		let anchorIndex = -1;
 		let anchorAssistant: AssistantMessage | undefined;
 		if (anchorEntry?.message.role === "assistant") {
@@ -313,6 +320,8 @@ export class SessionStatsTracker {
 			systemContextTokens,
 			skillsTokens,
 			messagesTokens: Math.max(0, usedTokens - categoryNonMessageTokens),
+			retainedNotesTokens,
+			todoContinuityTokens,
 		};
 	}
 

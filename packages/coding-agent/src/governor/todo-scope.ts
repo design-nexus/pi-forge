@@ -9,7 +9,8 @@ export function recordGovernorTodoScope(session: AgentSession, phases: readonly 
 	const previous = latestGovernorSnapshot(session.sessionManager);
 	if (previous && previous.signalSource !== "todo") return;
 	const taskCount = phases.reduce(
-		(total, phase) => total + phase.tasks.filter(task => task.status !== "abandoned").length,
+		(total, phase) =>
+			total + phase.tasks.filter(task => task.status !== "completed" && task.status !== "abandoned").length,
 		0,
 	);
 	if (taskCount === 0 && !previous) return;

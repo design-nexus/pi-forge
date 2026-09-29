@@ -1637,11 +1637,11 @@ Repository evidence: [architecture baseline](docs/architecture-baseline.md), [in
 | 2: Capability Router | [IN PROGRESS] | Supply authoritative runtime task transitions and route capabilities with separate activation gates. |
 | 3: Adaptive Effort Governor | [IN PROGRESS] | Bind more decisions to execution and verification while honoring operator ceilings. |
 | 3B: Continuous Effort Reassessment | [IN PROGRESS] | Add progress and duration signals, then evaluate escalation and de-escalation on real tasks. |
-| 4: Context Manager | [PLANNED] | Extend context headroom budgeting into a sourced, recoverable working set. |
+| 4: Context Manager | [IN PROGRESS] | Add explicit priority and retention policy around the sourced, recoverable working set. |
 | 5–9 | [PLANNED] | Extend the OMP primitives identified in the architecture baseline. |
 
 Status: Phase 0 baseline documented; outcome baseline pending.
-Implementation: Prompt Engine, direct-tool routing, an opt-in Governor, structured task-fact routing, bounded task batches, and recent runtime feedback are present in the local working tree. Context headroom limits Governor budgets, but the working-set manager is not implemented.
+Implementation: Prompt Engine, direct-tool routing, an opt-in Governor, structured task-fact routing, bounded task batches, and recent runtime feedback are present in the local working tree. Context headroom limits Governor budgets; experimental sourced notebook recovery, todo continuity, and retained-context telemetry are present, while priority-based working-set management remains open.
 Tests: Focused Prompt Engine and Governor contract suites exist; latest verification belongs to the checkout inventory.
 Benchmarks: Offline prompt-text counts were rerun; no matched coding-outcome A/B data exists.
 Known limitations: The task corpus is a scenario specification until each case has a frozen executable packet. Adaptive execution remains off by default; ordinary chat has no authoritative task graph, and no automatic verification or repair loop runs.

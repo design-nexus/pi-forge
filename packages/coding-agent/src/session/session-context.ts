@@ -7,7 +7,9 @@ import {
 	type ServiceTierByFamily,
 } from "@oh-my-pi/pi-ai";
 import * as snapcompact from "@oh-my-pi/snapcompact";
-import { isRecord } from "@oh-my-pi/pi-utils";
+import { isRecord, prompt } from "@oh-my-pi/pi-utils";
+import todoContinuityPrompt from "../prompts/system/todo-continuity.md" with { type: "text" };
+import { getLatestTodoPhasesFromEntries, getLatestTodoSnapshotIdentity, nextActionableTask } from "../tools/todo";
 import {
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,
@@ -35,6 +37,8 @@ const LEGACY_SNAPCOMPACT_ARCHIVE_TEXT_GUARD = 250_000;
 const LEGACY_SNAPCOMPACT_TRUNCATED_CHARS_GUARD = 1_000_000;
 const SUPERSEDED_COMPACTION_SUMMARY = "[Superseded compaction summary elided after a newer compaction]";
 const SUPERSEDED_COMPACTION_SHORT_SUMMARY = "Superseded compaction elided";
+export const TODO_CONTINUITY_MESSAGE_TYPE = "todo-continuity";
+const MAX_TODO_CONTINUITY_TASK_CHARS = 512;
 
 function hasLegacySnapcompactFrames(archive: snapcompact.Archive): boolean {
 	return archive.frames.some(frame => frame.font === undefined && frame.variant === undefined);
@@ -342,6 +346,7 @@ export function buildSessionContext(
 	// 2. Emit kept messages (from firstKeptEntryId up to compaction)
 	// 3. Emit messages after compaction
 	const messages: AgentMessage[] = [];
+	const emittedEntryIds = new Set<string>();
 	const cacheMissExplainedAt: boolean[] = [];
 	let pendingReset = false;
 	let currentMode = "none";
@@ -378,6 +383,7 @@ export function buildSessionContext(
 	};
 
 	const appendMessage = (entry: SessionEntry) => {
+		if (entry.type === "message") emittedEntryIds.add(entry.id);
 		handleEntryResetTracking(entry);
 		if (entry.type === "message") {
 			if (
@@ -612,6 +618,36 @@ export function buildSessionContext(
 	}
 
 	if (!options?.transcript) {
+		const compactionIdx = compaction ? path.findIndex(entry => entry.id === compaction.id) : -1;
+		if (compactionIdx > resetBoundaryIdx) {
+			const snapshot = getLatestTodoSnapshotIdentity(path.slice(resetBoundaryIdx + 1));
+			const sourceIdx = snapshot ? path.findIndex(entry => entry.id === snapshot.sourceEntryId) : -1;
+			if (snapshot && sourceIdx >= 0 && sourceIdx < compactionIdx && !emittedEntryIds.has(snapshot.sourceEntryId)) {
+				const phases = getLatestTodoPhasesFromEntries(path.slice(resetBoundaryIdx + 1));
+				const remaining = phases
+					.flatMap(phase => phase.tasks)
+					.filter(task => task.status === "pending" || task.status === "in_progress" || task.status === "blocked");
+				if (remaining.length > 0) {
+					const active = nextActionableTask(phases);
+					const content = prompt.render(todoContinuityPrompt, {
+						remainingCount: remaining.length,
+						activeTask: active && active.content.length <= MAX_TODO_CONTINUITY_TASK_CHARS ? active.content : "",
+						blockedCount: remaining.filter(task => task.status === "blocked").length,
+					});
+					messages.splice(
+						1,
+						0,
+						createCustomMessage(
+							TODO_CONTINUITY_MESSAGE_TYPE,
+							content,
+							false,
+							undefined,
+							path[sourceIdx].timestamp,
+						),
+					);
+				}
+			}
+		}
 		const notes = getContextNotes(path);
 		const renderedNotes = renderContextNotes(path);
 		if (notes && renderedNotes.length > 0) {

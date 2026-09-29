@@ -1,0 +1,1 @@
+The session's current todo list predates the compacted context. It has {{remainingCount}} remaining task(s), including {{blockedCount}} blocked task(s). {{#if activeTask}}The next actionable task is: {{activeTask}}.{{/if}} Use `todo` with `op: "view"` when you need the complete current list.

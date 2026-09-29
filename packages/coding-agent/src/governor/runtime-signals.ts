@@ -6,6 +6,7 @@ import { latestGovernorSnapshot, recordGovernorDecision } from "./ledger";
 import { cfgAdaptiveMode } from "./settings";
 
 const RECENT_TOOL_RESULT_LIMIT = 16;
+const MAX_STALLED_TOOL_MS = 600_000;
 const EXPLORATION_TOOLS = new Set(["read", "find", "grep", "glob", "lsp", "ast_grep"]);
 
 function editedPaths(toolName: string, details: unknown): string[] {
@@ -42,15 +43,18 @@ function failedWorkerCount(toolName: string, details: unknown): number {
 function failedAsyncWorkerCount(details: unknown): number {
 	if (!details || typeof details !== "object" || !("jobs" in details) || !Array.isArray(details.jobs)) return 0;
 	const jobs: readonly unknown[] = details.jobs;
-	return jobs.filter(
-		job =>
-			job !== null &&
-			typeof job === "object" &&
-			"type" in job &&
-			job.type === "task" &&
-			"status" in job &&
-			job.status === "failed",
-	).length;
+	return jobs.reduce<number>((total, job) => {
+		if (!job || typeof job !== "object" || !("type" in job) || job.type !== "task") return total;
+		const failedJob = "status" in job && job.status === "failed" ? 1 : 0;
+		const failedBatches =
+			"workpoolFailedBatches" in job &&
+			typeof job.workpoolFailedBatches === "number" &&
+			Number.isSafeInteger(job.workpoolFailedBatches) &&
+			job.workpoolFailedBatches >= 0
+				? job.workpoolFailedBatches
+				: 0;
+		return Math.min(RECENT_TOOL_RESULT_LIMIT, total + Math.max(failedJob, failedBatches));
+	}, 0);
 }
 
 /** Count settled execution results from the current branch; never infer check failure from shell output. */
@@ -61,6 +65,9 @@ export function recentGovernorToolSignals(sessionManager: SessionManager): Gover
 	let verificationFailures = 0;
 	let failedWorkers = 0;
 	let failedMutations = 0;
+	let stalledToolMs = 0;
+	let stalledExplorationCalls = 0;
+	let progressSeen = false;
 	const editedFiles = new Set<string>();
 	for (const entry of sessionManager.getBranch().reverse()) {
 		if (entry.type === "custom_message" && entry.customType === ASYNC_RESULT_MESSAGE_TYPE) {
@@ -72,9 +79,45 @@ export function recentGovernorToolSignals(sessionManager: SessionManager): Gover
 		if (entry.type !== "message") continue;
 		if (entry.message.role === "user") break;
 		if (entry.message.role !== "toolResult") continue;
-		if (entry.message.toolName === "todo") continue;
+		if (entry.message.toolName === "todo") {
+			const details = entry.message.details;
+			if (
+				!entry.message.isError &&
+				details &&
+				typeof details === "object" &&
+				"completedTasks" in details &&
+				Array.isArray(details.completedTasks) &&
+				details.completedTasks.length > 0
+			)
+				progressSeen = true;
+			continue;
+		}
 		completedCalls++;
-		if (EXPLORATION_TOOLS.has(entry.message.toolName)) explorationCalls++;
+		const details = entry.message.details;
+		const verification =
+			details && typeof details === "object" && "verification" in details ? details.verification : undefined;
+		const passedVerification =
+			verification && typeof verification === "object" && "passed" in verification && verification.passed === true;
+		if (
+			!entry.message.isError &&
+			(entry.message.toolName === "edit" || entry.message.toolName === "write" || passedVerification)
+		)
+			progressSeen = true;
+		if (
+			!progressSeen &&
+			entry.message.toolName === "bash" &&
+			details &&
+			typeof details === "object" &&
+			"wallTimeMs" in details &&
+			typeof details.wallTimeMs === "number" &&
+			Number.isFinite(details.wallTimeMs) &&
+			details.wallTimeMs > 0
+		)
+			stalledToolMs = Math.min(MAX_STALLED_TOOL_MS, stalledToolMs + Math.ceil(details.wallTimeMs));
+		if (EXPLORATION_TOOLS.has(entry.message.toolName)) {
+			explorationCalls++;
+			if (!progressSeen) stalledExplorationCalls++;
+		}
 		failedWorkers += failedWorkerCount(entry.message.toolName, entry.message.details);
 		if (entry.message.isError) failedCalls++;
 		if (entry.message.isError && (entry.message.toolName === "edit" || entry.message.toolName === "write"))
@@ -103,6 +146,8 @@ export function recentGovernorToolSignals(sessionManager: SessionManager): Gover
 		verificationFailures,
 		failedWorkers,
 		failedMutations,
+		stalledToolMs,
+		stalledExplorationCalls,
 	};
 }
 
