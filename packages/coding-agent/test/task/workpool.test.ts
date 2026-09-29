@@ -10,6 +10,7 @@ import type { CustomMessage } from "../../src/session/messages";
 import * as executor from "../../src/task/executor";
 import type { EffectiveSubagentPolicy, StructuredSubagentResult } from "../../src/task/structured-subagent";
 import * as structured from "../../src/task/structured-subagent";
+import { cfgTaskMaxConcurrency } from "../../src/task/settings";
 import type { AgentDefinition } from "../../src/task/types";
 import type { SingleResult } from "@oh-my-pi/pi-tui/tools/task";
 import { WorkPool, WorkPoolRegistry } from "../../src/task/workpool";
@@ -41,7 +42,7 @@ const managers = new Set<AsyncJobManager>();
 
 function makeSession(
 	cards: CustomMessage[] = [],
-	concurrency = 2,
+	concurrency: number | null = 2,
 	freshAgents = false,
 	deliveries?: Array<{ id: string; text: string }>,
 ): ToolSession {
@@ -56,7 +57,7 @@ function makeSession(
 		cwd: "/tmp",
 		hasUI: false,
 		settings: Settings.isolated({
-			"task.maxConcurrency": concurrency,
+			...(concurrency === null ? {} : { "task.maxConcurrency": concurrency }),
 			"task.maxRuntimeMs": 0,
 			"eval.workpool.freshAgents": freshAgents,
 			"launch.enabled": false,
@@ -193,6 +194,37 @@ describe("WorkPool dispatch", () => {
 		gates.get(workpool.agents[1]!.id)?.resolve();
 		await finishPool(session, workpool);
 		expect(cards.map(cardMode)).toContain("completed");
+	});
+
+	it("caps workpool agent spawning from the current independent item count", async () => {
+		const session = makeSession([], null);
+		const routedCounts: number[] = [];
+		session.routeGovernorTaskBatch = count => {
+			routedCounts.push(count);
+			return 2;
+		};
+		const gate = Promise.withResolvers<void>();
+		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			await gate.promise;
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		vi.spyOn(executor, "runSubagentFollowUpTurn").mockImplementation(async options => {
+			markIdle(options.id);
+			return singleResult(options.id);
+		});
+		const workpool = pool(session);
+		workpool.push(["one", "two", "three", "four"]);
+		await until(() => workpool.items.every(item => item.agentId !== undefined));
+		expect(routedCounts).toEqual([4]);
+		expect(workpool.agents).toHaveLength(2);
+		cfgTaskMaxConcurrency.set(session.settings, 3);
+		workpool.push(["five"]);
+		await until(() => workpool.agents.length === 3);
+		expect(routedCounts).toEqual([4, 5]);
+		gate.resolve();
+		await finishPool(session, workpool);
 	});
 
 	it("hands a queued batch to a follow-up turn after the first turn settles", async () => {

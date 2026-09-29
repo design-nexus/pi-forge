@@ -146,3 +146,99 @@ Verification: 29 focused tests passed across Governor, Prompt Engine, and active
 `adaptive.bands` now accepts per-band `maxWorkers` and `contextShare` overrides. Validation rejects unknown bands or fields, non-integer or above-cap worker counts, and context shares outside 0–1. The pure decision also clamps direct caller input to each band's fixed worker cap and the model context window. A live settings edit revises a recorded decision through the existing budget listener. Default values preserve the earlier four-band policy.
 
 Verification: 30 focused tests passed across Governor, Prompt Engine, and active-tool updates; coding-agent type checking, targeted lint, touched-file formatting, and diff checks passed. OMP has no existing event that distinguishes a failed planned verification check from an ordinary command failure, so this slice does not treat generic shell exits as verification evidence. A typed check-result contract belongs with the later Verification Loop.
+
+## Second Step 2 slice: structured Governor task transition
+
+`AgentSession.routeGovernorTaskTransition()` now accepts structured task facts, records the Governor decision, and routes an eligible parallel task through the existing delegation router inside one serialized tool-registry mutation. It passes the committed decision's context budget to routing. With adaptive mode off, it records no decision and leaves tools unchanged. A zero context budget defers activation; a later structured transition with enough budget promotes a mounted `task` tool. If the user deselects `task`, the Governor revises to zero workers and the next transition does not reactivate it. Explicit tool invocation still uses the existing policy-gated route. No ordinary chat message is classified or routed automatically, and no worker starts from this method.
+
+Verification: 27 focused tests passed across Governor and Prompt Engine; coding-agent type checking, targeted lint, touched-file formatting, and diff checks passed. The next Step 2 need is a reliable structured source of task transitions and compatible activation for other discovery surfaces, including browser/MCP where their runtime gates require more than tool promotion.
+
+## Third Step 2 slice: concrete task scope facts
+
+The task-transition API now accepts distinct file references and task IDs with dependency edges. A deterministic adapter derives file count, total task count, dependency edge count, and the widest runnable task wave; it rejects duplicate IDs, unknown dependencies, and cycles before recording a decision or changing tools. Total task count is separate from parallel width, so a long dependency chain can enter the massive band without inventing parallel capacity. Task-count thresholds are configurable alongside file thresholds. Snapshots retain only the bounded derived counts, not file paths or task IDs. The facts still come from a caller; ordinary chat and todo prose are not treated as an authoritative task graph.
+
+Verification: 30 focused Governor and Prompt Engine tests passed; coding-agent type checking, targeted lint, touched-file formatting, and diff checks passed. The session-level regression confirms that a cyclic graph leaves the prior decision and active tool set intact. No runtime planner or orchestrator currently supplies this graph automatically.
+
+## Fourth Step 2 slice: observed todo scope
+
+Successful structured todo updates now give the opt-in Governor a task-count scope signal through the existing `AgentSession.setTodoPhases()` path. Todo items have no dependency contract, so this source always reports zero independent tasks and cannot request parallel workers. The snapshot records its signal source; an explicit task graph or manually supplied scope supersedes todo observation and cannot be overwritten by a later todo edit. Task-count changes can cross band boundaries without being suppressed by the one-file hysteresis rule. Adaptive mode remains off by default, and the off path returns before scanning session history.
+
+Verification: 32 focused Governor and Prompt Engine tests passed; coding-agent type checking, targeted lint, formatting, and diff checks passed. The live-session regression covers off mode, todo scope growth and shrinkage, zero workers, graph precedence, and manual-scope precedence. Todo count is one scope observation, not a complete complexity score or an execution dispatcher. Runtime search, errors, and verification outcomes remain future Governor inputs.
+
+## First Phase 3B slice: recent runtime pressure
+
+After each persisted tool result, an inspected session with an existing Governor snapshot counts at most 16 recent non-todo tool results on the current branch, stopping at the latest user message. Exploration calls and tool errors jointly contribute to a bounded pressure score; call volume has a small additional weight. Configurable normal/complex pressure thresholds can raise the band, and the rolling window can later lower it again. An explicit band override remains authoritative. The snapshot records only aggregate counts, not tool output, arguments, or paths. Generic shell exits are not interpreted as verification failures.
+
+Verification: 33 focused Governor and Prompt Engine tests passed; coding-agent type checking, targeted lint, formatting, and diff checks passed. The live-session fixture covers escalation, de-escalation, source precedence, and request-boundary reset. This is still inspect-mode decision feedback; no model, worker, or verifier is dispatched from the revised band.
+
+## Fifth Step 2 slice: explicit automatic routing mode
+
+`adaptive.mode` now separates `off`, `inspect`, and `auto`. `inspect` records and revises decisions without promoting tools. `auto` retains the same decision visibility and lets an eligible structured task-graph transition promote the existing `task` capability through the router, subject to capability policy, model roster restrictions, and context budget. The default remains `off`. This makes tool activation an explicit opt-in rather than a side effect of inspection.
+
+Verification: 33 focused Governor and Prompt Engine tests passed; coding-agent type checking and touched-file formatting passed. The live transition fixture checks that `inspect` leaves `task` mounted, `auto` defers activation at zero budget, and `auto` promotes it once budget permits. OMP's task executor already enforces `task.maxConcurrency` with its session semaphore; a Governor graph snapshot is not yet bound to a specific task batch, so this slice does not apply its worker count to that semaphore.
+
+## First bounded batch execution slice
+
+The concrete `task.batch` call now supplies its item count to the Governor after spawn preflight. In `auto` mode, the resulting decision is recorded with a `task_batch` source. When it selects more than one worker and `task.maxConcurrency` still comes from the default layer, a batch-local semaphore caps only that call's inline and background spawns. OMP's session semaphore remains the outer limit and live `task.maxConcurrency` changes still apply. An explicitly configured concurrency value keeps OMP's existing behavior. Single task calls, non-auto modes, failed preflights, and batches for which the Governor selects no parallel limit keep the existing path.
+
+Verification: 39 focused Prompt Engine, Governor, and task-spawn tests passed; coding-agent type checking, targeted lint, formatting, and diff checks passed. Live Governor tests check the default cap and an explicit concurrency setting. Task-spawn tests show a four-item background batch and a four-item inline batch each run two bodies at a time when the batch callback returns two, without changing the session setting. Worker verification and integration gating remain separate later phases.
+
+## Automatic task capability release
+
+An `auto` task transition now remembers whether `task` was mounted before the Governor promoted it. A later structured transition whose decision is not parallel restores that mount, or removes the tool if it was previously absent. Explicit delegation and later tool-presentation changes take ownership of the selection, so the Governor does not demote them. Release waits for an idle turn and honors models whose tool roster is bound after the first assistant response. `inspect` remains read-only.
+
+Verification: the focused Prompt Engine and Governor session tests passed 16/16, and coding-agent type checking passed. The live transition test covers promotion, release, renewed promotion, and preservation of an explicit active selection. This remains limited to structured task transitions; ordinary chat does not trigger task-graph routing.
+
+## Bounded workpool dispatch
+
+The existing workpool now reports its current queued and running item count through the same opt-in Governor batch route used by `task.batch`. When `auto` selects a worker cap, workpool dispatch limits agent spawning to that cap. The live `task.maxConcurrency` setting remains an outer limit; an explicit setting takes precedence over the automatic cap. No additional worker type or task classifier is introduced.
+
+Verification: the focused workpool tests passed 11/11 and coding-agent type checking passed. A dispatch regression shows four independent items using two agents, then an explicit concurrency change allowing a third agent on a later push. Workpool item count remains an execution signal, not a full dependency graph.
+
+## Runtime adaptive-mode release
+
+Changing `adaptive.mode` from `auto` to `inspect` or `off` now releases a Governor-owned `task` promotion through the serialized tool mutation path. If a turn is streaming, release waits for idle. A later explicit delegation choice or presentation change still takes ownership, so mode changes leave that choice intact. Returning to `auto` can promote `task` again on a later structured transition.
+
+Verification: the focused Prompt Engine test covers auto-to-inspect and auto-to-off release, renewed promotion, and explicit-selection preservation. The test waits for the queued settings mutation before inspecting the active tool list.
+
+## Recent edit breadth as runtime scope
+
+The Governor's recent tool-result window now counts distinct paths from successful `edit` and `write` results, including both sides of a move. It stores only the aggregate file count in the decision snapshot. Crossing the configured file-count thresholds can raise a trivial or normal decision to complex, or raise a lower band to massive; as edits leave the bounded window, that pressure can fall again. Failed edits, reads, and pre-existing working-tree changes do not contribute. This measures edits made through these tools, not the full VCS diff or shell-driven changes.
+
+Verification: the focused Governor tests passed 17/17 and coding-agent type checking passed. The live session fixture covers multi-file edit details, a move, a write, exclusion of a failed edit, escalation, and de-escalation after the window moves past those results.
+
+## Runtime pressure at execution decisions
+
+Structured task-graph transitions and concrete task batches now sample the current turn's recent tool-result signals when they ask the Governor for a decision. This carries edit breadth, exploration, and tool failures into the worker decision instead of dropping them when a new graph or batch replaces the snapshot. Off mode still skips the session-history scan. A batch of three independent items can therefore receive a two-worker cap after recent edits raise its band; the same batch returns to its default path when those edits leave the bounded window.
+
+Verification: the focused Governor session and Prompt Engine tests passed 16/16 and coding-agent type checking passed. The live fixture covers runtime signals in a structured graph and a batch cap that appears and then disappears as the recent window changes. Exact Governor effort is not applied to task workers here: the task tool's `lo`/`med`/`hi` hints are relative to each resolved worker model and do not encode the Governor's concrete effort level.
+
+## Declared foreground verification results
+
+The `bash` tool now accepts `verification: true` for a foreground command that checks the current work. Completed results carry a typed pass/fail marker, including timeouts as failures; ordinary shell commands carry no marker. Declared checks cannot use async or service mode, and automatic backgrounding is bypassed so the check result remains attached to the call. Recent failed checks contribute a separate Governor signal: one can raise trivial to normal, and repeated failures can raise a lower band to complex. The persisted revision uses the `verification_failure` trigger. Generic shell failures are not classified as failed checks.
+
+Verification: the focused Bash, Governor session, and Prompt Engine tests passed 27/27; coding-agent and TUI type checks, targeted lint, formatting, and diff checks passed. The live shell test exercises pass, nonzero exit, timeout, and ordinary-failure result shapes. The Governor fixture exercises one and two declared check failures. This supplies evidence to the Governor; a check scheduler and bounded repair loop remain later work.
+
+## Context headroom in Governor budgets
+
+The live Governor preview now reads the session's existing context-usage estimate and caps its selected context allocation to the remaining model window. An assistant response re-evaluates an existing snapshot, so growing context can lower the budget and compaction can restore it. This affects the context budget used by automatic task capability routing; it does not change OMP's compaction thresholds or claim that a separate Context Manager is complete.
+
+Verification: 30 focused Governor and Prompt Engine tests passed, and coding-agent type checking passed. The pure decision test covers a crowded window, recovered headroom, and an exhausted window.
+
+## Failed task workers as runtime feedback
+
+The Governor now inspects settled `task` result details and counts individual workers with a nonzero exit code, an abort, or an error. This catches a failed worker in a mixed batch even when the aggregate tool result succeeds. One recent worker failure can raise a trivial decision to normal; repeated failures can raise a lower band to complex. The count uses the existing 16-result, current-turn window and falls when those results leave it. It records only the count in the snapshot.
+
+Verification: 16 focused Governor tests and coding-agent type checking passed. The live-session fixture covers mixed successful and failed workers, one-count-per-worker behavior when both exit code and error are set, and escalation across two settled batches.
+
+## Background task failure feedback
+
+Owned background jobs now put their settled status in the persisted `async-result` delivery details. The Governor counts failed `task` jobs there, while ignoring successful tasks and failures from other job types. It revises the decision when the delivery enters the session, using the same current-turn, 16-result window as foreground feedback. Cancelled jobs are not treated as failures.
+
+Verification: 19 focused Governor and async-delivery tests passed, including an end-to-end failed owned task delivery; coding-agent type checking passed. This covers delivered jobs, not jobs whose result was suppressed or dropped during a session transition.
+
+## Repeated edit and write failure feedback
+
+Recent failed `edit` and `write` calls now provide a separate mutation-failure count. Two failures can raise a trivial decision to normal; three can raise a lower band to complex. The signal uses the current-turn, 16-result window, so successful subsequent work can let the decision return to its scope-based band. One failed edit alone does not change the band, and unrelated shell errors do not count as failed mutations.
+
+Verification: 16 focused Governor tests and coding-agent type checking passed. The live-session fixture covers escalation after two failed edits and a failed write, then recovery after those failures leave the window. This is decision feedback; it does not schedule a repair attempt.

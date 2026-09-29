@@ -57,10 +57,11 @@ describe("BashTool execution results", () => {
 			return realRun.call(this, { ...options, timeoutMs: 20 }, onChunk);
 		});
 		const tool = new BashTool(makeSession());
-		const result = await tool.execute("call-timeout", { command: "sleep 3", timeout: 1 });
+		const result = await tool.execute("call-timeout", { command: "sleep 3", timeout: 1, verification: true });
 
 		expect(result.isError).toBe(true);
 		expect(result.details?.timedOut).toBe(true);
+		expect(result.details?.verification).toEqual({ passed: false });
 		const text = result.content.find(c => c.type === "text")?.text ?? "";
 		expect(text.match(/\[Command timed out after 1 seconds\]/gu)).toHaveLength(1);
 	});
@@ -94,6 +95,19 @@ describe("BashTool execution results", () => {
 		const text = result.content.find(c => c.type === "text")?.text ?? "";
 		expect(text).toContain("hi");
 		expect(text).not.toContain("Command exited with code");
+	});
+
+	it("marks only declared foreground checks with a verification outcome", async () => {
+		const tool = new BashTool(makeSession());
+		const passed = await tool.execute("check-pass", { command: "exit 0", verification: true });
+		const failed = await tool.execute("check-fail", { command: "exit 3", verification: true });
+		const ordinary = await tool.execute("ordinary-fail", { command: "exit 3" });
+		expect(passed.details?.verification).toEqual({ passed: true });
+		expect(failed.details?.verification).toEqual({ passed: false });
+		expect(ordinary.details?.verification).toBeUndefined();
+		await expect(
+			tool.execute("background-check", { command: "exit 0", verification: true, async: true }),
+		).rejects.toThrow("foreground");
 	});
 
 	it("keeps the raw diagnostics when a minimized failure cannot be persisted as an artifact", async () => {

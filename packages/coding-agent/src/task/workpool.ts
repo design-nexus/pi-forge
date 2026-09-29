@@ -123,6 +123,7 @@ export class WorkPool {
 	#lastCardTs = 0;
 	#dispatchChain: Promise<void> = Promise.resolve();
 	#poolJobStarted = false;
+	#governorLimit: number | undefined;
 	readonly #drainWaiters: PromiseWithResolvers<void>[] = [];
 	readonly #freshQueue: WorkPoolItem[] = [];
 
@@ -145,7 +146,9 @@ export class WorkPool {
 	/** Current worker ceiling from the live `task.maxConcurrency` setting. */
 	limit(): number {
 		const configured = cfgTaskMaxConcurrency.get(this.session.settings);
-		return configured > 0 ? configured : Infinity;
+		const sessionLimit = configured > 0 ? configured : Infinity;
+		if (this.session.settings.getProvenance(cfgTaskMaxConcurrency) !== "default") return sessionLimit;
+		return Math.min(sessionLimit, this.#governorLimit ?? Infinity);
 	}
 
 	/** Queue items and start the aggregate pool job on the first non-empty push. */
@@ -158,6 +161,13 @@ export class WorkPool {
 			const item: WorkPoolItem = { id: `${this.name}#${seq}`, seq, text, status: "queued" };
 			this.items.push(item);
 			queued.push(item);
+		}
+		const pendingCount = this.items.filter(item => item.status === "queued" || item.status === "running").length;
+		try {
+			this.#governorLimit = this.session.routeGovernorTaskBatch?.(pendingCount);
+		} catch (error) {
+			logger.warn("Adaptive workpool routing failed", { error: String(error) });
+			this.#governorLimit = undefined;
 		}
 		this.#ensurePoolJob();
 		for (const item of queued) this.#queueDispatch(item);

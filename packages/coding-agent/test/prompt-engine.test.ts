@@ -6,6 +6,7 @@ import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
+import { cfgAdaptiveBands, cfgAdaptiveMode } from "@oh-my-pi/pi-coding-agent/governor/settings";
 import { resolveCapabilityPolicies, resolvePromptPolicies } from "@oh-my-pi/pi-coding-agent/prompt-engine/profiles";
 import {
 	cfgPromptCapabilities,
@@ -348,20 +349,97 @@ it("routes a discovered task tool on structured delegation intent without overri
 		});
 		session.agent.replaceMessages([]);
 		session.agent.setModel(model);
-		const activated = await session.routeDelegationCapability({
-			intent: "single_task",
-			signal: "explicit",
-			contextBudgetTokens: 0,
+		const taskFacts = {
+			files: Array.from({ length: 14 }, (_, index) => `src/file-${index}.ts`),
+			tasks: [
+				{ id: "a", dependsOn: [] },
+				{ id: "b", dependsOn: [] },
+				{ id: "c", dependsOn: [] },
+				{ id: "d", dependsOn: [] },
+			],
+			highRisk: false,
+			confidence: 0.9,
+		};
+		expect(await session.routeGovernorTaskTransition({ facts: taskFacts }, "initial")).toEqual({
+			snapshot: undefined,
+			route: undefined,
 		});
-		expect(activated).toMatchObject({ state: "active", selected: true, source: "built-in" });
+		expect(session.getActiveToolNames()).not.toContain("task");
+		cfgAdaptiveMode.set(settings, "inspect");
+		const inspection = await session.routeGovernorTaskTransition({ facts: taskFacts }, "initial");
+		expect(inspection.snapshot?.decision.executionMode).toBe("parallel");
+		expect(inspection.route).toBeUndefined();
+		expect(session.getActiveToolNames()).not.toContain("task");
+		cfgAdaptiveMode.set(settings, "auto");
+		cfgAdaptiveBands.set(settings, { massive: { contextShare: 0 } });
+		const deferred = await session.routeGovernorTaskTransition({ facts: taskFacts }, "initial");
+		expect(deferred.route).toMatchObject({ selected: false, reason: "activation exceeds context budget" });
+		expect(session.getActiveToolNames()).not.toContain("task");
+		cfgAdaptiveBands.set(settings, {});
+		await Bun.sleep(0);
+		expect(session.getActiveToolNames()).not.toContain("task");
+		const transition = await session.routeGovernorTaskTransition({ facts: taskFacts }, "scope");
+		expect(transition.snapshot?.decision).toMatchObject({ band: "massive", executionMode: "parallel" });
+		expect(transition.route).toMatchObject({ state: "active", selected: true, source: "built-in" });
+		expect(session.getActiveToolNames()).toContain("task");
+		await expect(
+			session.routeGovernorTaskTransition(
+				{
+					facts: {
+						files: [],
+						tasks: [
+							{ id: "a", dependsOn: ["b"] },
+							{ id: "b", dependsOn: ["a"] },
+						],
+						highRisk: false,
+						confidence: 0.9,
+					},
+				},
+				"scope",
+			),
+		).rejects.toThrow("cycle");
+		expect(session.getGovernorSnapshot()).toEqual(transition.snapshot);
 		expect(session.getActiveToolNames()).toContain("task");
 		expect(session.promptComposition?.sections.find(section => section.id === "delegation")?.active).toBe(true);
+		const serialFacts = {
+			files: ["src/file-0.ts"],
+			tasks: [{ id: "a", dependsOn: [] }],
+			highRisk: false,
+			confidence: 0.9,
+		};
+		const serial = await session.routeGovernorTaskTransition({ facts: serialFacts }, "scope");
+		expect(serial.snapshot?.decision.executionMode).not.toBe("parallel");
+		expect(serial.route).toBeUndefined();
+		expect(session.getActiveToolNames()).not.toContain("task");
+		expect(session.getMountedXdevToolNames()).toContain("task");
+		const repromoted = await session.routeGovernorTaskTransition({ facts: taskFacts }, "scope");
+		expect(repromoted.route).toMatchObject({ state: "active", selected: true });
+		expect(session.getActiveToolNames()).toContain("task");
+		cfgAdaptiveMode.set(settings, "inspect");
+		await Bun.sleep(0);
+		await session.runToolRegistryMutation(async () => {});
+		expect(session.getActiveToolNames()).not.toContain("task");
+		expect(session.getMountedXdevToolNames()).toContain("task");
+		cfgAdaptiveMode.set(settings, "auto");
+		await Bun.sleep(0);
+		await session.routeGovernorTaskTransition({ facts: taskFacts }, "scope");
+		expect(session.getActiveToolNames()).toContain("task");
+		cfgAdaptiveMode.set(settings, "off");
+		await Bun.sleep(0);
+		await session.runToolRegistryMutation(async () => {});
+		expect(session.getActiveToolNames()).not.toContain("task");
+		cfgAdaptiveMode.set(settings, "auto");
+		await Bun.sleep(0);
+		await session.routeGovernorTaskTransition({ facts: taskFacts }, "scope");
+		expect(session.getActiveToolNames()).toContain("task");
 		const historyLength = session.promptCompositionHistory.length;
 		expect(await session.routeDelegationCapability({ intent: "parallel_work", signal: "explicit" })).toMatchObject({
 			state: "active",
 			selected: false,
 		});
 		expect(session.promptCompositionHistory).toHaveLength(historyLength);
+		await session.routeGovernorTaskTransition({ facts: serialFacts }, "scope");
+		expect(session.getActiveToolNames()).toContain("task");
 		await session.setActiveToolPresentation(
 			session.getEnabledToolNames().filter(name => name !== "task"),
 			session.getMountedXdevToolNames().filter(name => name !== "task"),
@@ -371,6 +449,9 @@ it("routes a discovered task tool on structured delegation intent without overri
 			selected: false,
 			reason: "task tool was not enabled",
 		});
+		const deselected = await session.routeGovernorTaskTransition({ facts: taskFacts }, "scope");
+		expect(deselected.snapshot?.decision.workerCount).toBe(0);
+		expect(deselected.route).toBeUndefined();
 		expect(await session.routeDelegationCapability({ intent: "parallel_work", signal: "explicit" })).toMatchObject({
 			state: "active",
 			selected: true,

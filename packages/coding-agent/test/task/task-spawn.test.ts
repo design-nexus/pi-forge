@@ -658,6 +658,73 @@ describe("task spawn routing", () => {
 		expect(secondJob.status).toBe("completed");
 	});
 
+	it("bounds one automatic task batch without changing the session concurrency setting", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const started: string[] = [];
+		const gates = new Map<string, Deferred>();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			const id = options.id ?? "?";
+			started.push(id);
+			const gate = deferred();
+			gates.set(id, gate);
+			await gate.promise;
+			return makeResult(id);
+		});
+		const manager = createManager();
+		const session = createSession({ manager, settings: { "async.enabled": true, "task.batch": true } });
+		session.routeGovernorTaskBatch = count => {
+			expect(count).toBe(4);
+			return 2;
+		};
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-batch", {
+			context: "Independent work.",
+			tasks: ["First", "Second", "Third", "Fourth"].map(name => ({ name, task: `Work ${name}.` })),
+		} as TaskParams);
+		await pollUntil(() => started.length === 2);
+		expect(started).toEqual(["First", "Second"]);
+		expect(manager.getJob("Third")?.queued).toBe(true);
+		gates.get("First")!.resolve();
+		await pollUntil(() => started.length === 3);
+		gates.get("Second")!.resolve();
+		await pollUntil(() => started.length === 4);
+		gates.get("Third")!.resolve();
+		gates.get("Fourth")!.resolve();
+		await Promise.all(["First", "Second", "Third", "Fourth"].map(name => manager.getJob(name)!.promise));
+		expect(cfgTaskMaxConcurrency.get(session.settings)).toBe(32);
+	});
+
+	it("bounds inline batch fan-out with the same automatic batch limit", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const started: string[] = [];
+		const gates = new Map<string, Deferred>();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			const id = options.id ?? "?";
+			started.push(id);
+			const gate = deferred();
+			gates.set(id, gate);
+			await gate.promise;
+			return makeResult(id);
+		});
+		const session = createSession({ settings: { "async.enabled": false, "task.batch": true } });
+		session.routeGovernorTaskBatch = () => 2;
+		const tool = await TaskTool.create(session);
+		const execution = tool.execute("tc-inline", {
+			context: "Independent work.",
+			tasks: ["First", "Second", "Third", "Fourth"].map(name => ({ name, task: `Work ${name}.` })),
+		} as TaskParams);
+		await pollUntil(() => started.length === 2);
+		expect(started).toEqual(["First", "Second"]);
+		gates.get("First")!.resolve();
+		await pollUntil(() => started.length === 3);
+		gates.get("Second")!.resolve();
+		await pollUntil(() => started.length === 4);
+		gates.get("Third")!.resolve();
+		gates.get("Fourth")!.resolve();
+		const result = await execution;
+		expect(result.details?.results).toHaveLength(4);
+	});
+
 	it("settles a cancelled spawn while it is queued behind the semaphore", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
 			agents: [taskAgent],

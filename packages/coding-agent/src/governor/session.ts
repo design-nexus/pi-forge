@@ -32,7 +32,7 @@ export function previewGovernorDecision(
 	session: AgentSession,
 	request: GovernorPreviewRequest,
 ): GovernorDecision | undefined {
-	if (cfgAdaptiveMode.get(session.settings) !== "inspect") return undefined;
+	if (cfgAdaptiveMode.get(session.settings) === "off") return undefined;
 	const model = session.model;
 	if (!model) return undefined;
 	const recordedRole = session.sessionManager.getLastModelChangeRole();
@@ -77,6 +77,7 @@ export function previewGovernorDecision(
 				session.getToolByName("task") !== undefined && session.getEnabledToolNames().includes("task"),
 		},
 		contextWindowTokens: model.contextWindow ?? 0,
+		contextUsedTokens: session.getContextUsage()?.tokens,
 	});
 }
 

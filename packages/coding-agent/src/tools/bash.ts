@@ -331,6 +331,7 @@ const BASH_TIMEOUT_DESCRIPTION = `timeout in seconds; 0 disables the command dea
 
 const bashSchemaBase = type({
 	command: type("string"),
+	"verification?": "boolean",
 	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
 	"cwd?": "string",
 	"pty?": "boolean",
@@ -338,6 +339,7 @@ const bashSchemaBase = type({
 
 const bashSchemaWithAsync = type({
 	command: "string",
+	"verification?": "boolean",
 	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
 	"cwd?": "string",
 	"pty?": "boolean",
@@ -346,6 +348,7 @@ const bashSchemaWithAsync = type({
 
 const bashSchemaWithService = type({
 	command: "string",
+	"verification?": "boolean",
 	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
 	"cwd?": "string",
 	"pty?": "boolean",
@@ -361,6 +364,7 @@ const bashSchemaWithService = type({
 
 const bashSchemaWithAsyncAndService = type({
 	command: "string",
+	"verification?": "boolean",
 	"timeout?": type("number").describe(BASH_TIMEOUT_DESCRIPTION),
 	"cwd?": "string",
 	"pty?": "boolean",
@@ -383,6 +387,7 @@ type BashToolSchema =
 
 export interface BashToolInput {
 	command: string;
+	verification?: boolean;
 	timeout?: number;
 	cwd?: string;
 	name?: string;
@@ -663,6 +668,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			requestedTimeoutSec?: number;
 			notices?: readonly string[];
 			wallTimeMs?: number;
+			verification?: boolean;
 		} = {},
 	): Promise<AgentToolResult<BashToolDetails>> {
 		const exitCode = result.exitCode;
@@ -704,6 +710,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		if (failedExit) {
 			details.exitCode = exitCode;
 		}
+		if (options.verification) details.verification = { passed: !failedExit && !isTimeout };
 
 		// Final-defense inline cap config, shared by the timeout and normal
 		// completion paths. The sink already bounds inline bodies to the spill
@@ -903,12 +910,25 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 
 	async execute(
 		_toolCallId: string,
-		{ command: rawCommand, timeout: rawTimeout, cwd, name, ready, env, async: asyncRequested, pty }: BashToolInput,
+		{
+			command: rawCommand,
+			timeout: rawTimeout,
+			cwd,
+			name,
+			ready,
+			env,
+			async: asyncRequested,
+			pty,
+			verification,
+		}: BashToolInput,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<BashToolDetails>,
 		ctx?: AgentToolContext,
 	): Promise<AgentToolResult<BashToolDetails>> {
 		let command = rawCommand;
+		if (verification && (name !== undefined || asyncRequested)) {
+			throw new ToolError("Verification commands must run in the foreground without service mode.");
+		}
 
 		// Extract a leading `cd <path> && ...` into cwd when the model ignores the
 		// cwd parameter. The scanner captures only a single path token and defers
@@ -1086,6 +1106,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		// instead of failing every bash call until a slot frees up.
 		if (
 			cfgBashAutoBackgroundEnabled.get(this.session.settings) &&
+			!verification &&
 			!pty &&
 			!bridgeTerminalAvailable &&
 			autoBgManager &&
@@ -1272,6 +1293,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 						requestedTimeoutSec,
 						notices: pendingNotices,
 						wallTimeMs: performance.now() - bridgeWallTimeStart,
+						verification,
 					});
 				}
 
@@ -1347,6 +1369,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 							requestedTimeoutSec,
 							notices: pendingNotices,
 							wallTimeMs: performance.now() - bridgeWallTimeStart,
+							verification,
 						});
 					}
 
@@ -1415,6 +1438,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 					requestedTimeoutSec,
 					notices: bridgeNotices,
 					wallTimeMs: performance.now() - bridgeWallTimeStart,
+					verification,
 				});
 			} finally {
 				clearTimeout(timeoutTimer);
@@ -1499,6 +1523,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			requestedTimeoutSec,
 			notices: pendingNotices,
 			wallTimeMs,
+			verification,
 		});
 	}
 }

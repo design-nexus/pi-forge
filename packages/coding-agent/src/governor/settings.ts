@@ -13,23 +13,44 @@ function validateThresholdOverrides(value: unknown): void {
 		throw new Error("adaptive.thresholds must be an object");
 	}
 	const overrides = value as Record<string, unknown>;
-	const allowed = ["trivialMaxFiles", "complexMinFiles", "massiveMinFiles", "confidenceFloor"] as const;
+	const allowed = [
+		"trivialMaxFiles",
+		"complexMinFiles",
+		"massiveMinFiles",
+		"complexMinTasks",
+		"massiveMinTasks",
+		"confidenceFloor",
+		"runtimeNormalPressure",
+		"runtimeComplexPressure",
+	] as const;
 	if (Object.keys(overrides).some(key => !allowed.includes(key as (typeof allowed)[number]))) {
 		throw new Error("adaptive.thresholds contains an unknown field");
 	}
 	const thresholds = { ...DEFAULT_GOVERNOR_THRESHOLDS, ...overrides };
 	if (
-		![thresholds.trivialMaxFiles, thresholds.complexMinFiles, thresholds.massiveMinFiles].every(
-			entry => typeof entry === "number" && Number.isInteger(entry) && entry >= 0,
-		) ||
+		![
+			thresholds.trivialMaxFiles,
+			thresholds.complexMinFiles,
+			thresholds.massiveMinFiles,
+			thresholds.complexMinTasks,
+			thresholds.massiveMinTasks,
+		].every(entry => typeof entry === "number" && Number.isInteger(entry) && entry >= 0) ||
 		thresholds.trivialMaxFiles >= thresholds.complexMinFiles ||
 		thresholds.complexMinFiles >= thresholds.massiveMinFiles ||
+		thresholds.complexMinTasks >= thresholds.massiveMinTasks ||
 		typeof thresholds.confidenceFloor !== "number" ||
 		!Number.isFinite(thresholds.confidenceFloor) ||
 		thresholds.confidenceFloor < 0 ||
-		thresholds.confidenceFloor > 1
+		thresholds.confidenceFloor > 1 ||
+		typeof thresholds.runtimeNormalPressure !== "number" ||
+		!Number.isFinite(thresholds.runtimeNormalPressure) ||
+		thresholds.runtimeNormalPressure < 0 ||
+		thresholds.runtimeNormalPressure >= thresholds.runtimeComplexPressure ||
+		typeof thresholds.runtimeComplexPressure !== "number" ||
+		!Number.isFinite(thresholds.runtimeComplexPressure) ||
+		thresholds.runtimeComplexPressure > 1
 	) {
-		throw new Error("adaptive.thresholds requires ordered file limits and a confidence floor from 0 to 1");
+		throw new Error("adaptive.thresholds requires ordered file, task, and runtime limits from 0 to 1");
 	}
 }
 
@@ -72,13 +93,13 @@ function validateBandBudgets(value: unknown): void {
 export const cfgAdaptiveMode = register({
 	id: "adaptive.mode",
 	type: "enum",
-	values: ["off", "inspect"] as const,
+	values: ["off", "inspect", "auto"] as const,
 	default: "off",
 	ui: {
 		tab: "model",
 		group: "Prompt",
-		label: "Adaptive Preview",
-		description: "Enable Governor decision previews without changing agent execution",
+		label: "Adaptive Governor",
+		description: "Inspect decisions or automatically route eligible task capabilities",
 	},
 });
 

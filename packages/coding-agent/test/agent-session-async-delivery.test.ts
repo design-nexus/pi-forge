@@ -15,6 +15,7 @@ import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async";
 import type { AsyncJob } from "@oh-my-pi/pi-coding-agent/async/job-manager";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { cfgAdaptiveMode } from "@oh-my-pi/pi-coding-agent/governor/settings";
 import type { DaemonCompletionNotification } from "@oh-my-pi/pi-coding-agent/launch/protocol";
 import { buildAsyncResultBlock } from "@oh-my-pi/pi-tui/chat/transcript-render-helpers";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
@@ -128,6 +129,58 @@ describe("AgentSession owner-routed async delivery", () => {
 			),
 		);
 		expect(deliveredImages).toEqual([image]);
+	});
+
+	it("revises the Governor when an owned background task fails", async () => {
+		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
+		const mock = createMockModel({ handler: () => ({ content: ["Done"] }) });
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [] },
+			convertToLlm,
+			streamFn: mock.stream,
+		});
+		const authStorage = await AuthStorage.create(":memory:");
+		authStorages.push(authStorage);
+		authStorage.keys.setRuntime("anthropic", "test-key");
+		const manager = new AsyncJobManager({});
+		AsyncJobManager.setInstance(manager);
+		const settings = Settings.isolated();
+		cfgAdaptiveMode.set(settings, "inspect");
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry: new ModelRegistry(authStorage),
+			agentId: "SubAgent",
+			asyncJobManager: manager,
+		});
+		session.recordGovernorDecision(
+			{
+				signals: {
+					fileCount: 1,
+					independentTasks: 0,
+					dependencyEdges: 0,
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"initial",
+		);
+		manager.register(
+			"task",
+			"failing worker",
+			async () => {
+				throw new Error("Worker failed");
+			},
+			{ id: "failed-worker", ownerId: "SubAgent" },
+		);
+		await session.settleAsyncWork();
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			trigger: "runtime",
+			signals: { runtime: { failedWorkers: 1 } },
+			decision: { band: "normal" },
+		});
 	});
 
 	it("does not spill an incomplete background capture as full output during follow-up delivery", async () => {
@@ -554,6 +607,7 @@ describe("AgentSession owner-routed async delivery", () => {
 			epoch: 0,
 		};
 		const message = buildAsyncResultBatchMessage([entry]);
+		expect(message?.details?.jobs).toMatchObject([{ jobId: "DeadStream", type: "task", status: "failed" }]);
 		expect(message?.content).toContain(`Structured output: unavailable: ${error}`);
 		expect(message?.content).not.toContain("schema invalid");
 		expect(message?.content).not.toContain("schema unavailable");

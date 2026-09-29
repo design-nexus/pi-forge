@@ -37,6 +37,8 @@ export interface BashToolDetails {
 	wallTimeMs?: number;
 	/** Exit code of a command that ran to completion but failed (non-zero). */
 	exitCode?: number;
+	/** Explicitly declared foreground check result; ordinary commands have no verification field. */
+	verification?: { passed: boolean };
 	/** True when the command was killed by its timeout deadline (not a failure). */
 	timedOut?: boolean;
 	/** Live ACP update only; completed results refer to released terminals. */
