@@ -20,12 +20,21 @@ import { scheduler } from "node:timers/promises";
 import type { GovernorDecision } from "../governor/decision";
 import { latestGovernorSnapshot, recordGovernorDecision } from "../governor/ledger";
 import type { GovernorRevisionTrigger, GovernorSnapshot } from "../governor/revision";
+import { recordGovernorRuntimeSignals } from "../governor/runtime-signals";
+import { cfgAdaptiveMode } from "../governor/settings";
+import { routeGovernorTaskBatch } from "../governor/task-batch";
 import {
 	cfgGovernorBudgetInputs,
 	inspectGovernorDecision,
 	previewGovernorDecision,
 	type GovernorPreviewRequest,
 } from "../governor/session";
+import {
+	routeGovernorTaskTransition,
+	type GovernorTaskTransitionRequest,
+	type GovernorTaskTransitionResult,
+} from "../governor/transition";
+import { recordGovernorTodoScope } from "../governor/todo-scope";
 import type { PromptComposition } from "../prompt-engine/compose";
 import {
 	routeDelegationCapability,
@@ -716,6 +725,9 @@ export class AgentSession implements SettingsScope {
 	readonly #models: ModelControls;
 	readonly #tools: SessionTools;
 	readonly #prewalk: PrewalkCoordinator;
+	/** Previous presentation of task while the Governor owns its automatic promotion. */
+	#governorTaskWasMounted: boolean | undefined;
+	#governorTaskReleaseOnIdle: (() => void) | undefined;
 
 	readonly #providerBoundary: SessionProviderBoundary;
 	#promptTemplates: PromptTemplate[];
@@ -2156,6 +2168,7 @@ export class AgentSession implements SettingsScope {
 		// Re-evaluate append-only context mode when the setting changes at runtime.
 		cfgProviderAppendOnlyContext.listen(this, () => this.#syncAppendOnlyContext(this.model));
 		cfgGovernorBudgetInputs.listen(this, () => this.#reconcileGovernor("budget"));
+		cfgAdaptiveMode.listen(this, mode => this.#syncGovernorTaskMode(mode));
 		cfgModelRoles.listen(this, () => this.#advisors.reconcileModelRoles());
 		// Re-derive the active model's effective context window when the
 		// extended-context setting flips at runtime: the registry re-clamps (or
@@ -3604,6 +3617,16 @@ export class AgentSession implements SettingsScope {
 		if (event.type === "message_end") {
 			await messageEndPersistence;
 			if (this.#promptGeneration !== eventPromptGeneration) return;
+			if (
+				event.message.role === "toolResult" ||
+				(event.message.role === "custom" && event.message.customType === ASYNC_RESULT_MESSAGE_TYPE)
+			) {
+				try {
+					recordGovernorRuntimeSignals(this);
+				} catch (error) {
+					logger.warn("Governor runtime revision failed", { error: String(error) });
+				}
+			}
 			if (interruptedThinkingMessage) {
 				this.sessionManager.appendCustomMessageEntry(
 					interruptedThinkingMessage.customType,
@@ -3617,6 +3640,7 @@ export class AgentSession implements SettingsScope {
 
 			if (event.message.role === "assistant") {
 				const assistantMsg = event.message as AssistantMessage;
+				this.#reconcileGovernor("runtime");
 				// Fold this turn's timing into per-model perf aggregates (drives the
 				// /models TPS/TTFT display). Errored turns measure nothing; aborted
 				// turns with reported usage are still valid throughput samples.
@@ -5715,9 +5739,36 @@ export class AgentSession implements SettingsScope {
 	#reconcileGovernor(trigger: GovernorRevisionTrigger): void {
 		try {
 			const snapshot = this.getGovernorSnapshot();
-			if (snapshot) this.recordGovernorDecision({ signals: snapshot.signals }, trigger);
+			if (snapshot) recordGovernorDecision(this, { signals: snapshot.signals }, trigger);
 		} catch (error) {
 			logger.warn("Governor revision failed", { trigger, error: String(error) });
+		}
+	}
+
+	async #syncGovernorTaskMode(mode: "off" | "inspect" | "auto"): Promise<void> {
+		if (mode === "auto") {
+			this.#governorTaskReleaseOnIdle?.();
+			this.#governorTaskReleaseOnIdle = undefined;
+			return;
+		}
+		if (this.#governorTaskWasMounted === undefined) return;
+		if (this.isStreaming) {
+			if (!this.#governorTaskReleaseOnIdle) {
+				this.#governorTaskReleaseOnIdle = this.subscribeRunState(state => {
+					if (state !== "idle") return;
+					this.#governorTaskReleaseOnIdle?.();
+					this.#governorTaskReleaseOnIdle = undefined;
+					void this.#syncGovernorTaskMode(cfgAdaptiveMode.get(this.settings));
+				});
+			}
+			return;
+		}
+		try {
+			await this.runToolRegistryMutation(async () => {
+				if (cfgAdaptiveMode.get(this.settings) !== "auto") await this.releaseGovernorTaskPromotion();
+			});
+		} catch (error) {
+			logger.warn("Governor task capability release failed", { error: String(error) });
 		}
 	}
 
@@ -5725,23 +5776,67 @@ export class AgentSession implements SettingsScope {
 		request: GovernorPreviewRequest,
 		trigger: GovernorRevisionTrigger,
 	): GovernorSnapshot | undefined {
-		return recordGovernorDecision(this, request, trigger);
+		return recordGovernorDecision(this, request, trigger, "manual");
+	}
+
+	routeGovernorTaskTransition(
+		request: GovernorTaskTransitionRequest,
+		trigger: "initial" | "scope" | "steering",
+	): Promise<GovernorTaskTransitionResult> {
+		return routeGovernorTaskTransition(this, request, trigger);
+	}
+
+	routeGovernorTaskBatch(taskCount: number): number | undefined {
+		return routeGovernorTaskBatch(this, taskCount);
 	}
 
 	selectToolCapability(request: ToolCapabilityRouteRequest): ToolCapabilityRouteDecision {
 		return selectToolCapability(this, request);
 	}
 
-	routeToolCapability(request: ToolCapabilityRouteRequest): Promise<ToolCapabilityRouteDecision> {
-		return routeToolCapability(this, request);
+	async routeToolCapability(request: ToolCapabilityRouteRequest): Promise<ToolCapabilityRouteDecision> {
+		const route = await routeToolCapability(this, request);
+		if (request.signal === "explicit" && request.id === "subagents" && route.state === "active") {
+			this.#governorTaskWasMounted = undefined;
+		}
+		return route;
 	}
 
 	selectDelegationCapability(request: DelegationRouteRequest): DelegationRouteDecision {
 		return selectDelegationCapability(this, request);
 	}
 
-	routeDelegationCapability(request: DelegationRouteRequest): Promise<DelegationRouteDecision> {
-		return routeDelegationCapability(this, request);
+	async routeDelegationCapability(request: DelegationRouteRequest): Promise<DelegationRouteDecision> {
+		const route = await routeDelegationCapability(this, request);
+		if (request.signal === "explicit" && route.state === "active") this.#governorTaskWasMounted = undefined;
+		return route;
+	}
+
+	markGovernorTaskPromotion(wasMounted: boolean): void {
+		this.#governorTaskWasMounted = wasMounted;
+	}
+
+	async releaseGovernorTaskPromotion(): Promise<boolean> {
+		const wasMounted = this.#governorTaskWasMounted;
+		if (wasMounted === undefined) return false;
+		if (!this.getActiveToolNames().includes("task")) {
+			this.#governorTaskWasMounted = undefined;
+			return false;
+		}
+		if (
+			this.isStreaming ||
+			(this.model?.thinking?.prefixBinding && this.messages.some(message => message.role === "assistant"))
+		) {
+			return false;
+		}
+		const enabled = this.getEnabledToolNames();
+		const mounted = this.getMountedXdevToolNames();
+		await this.#tools.setActiveToolPresentation(
+			wasMounted ? enabled : enabled.filter(name => name !== "task"),
+			wasMounted ? [...mounted, "task"] : mounted,
+		);
+		this.#governorTaskWasMounted = undefined;
+		return true;
 	}
 
 	async setPromptSettingsOverride(overrides: PromptSessionOverrides | undefined): Promise<void> {
@@ -5947,23 +6042,26 @@ export class AgentSession implements SettingsScope {
 	}
 
 	/** Selects enabled tools, ignoring names absent from the registry. */
-	setActiveToolsByName(toolNames: string[]): Promise<void> {
-		return this.#tools.setActiveToolsByName(toolNames);
+	async setActiveToolsByName(toolNames: string[]): Promise<void> {
+		await this.#tools.setActiveToolsByName(toolNames);
+		this.#governorTaskWasMounted = undefined;
 	}
 
 	/** Restores an exact top-level versus `xd://` tool partition. */
-	setActiveToolPresentation(
+	async setActiveToolPresentation(
 		toolNames: string[],
 		mountedToolNames: string[],
 		forcePromptRefresh = false,
 		signal?: AbortSignal,
 	): Promise<void> {
-		return this.#tools.setActiveToolPresentation(toolNames, mountedToolNames, forcePromptRefresh, signal);
+		await this.#tools.setActiveToolPresentation(toolNames, mountedToolNames, forcePromptRefresh, signal);
+		this.#governorTaskWasMounted = undefined;
 	}
 
 	/** Restores a non-MCP presentation snapshot while retaining the current MCP selection. */
-	restoreNonMCPToolPresentation(nonMCPToolNames: string[], nonMCPMountedToolNames: string[]): Promise<void> {
-		return this.#tools.restoreNonMCPToolPresentation(nonMCPToolNames, nonMCPMountedToolNames);
+	async restoreNonMCPToolPresentation(nonMCPToolNames: string[], nonMCPMountedToolNames: string[]): Promise<void> {
+		await this.#tools.restoreNonMCPToolPresentation(nonMCPToolNames, nonMCPMountedToolNames);
+		this.#governorTaskWasMounted = undefined;
 	}
 
 	/** Current enabled eval prelude definitions. */
@@ -8405,6 +8503,11 @@ export class AgentSession implements SettingsScope {
 
 	setTodoPhases(phases: TodoPhase[]): void {
 		this.#todo.setPhases(phases);
+		try {
+			recordGovernorTodoScope(this, phases);
+		} catch (error) {
+			logger.warn("Governor todo scope revision failed", { error: String(error) });
+		}
 	}
 
 	/** Active item labels accepted by this pooled turn's incremental yield tool. */

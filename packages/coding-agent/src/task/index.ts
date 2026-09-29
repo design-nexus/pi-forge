@@ -755,6 +755,15 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 		const policies = preflights.map(preflight => preflight.policy!);
 		const itemBlocking = policies.map(policy => policy.effectiveAgent.blocking === true);
+		let batchConcurrency: number | undefined;
+		if (params.tasks && spawnItems.length > 1) {
+			try {
+				batchConcurrency = this.session.routeGovernorTaskBatch?.(spawnItems.length);
+			} catch (error) {
+				logger.warn("Adaptive task batch routing failed", { error: String(error) });
+			}
+		}
+		const batchSemaphore = batchConcurrency && batchConcurrency > 0 ? new Semaphore(batchConcurrency) : undefined;
 
 		// Execution mode is per item: an item whose agent type declares
 		// `blocking: true` runs inline on this turn (the parent waits on its
@@ -796,6 +805,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				defaultAgent,
 				signal,
 				onUpdate,
+				batchSemaphore,
 			);
 			if (!advisory) return result;
 			let appended = false;
@@ -851,6 +861,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					defaultAgent,
 					signal,
 					onUpdate,
+					batchSemaphore,
 				),
 			);
 		}
@@ -945,6 +956,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					ircEnabled,
 					buildDetails: buildAsyncDetails,
 					onUpdate,
+					batchSemaphore,
 					onSettled: failed => {
 						settledCount += 1;
 						if (failed) failedCount += 1;
@@ -1048,6 +1060,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			defaultAgent,
 			signal,
 			spawns: syncSpawns.map(spawn => ({ item: spawn.item, index: spawn.index, preAllocatedId: spawn.agentId })),
+			batchSemaphore,
 			onItemProgress: onUpdate
 				? (index, progress) => {
 						const spawn = spawns.find(candidate => candidate.index === index);
@@ -1109,10 +1122,21 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		ircEnabled: boolean;
 		buildDetails: () => TaskToolDetails;
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>;
+		batchSemaphore?: Semaphore;
 		onSettled?: (failed: boolean) => void;
 	}): string {
-		const { manager, toolCallId, spawnParams, agentId, progress, ircEnabled, buildDetails, onUpdate, onSettled } =
-			options;
+		const {
+			manager,
+			toolCallId,
+			spawnParams,
+			agentId,
+			progress,
+			ircEnabled,
+			buildDetails,
+			onUpdate,
+			onSettled,
+			batchSemaphore,
+		} = options;
 		const buildFollowUpHint = async (aborted: boolean): Promise<string> => {
 			// Isolated runs are parked without a reviver once the run ends
 			// (`finalizeSubagentLifecycle`), so "message it" would point the
@@ -1137,6 +1161,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				const startedAt = Date.now();
 				const semaphore = this.#getSpawnSemaphore();
 				let semaphoreHeld = false;
+				let batchHeld = false;
 				// Every release funnels through here: the flag flips before the
 				// release so no path — acquire-time abort, executor failure, or a
 				// future refactor that reorders the branches — can return a permit
@@ -1144,11 +1169,20 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				// from a running job and let a later spawn start past
 				// task.maxConcurrency.
 				const releasePermit = () => {
-					if (!semaphoreHeld) return;
-					semaphoreHeld = false;
-					this.#releaseSpawnSemaphore();
+					if (semaphoreHeld) {
+						semaphoreHeld = false;
+						this.#releaseSpawnSemaphore();
+					}
+					if (batchHeld) {
+						batchHeld = false;
+						batchSemaphore?.release();
+					}
 				};
 				try {
+					if (batchSemaphore) {
+						await batchSemaphore.acquire(runSignal);
+						batchHeld = true;
+					}
 					await semaphore.acquire(runSignal);
 					semaphoreHeld = true;
 				} catch {
@@ -1317,14 +1351,22 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		defaultAgent: string,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>,
+		batchSemaphore?: Semaphore,
 	): Promise<AgentToolResult<TaskToolDetails>> {
 		if (spawns.length === 1) {
 			const spawn = spawns[0]!;
 			const semaphore = this.#getSpawnSemaphore();
 			const invokedAt = Date.now();
-			await semaphore.acquire(signal);
-			const acquiredAt = Date.now();
+			let batchHeld = false;
+			let semaphoreHeld = false;
 			try {
+				if (batchSemaphore) {
+					await batchSemaphore.acquire(signal);
+					batchHeld = true;
+				}
+				await semaphore.acquire(signal);
+				semaphoreHeld = true;
+				const acquiredAt = Date.now();
 				return await this.#executeSync(
 					toolCallId,
 					spawnParamsFor(params, spawn.item, defaultAgent),
@@ -1336,7 +1378,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					{ invokedAt, acquiredAt },
 				);
 			} finally {
-				this.#releaseSpawnSemaphore();
+				if (semaphoreHeld) this.#releaseSpawnSemaphore();
+				if (batchHeld) batchSemaphore?.release();
 			}
 		}
 
@@ -1362,6 +1405,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			defaultAgent,
 			signal,
 			spawns,
+			batchSemaphore,
 			onItemProgress: onUpdate
 				? (index, progress) => {
 						latestProgress.set(index, { ...progress, index });
@@ -1396,10 +1440,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		params: TaskParams;
 		defaultAgent: string;
 		spawns: SyncSpawnRef[];
+		batchSemaphore?: Semaphore;
 		signal?: AbortSignal;
 		onItemProgress?: (index: number, progress: AgentProgress) => void;
 	}): Promise<(AgentToolResult<TaskToolDetails> | undefined)[]> {
-		const { toolCallId, params, defaultAgent, spawns, signal, onItemProgress } = args;
+		const { toolCallId, params, defaultAgent, spawns, signal, onItemProgress, batchSemaphore } = args;
 		const semaphore = this.#getSpawnSemaphore();
 		const { results } = await mapWithConcurrencyLimitAllSettled(
 			spawns,
@@ -1407,10 +1452,16 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			async (spawn, _position, workerSignal) => {
 				const invokedAt = Date.now();
 				let semaphoreHeld = false;
+				let batchHeld = false;
 				try {
+					if (batchSemaphore) {
+						await batchSemaphore.acquire(workerSignal);
+						batchHeld = true;
+					}
 					await semaphore.acquire(workerSignal);
 					semaphoreHeld = true;
 				} catch (error) {
+					if (batchHeld) batchSemaphore?.release();
 					if (workerSignal.aborted) return undefined;
 					throw error;
 				}
@@ -1434,6 +1485,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					);
 				} finally {
 					if (semaphoreHeld) this.#releaseSpawnSemaphore();
+					if (batchHeld) batchSemaphore?.release();
 				}
 			},
 			signal,

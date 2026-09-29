@@ -58,6 +58,35 @@ it("uses a reversible normal workflow when classification confidence is low", ()
 	expect(decision?.evidence).toContain("low confidence fallback");
 });
 
+it("limits a context allocation to remaining window room and restores it when usage falls", () => {
+	const base = decisionInput({ contextWindowTokens: 100_000 });
+	const crowded = decideGovernor({ ...base, contextUsedTokens: 95_000 });
+	const cleared = decideGovernor({ ...base, contextUsedTokens: 10_000 });
+	const exhausted = decideGovernor({ ...base, contextUsedTokens: 120_000 });
+	expect(crowded?.contextBudgetTokens).toBe(5_000);
+	expect(crowded?.clamps).toContain("context budget limited by remaining window");
+	expect(cleared?.contextBudgetTokens).toBe(10_000);
+	expect(exhausted?.contextBudgetTokens).toBe(0);
+});
+
+it("raises effort only when recent exploration and failures combine, while preserving an explicit band", () => {
+	const runtime = { completedCalls: 16, explorationCalls: 8, failedCalls: 2 };
+	expect(decideGovernor(decisionInput({ signals: { ...decisionInput().signals, runtime } }))).toMatchObject({
+		band: "complex",
+		executionMode: "planned",
+	});
+	expect(
+		decideGovernor(
+			decisionInput({ signals: { ...decisionInput().signals, runtime: { ...runtime, failedCalls: 0 } } }),
+		)?.band,
+	).toBe("trivial");
+	expect(
+		decideGovernor(
+			decisionInput({ signals: { ...decisionInput().signals, runtime }, overrides: { band: "trivial" } }),
+		)?.band,
+	).toBe("trivial");
+});
+
 it("honors explicit band and role while clamping effort and workers to OMP ceilings", () => {
 	const requestedModel = { ...model, id: "resolved-role-model" };
 	const decision = decideGovernor(
@@ -144,6 +173,22 @@ it("applies configured band budgets without exceeding the hard worker cap", () =
 		}),
 	);
 	expect(bounded?.workerCount).toBe(2);
+});
+
+it("classifies a long dependency chain by total work without inventing parallel workers", () => {
+	const decision = decideGovernor(
+		decisionInput({
+			signals: {
+				fileCount: 2,
+				taskCount: 12,
+				independentTasks: 1,
+				dependencyEdges: 11,
+				highRisk: false,
+				confidence: 0.9,
+			},
+		}),
+	);
+	expect(decision).toMatchObject({ band: "massive", executionMode: "planned", workerCount: 1 });
 });
 
 it("preserves defaults when adaptive policy is off and does not invent unsupported effort", () => {

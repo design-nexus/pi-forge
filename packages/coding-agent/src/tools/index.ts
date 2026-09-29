@@ -460,6 +460,8 @@ export interface ToolSession {
 	getClientBridge?: () => ClientBridge | undefined;
 	/** Get cached todo phases for this session. */
 	getTodoPhases?: () => TodoPhase[];
+	/** Optional Governor cap for one concrete task batch; undefined keeps OMP's concurrency behavior. */
+	routeGovernorTaskBatch?: (taskCount: number) => number | undefined;
 	/** Replace cached todo phases for this session. */
 	setTodoPhases?: (phases: TodoPhase[]) => void;
 	/**

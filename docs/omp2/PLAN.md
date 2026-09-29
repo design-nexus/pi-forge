@@ -1623,26 +1623,3 @@ It should win by applying **the right amount of intelligence at the right time**
 OMP provides the hands.
 
 Pi Forge should provide the executive control system.
-
----
-
-# 28. Current implementation status (2026-09-29)
-
-Repository evidence: [architecture baseline](docs/architecture-baseline.md), [initial task corpus](docs/benchmark-corpus.md), and [checkout inventory](docs/omp2/CHECKOUT_INVENTORY.md). These statuses describe the local branch; they are not benchmark results.
-
-| Phase | Status | Next dependency |
-| --- | --- | --- |
-| 0: Baseline and inventory | [IN PROGRESS] | Freeze executable task packets and run matched upstream/Pi Forge baselines. |
-| 1: Prompt Engine | [IN PROGRESS] | Establish task-quality non-regression and material token impact in representative live sessions. |
-| 2: Capability Router | [IN PROGRESS] | Supply authoritative runtime task transitions and route capabilities with separate activation gates. |
-| 3: Adaptive Effort Governor | [IN PROGRESS] | Bind more decisions to execution and verification while honoring operator ceilings. |
-| 3B: Continuous Effort Reassessment | [IN PROGRESS] | Add progress and duration signals, then evaluate escalation and de-escalation on real tasks. |
-| 4: Context Manager | [PLANNED] | Extend context headroom budgeting into a sourced, recoverable working set. |
-| 5–9 | [PLANNED] | Extend the OMP primitives identified in the architecture baseline. |
-
-Status: Phase 0 baseline documented; outcome baseline pending.
-Implementation: Prompt Engine, direct-tool routing, an opt-in Governor, structured task-fact routing, bounded task batches, and recent runtime feedback are present in the local working tree. Context headroom limits Governor budgets, but the working-set manager is not implemented.
-Tests: Focused Prompt Engine and Governor contract suites exist; latest verification belongs to the checkout inventory.
-Benchmarks: Offline prompt-text counts were rerun; no matched coding-outcome A/B data exists.
-Known limitations: The task corpus is a scenario specification until each case has a frozen executable packet. Adaptive execution remains off by default; ordinary chat has no authoritative task graph, and no automatic verification or repair loop runs.
-Next dependencies: Continue Capability Router runtime integration and Governor execution binding. Freeze benchmark packets before making performance claims.

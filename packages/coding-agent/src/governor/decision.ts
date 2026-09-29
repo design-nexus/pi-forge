@@ -10,12 +10,26 @@ export interface GovernorThresholds {
 	trivialMaxFiles: number;
 	complexMinFiles: number;
 	massiveMinFiles: number;
+	complexMinTasks: number;
+	massiveMinTasks: number;
 	confidenceFloor: number;
+	runtimeNormalPressure: number;
+	runtimeComplexPressure: number;
 }
 
 export interface GovernorBandBudget {
 	maxWorkers: number;
 	contextShare: number;
+}
+
+export interface GovernorRuntimeSignals {
+	completedCalls: number;
+	explorationCalls: number;
+	failedCalls: number;
+	editedFiles?: number;
+	verificationFailures?: number;
+	failedWorkers?: number;
+	failedMutations?: number;
 }
 
 export const DEFAULT_GOVERNOR_BAND_BUDGETS: Record<TaskBand, GovernorBandBudget> = {
@@ -29,7 +43,11 @@ export const DEFAULT_GOVERNOR_THRESHOLDS: GovernorThresholds = {
 	trivialMaxFiles: 1,
 	complexMinFiles: 5,
 	massiveMinFiles: 12,
+	complexMinTasks: 4,
+	massiveMinTasks: 12,
 	confidenceFloor: 0.6,
+	runtimeNormalPressure: 0.4,
+	runtimeComplexPressure: 0.7,
 };
 
 export interface GovernorDecisionInput {
@@ -37,10 +55,12 @@ export interface GovernorDecisionInput {
 	enabled: boolean;
 	signals: {
 		fileCount: number;
+		taskCount?: number;
 		independentTasks: number;
 		dependencyEdges: number;
 		highRisk: boolean;
 		confidence: number;
+		runtime?: GovernorRuntimeSignals;
 	};
 	thresholds?: GovernorThresholds;
 	bandBudgets?: Partial<Record<TaskBand, Partial<GovernorBandBudget>>>;
@@ -65,6 +85,8 @@ export interface GovernorDecisionInput {
 		taskToolAvailable: boolean;
 	};
 	contextWindowTokens: number;
+	/** Current session context use; a policy share cannot exceed remaining room. */
+	contextUsedTokens?: number;
 }
 
 export interface GovernorDecision {
@@ -144,18 +166,24 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 	const { highRisk } = input.signals;
 	const fileCount = nonNegative(input.signals.fileCount);
 	const independentTasks = nonNegative(input.signals.independentTasks);
+	const taskCount = nonNegative(input.signals.taskCount ?? independentTasks);
 	const dependencyEdges = nonNegative(input.signals.dependencyEdges);
 	const confidence = Number.isFinite(input.signals.confidence)
 		? Math.max(0, Math.min(1, input.signals.confidence))
 		: 0;
 	let band: TaskBand;
-	if (fileCount >= thresholds.massiveMinFiles || independentTasks >= 4) {
+	if (fileCount >= thresholds.massiveMinFiles || taskCount >= thresholds.massiveMinTasks || independentTasks >= 4) {
 		band = "massive";
 		evidence.push("large or separable scope");
-	} else if (fileCount >= thresholds.complexMinFiles || dependencyEdges > 0 || highRisk) {
+	} else if (
+		fileCount >= thresholds.complexMinFiles ||
+		taskCount >= thresholds.complexMinTasks ||
+		dependencyEdges > 0 ||
+		highRisk
+	) {
 		band = "complex";
 		evidence.push("scope, dependencies, or risk require milestones");
-	} else if (fileCount <= thresholds.trivialMaxFiles && independentTasks <= 1) {
+	} else if (fileCount <= thresholds.trivialMaxFiles && taskCount <= 1 && independentTasks <= 1) {
 		band = "trivial";
 		evidence.push("small independent scope");
 	} else {
@@ -165,6 +193,54 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 	if (confidence < thresholds.confidenceFloor && !input.overrides?.band) {
 		band = "normal";
 		evidence.push("low confidence fallback");
+	}
+	const runtime = input.signals.runtime;
+	if (runtime?.editedFiles !== undefined && runtime.editedFiles >= thresholds.complexMinFiles) {
+		const editedBand = runtime.editedFiles >= thresholds.massiveMinFiles ? "massive" : "complex";
+		if (band === "trivial" || band === "normal" || (band === "complex" && editedBand === "massive")) {
+			band = editedBand;
+			evidence.push("recent file edits widened the task scope");
+		}
+	}
+	if (runtime?.verificationFailures && runtime.verificationFailures > 0) {
+		if (runtime.verificationFailures > 1 && (band === "trivial" || band === "normal")) {
+			band = "complex";
+			evidence.push("repeated declared verification failures raised effort");
+		} else if (band === "trivial") {
+			band = "normal";
+			evidence.push("a declared verification failure raised effort");
+		}
+	}
+	if (runtime?.failedWorkers && runtime.failedWorkers > 0) {
+		if (runtime.failedWorkers > 1 && (band === "trivial" || band === "normal")) {
+			band = "complex";
+			evidence.push("repeated worker failures raised effort");
+		} else if (band === "trivial") {
+			band = "normal";
+			evidence.push("a worker failure raised effort");
+		}
+	}
+	if (runtime?.failedMutations && runtime.failedMutations > 1) {
+		if (runtime.failedMutations > 2 && (band === "trivial" || band === "normal")) {
+			band = "complex";
+			evidence.push("repeated edit or write failures raised effort");
+		} else if (band === "trivial") {
+			band = "normal";
+			evidence.push("edit or write failures raised effort");
+		}
+	}
+	if (runtime && runtime.explorationCalls > 0 && runtime.failedCalls > 0) {
+		const explorationPressure = Math.min(1, nonNegative(runtime.explorationCalls) / 8);
+		const failurePressure = Math.min(1, nonNegative(runtime.failedCalls) / 3);
+		const volumePressure = Math.min(1, nonNegative(runtime.completedCalls) / 16);
+		const pressure = 0.45 * explorationPressure + 0.45 * failurePressure + 0.1 * volumePressure;
+		if (pressure >= thresholds.runtimeComplexPressure && (band === "trivial" || band === "normal")) {
+			band = "complex";
+			evidence.push("recent exploration and tool failures increased effort pressure");
+		} else if (pressure >= thresholds.runtimeNormalPressure && band === "trivial") {
+			band = "normal";
+			evidence.push("recent exploration and tool failures increased effort pressure");
+		}
 	}
 	if (input.overrides?.band) {
 		band = input.overrides.band;
@@ -215,7 +291,13 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 	const executionMode: ExecutionMode =
 		workerCount > 1 ? "parallel" : band === "complex" || band === "massive" ? "planned" : "direct";
 	const contextWindowTokens = model === input.current.model ? input.contextWindowTokens : (model.contextWindow ?? 0);
-	const contextBudgetTokens = Math.floor(nonNegative(contextWindowTokens) * contextShare);
+	const policyContextBudgetTokens = Math.floor(nonNegative(contextWindowTokens) * contextShare);
+	const remainingContextTokens = Math.max(
+		0,
+		nonNegative(contextWindowTokens) - nonNegative(input.contextUsedTokens ?? 0),
+	);
+	const contextBudgetTokens = Math.min(policyContextBudgetTokens, remainingContextTokens);
+	if (contextBudgetTokens < policyContextBudgetTokens) clamps.push("context budget limited by remaining window");
 	return {
 		version: 1,
 		band,

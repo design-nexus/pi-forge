@@ -5,8 +5,13 @@ import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { cfgAdaptiveBands, cfgAdaptiveMode, cfgAdaptiveThresholds } from "@oh-my-pi/pi-coding-agent/governor/settings";
 import { latestGovernorSnapshot } from "@oh-my-pi/pi-coding-agent/governor/ledger";
+import {
+	recentGovernorToolSignals,
+	recordGovernorRuntimeSignals,
+} from "@oh-my-pi/pi-coding-agent/governor/runtime-signals";
 import { cfgPromptCapabilities } from "@oh-my-pi/pi-coding-agent/prompt-engine/settings";
 import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
+import { ASYNC_RESULT_MESSAGE_TYPE } from "@oh-my-pi/pi-coding-agent/session/async-job-delivery";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { cfgTaskMaxConcurrency, cfgTaskMaxEffort } from "@oh-my-pi/pi-coding-agent/task/settings";
@@ -88,6 +93,7 @@ it("previews a live Governor decision from settings and session ceilings without
 			})?.band,
 		).toBe("complex");
 		expect(() => cfgAdaptiveThresholds.set(settings, { complexMinFiles: 20, massiveMinFiles: 10 })).toThrow();
+		expect(() => cfgAdaptiveThresholds.set(settings, { complexMinTasks: 12, massiveMinTasks: 4 })).toThrow();
 		await sessionManager.ensureOnDisk();
 		const first = session.recordGovernorDecision({ signals: facts }, "initial");
 		expect(first).toMatchObject({ revision: 1, decision: { band: "massive" } });
@@ -177,5 +183,379 @@ it("previews a live Governor decision from settings and session ceilings without
 		expect(latestGovernorSnapshot(reopened)?.revision).toBe(12);
 	} finally {
 		await reopened.close();
+	}
+});
+
+it("tracks structured todo scope without treating todo items as parallel tasks or replacing a task graph", async () => {
+	using dir = TempDir.createSync("@omp-governor-todo-");
+	const cwd = dir.join("project");
+	const settings = Settings.isolated();
+	const model = getBundledModel("openai", "gpt-4o-mini");
+	if (!model) throw new Error("Expected bundled test model");
+	const authStorage = await AuthStorage.create(":memory:");
+	authStorage.keys.setRuntime("openai", "test-key");
+	const modelRegistry = new ModelRegistry(authStorage, dir.join("models.yml"));
+	const sessionManager = SessionManager.inMemory();
+	const { session } = await createAgentSession({
+		cwd,
+		agentDir: dir.join("agent"),
+		authStorage,
+		modelRegistry,
+		settings,
+		sessionManager,
+		model,
+		disableExtensionDiscovery: true,
+		skills: [],
+		contextFiles: [],
+		promptTemplates: [],
+		slashCommands: [],
+		enableMCP: false,
+		enableLsp: false,
+		skipPythonPreflight: true,
+	});
+	try {
+		const tasks = Array.from({ length: 4 }, (_, index) => ({ content: `Task ${index}`, status: "pending" as const }));
+		session.setTodoPhases([{ name: "Work", tasks }]);
+		expect(session.getGovernorSnapshot()).toBeUndefined();
+		cfgAdaptiveMode.set(settings, "inspect");
+		session.setTodoPhases([{ name: "Work", tasks }]);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			revision: 1,
+			signalSource: "todo",
+			signals: { taskCount: 4, independentTasks: 0 },
+			decision: { band: "complex", workerCount: 0 },
+		});
+		session.setTodoPhases([{ name: "Work", tasks: [tasks[0]!] }]);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			revision: 2,
+			signals: { taskCount: 1 },
+			decision: { band: "trivial" },
+		});
+		await session.routeGovernorTaskTransition(
+			{
+				facts: {
+					files: [],
+					tasks: [
+						{ id: "a", dependsOn: [] },
+						{ id: "b", dependsOn: ["a"] },
+						{ id: "c", dependsOn: ["b"] },
+						{ id: "d", dependsOn: ["c"] },
+					],
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"scope",
+		);
+		const graph = session.getGovernorSnapshot();
+		expect(graph).toMatchObject({ signalSource: "task_graph", signals: { taskCount: 4, independentTasks: 1 } });
+		session.setTodoPhases([{ name: "Work", tasks }]);
+		expect(session.getGovernorSnapshot()).toEqual(graph);
+		const manual = session.recordGovernorDecision(
+			{
+				signals: {
+					fileCount: 1,
+					taskCount: 1,
+					independentTasks: 0,
+					dependencyEdges: 0,
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"steering",
+		);
+		expect(manual).toMatchObject({ signalSource: "manual", decision: { band: "trivial" } });
+		session.setTodoPhases([{ name: "Work", tasks }]);
+		expect(session.getGovernorSnapshot()).toEqual(manual);
+		for (let index = 0; index < 16; index++) {
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: `pressure-${index}`,
+				toolName: index < 8 ? "read" : "bash",
+				content: [{ type: "text", text: "result" }],
+				isError: index === 8 || index === 9,
+				timestamp: Date.now(),
+			});
+		}
+		recordGovernorRuntimeSignals(session);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			trigger: "runtime",
+			signalSource: "manual",
+			signals: { runtime: { completedCalls: 16, explorationCalls: 8, failedCalls: 2 } },
+			decision: { band: "complex", workerCount: 0 },
+		});
+		for (let index = 0; index < 16; index++) {
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: `recovery-${index}`,
+				toolName: "bash",
+				content: [{ type: "text", text: "result" }],
+				isError: false,
+				timestamp: Date.now(),
+			});
+		}
+		recordGovernorRuntimeSignals(session);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			trigger: "runtime",
+			signals: { runtime: { completedCalls: 16, explorationCalls: 0, failedCalls: 0 } },
+			decision: { band: "trivial" },
+		});
+		sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "New task" }],
+			timestamp: Date.now(),
+		});
+		expect(recentGovernorToolSignals(sessionManager)).toEqual({
+			completedCalls: 0,
+			explorationCalls: 0,
+			failedCalls: 0,
+			editedFiles: 0,
+			verificationFailures: 0,
+			failedWorkers: 0,
+			failedMutations: 0,
+		});
+		recordGovernorRuntimeSignals(session);
+		expect(session.getGovernorSnapshot()?.decision.band).toBe("trivial");
+		sessionManager.appendMessage({
+			role: "toolResult",
+			toolCallId: "multi-edit",
+			toolName: "edit",
+			content: [{ type: "text", text: "Applied" }],
+			details: {
+				perFileResults: [
+					{ path: "src/one.ts" },
+					{ path: "src/two.ts", sourcePath: "src/old-two.ts" },
+					{ path: "src/three.ts" },
+				],
+			},
+			isError: false,
+			timestamp: Date.now(),
+		});
+		sessionManager.appendMessage({
+			role: "toolResult",
+			toolCallId: "write-edit",
+			toolName: "write",
+			content: [{ type: "text", text: "Wrote" }],
+			details: { resolvedPath: "src/four.ts" },
+			isError: false,
+			timestamp: Date.now(),
+		});
+		sessionManager.appendMessage({
+			role: "toolResult",
+			toolCallId: "failed-edit",
+			toolName: "edit",
+			content: [{ type: "text", text: "Failed" }],
+			details: { path: "src/untouched.ts" },
+			isError: true,
+			timestamp: Date.now(),
+		});
+		recordGovernorRuntimeSignals(session);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			trigger: "runtime",
+			signals: { runtime: { editedFiles: 5 } },
+			decision: { band: "complex" },
+		});
+		const runtimeGraph = await session.routeGovernorTaskTransition(
+			{
+				facts: {
+					files: ["src/one.ts"],
+					tasks: [
+						{ id: "one", dependsOn: [] },
+						{ id: "two", dependsOn: [] },
+						{ id: "three", dependsOn: [] },
+					],
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"scope",
+		);
+		expect(runtimeGraph.snapshot).toMatchObject({
+			signalSource: "task_graph",
+			signals: { runtime: { editedFiles: 5 } },
+			decision: { band: "complex" },
+		});
+		cfgAdaptiveMode.set(settings, "auto");
+		expect(session.routeGovernorTaskBatch(3)).toBe(2);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			signalSource: "task_batch",
+			signals: { taskCount: 3, runtime: { editedFiles: 5 } },
+			decision: { band: "complex", workerCount: 2 },
+		});
+		for (let index = 0; index < 16; index++) {
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: `settled-${index}`,
+				toolName: "bash",
+				content: [{ type: "text", text: "result" }],
+				isError: false,
+				timestamp: Date.now(),
+			});
+		}
+		recordGovernorRuntimeSignals(session);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			signals: { runtime: { editedFiles: 0 } },
+			decision: { band: "normal" },
+		});
+		expect(session.routeGovernorTaskBatch(3)).toBeUndefined();
+		expect(session.routeGovernorTaskBatch(5)).toBe(4);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			signalSource: "task_batch",
+			signals: { taskCount: 5, independentTasks: 5 },
+			decision: { workerCount: 4 },
+		});
+		cfgTaskMaxConcurrency.set(settings, 2);
+		expect(session.routeGovernorTaskBatch(5)).toBeUndefined();
+		expect(session.getGovernorSnapshot()?.decision.workerCount).toBe(2);
+		session.recordGovernorDecision(
+			{
+				signals: {
+					fileCount: 1,
+					taskCount: 1,
+					independentTasks: 0,
+					dependencyEdges: 0,
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"scope",
+		);
+		for (let index = 0; index < 2; index++) {
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: `check-${index}`,
+				toolName: "bash",
+				content: [{ type: "text", text: "Check failed" }],
+				details: { exitCode: 1, verification: { passed: false } },
+				isError: true,
+				timestamp: Date.now(),
+			});
+			recordGovernorRuntimeSignals(session);
+			expect(session.getGovernorSnapshot()).toMatchObject({
+				trigger: "verification_failure",
+				signals: { runtime: { verificationFailures: index + 1 } },
+				decision: { band: index === 0 ? "normal" : "complex" },
+			});
+		}
+		sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "Background task" }],
+			timestamp: Date.now(),
+		});
+		session.recordGovernorDecision(
+			{
+				signals: {
+					fileCount: 1,
+					taskCount: 1,
+					independentTasks: 0,
+					dependencyEdges: 0,
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"scope",
+		);
+		for (let index = 0; index < 2; index++) {
+			sessionManager.appendCustomMessageEntry(ASYNC_RESULT_MESSAGE_TYPE, "Background jobs settled", true, {
+				jobs: [
+					{ jobId: `ok-${index}`, type: "task", status: "completed" },
+					{ jobId: `failed-${index}`, type: "task", status: "failed" },
+					{ jobId: `shell-${index}`, type: "bash", status: "failed" },
+				],
+			});
+			recordGovernorRuntimeSignals(session);
+			expect(session.getGovernorSnapshot()).toMatchObject({
+				trigger: "runtime",
+				signals: { runtime: { failedWorkers: index + 1 } },
+				decision: { band: index === 0 ? "normal" : "complex" },
+			});
+		}
+		sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "Next task" }],
+			timestamp: Date.now(),
+		});
+		session.recordGovernorDecision(
+			{
+				signals: {
+					fileCount: 1,
+					taskCount: 1,
+					independentTasks: 0,
+					dependencyEdges: 0,
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"scope",
+		);
+		for (let index = 0; index < 2; index++) {
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: `worker-batch-${index}`,
+				toolName: "task",
+				content: [{ type: "text", text: "Batch settled" }],
+				details: { results: [{ exitCode: 0 }, { exitCode: 1, error: "Worker failed" }] },
+				isError: false,
+				timestamp: Date.now(),
+			});
+			recordGovernorRuntimeSignals(session);
+			expect(session.getGovernorSnapshot()).toMatchObject({
+				trigger: "runtime",
+				signals: { runtime: { failedWorkers: index + 1 } },
+				decision: { band: index === 0 ? "normal" : "complex" },
+			});
+		}
+		sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "Fix this file" }],
+			timestamp: Date.now(),
+		});
+		session.recordGovernorDecision(
+			{
+				signals: {
+					fileCount: 1,
+					independentTasks: 0,
+					dependencyEdges: 0,
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"scope",
+		);
+		for (let index = 0; index < 3; index++) {
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: `failed-edit-${index}`,
+				toolName: index === 2 ? "write" : "edit",
+				content: [{ type: "text", text: "Mutation failed" }],
+				details: { path: "src/example.ts" },
+				isError: true,
+				timestamp: Date.now(),
+			});
+			recordGovernorRuntimeSignals(session);
+			expect(recentGovernorToolSignals(sessionManager).failedMutations).toBe(index + 1);
+			expect(session.getGovernorSnapshot()).toMatchObject({
+				decision: { band: index === 0 ? "trivial" : index === 1 ? "normal" : "complex" },
+			});
+		}
+		for (let index = 0; index < 16; index++) {
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId: `mutations-recovered-${index}`,
+				toolName: "bash",
+				content: [{ type: "text", text: "Command succeeded" }],
+				isError: false,
+				timestamp: Date.now(),
+			});
+		}
+		recordGovernorRuntimeSignals(session);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			signals: { runtime: { failedMutations: 0 } },
+			decision: { band: "trivial" },
+		});
+	} finally {
+		await session.dispose();
+		await sessionManager.close();
+		authStorage.close();
 	}
 });

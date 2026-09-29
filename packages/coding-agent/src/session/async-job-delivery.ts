@@ -50,6 +50,7 @@ export interface AsyncResultEntry {
 type AsyncResultJobDetails = {
 	jobId: string;
 	type?: AsyncJobType;
+	status?: AsyncJob["status"];
 	label?: string;
 	durationMs?: number;
 	/** Source capture metadata belongs to this job, not to the enclosing delivery report. */
@@ -107,6 +108,7 @@ export function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): Custo
 			agentUrlId: entry.job?.agentId ?? entry.jobId,
 			result: entry.result,
 			type: entry.job?.type,
+			status: entry.job?.status,
 			label: entry.job?.label,
 			durationMs: entry.durationMs,
 			meta: entry.job?.latestDetails?.meta,
@@ -124,6 +126,7 @@ export function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): Custo
 		jobs: jobs.map(job => ({
 			jobId: job.jobId,
 			type: job.type,
+			status: job.status,
 			label: job.label,
 			durationMs: job.durationMs,
 			...(job.meta ? { meta: job.meta } : {}),

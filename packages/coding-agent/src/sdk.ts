@@ -2146,6 +2146,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			},
 			getFileMutationVersion: path => fileMutationVersions.get(path) ?? 0,
 			getTodoPhases: () => session.getTodoPhases(),
+			routeGovernorTaskBatch: taskCount => session?.routeGovernorTaskBatch(taskCount),
 			setTodoPhases: phases => session.setTodoPhases(phases),
 			persistTodoPhases: phases => sessionManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, { phases }),
 			getWorkPoolYieldItems: () => session?.getWorkPoolYieldItems() ?? [],
@@ -3705,7 +3706,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			const defaultPrompt = await buildSystemPromptInternal({
 				promptProfile: sessionPromptOverride?.profile ?? cfgPromptProfile.get(settings),
 				promptModulePolicies: { ...cfgPromptModules.get(settings), ...sessionPromptOverride?.modules },
-				promptCapabilityPolicies: { ...cfgPromptCapabilities.get(settings), ...sessionPromptOverride?.capabilities },
+				promptCapabilityPolicies: {
+					...cfgPromptCapabilities.get(settings),
+					...sessionPromptOverride?.capabilities,
+				},
 				activatedPromptToolNames: [...activatedPromptToolNames],
 				tokenizerModel: agent?.state.model ?? model,
 				cwd: promptCwd,

@@ -19,12 +19,39 @@ function isGovernorSnapshot(value: unknown): value is GovernorSnapshot {
 		typeof value.revision === "number" &&
 		Number.isSafeInteger(value.revision) &&
 		value.revision > 0 &&
-		["initial", "steering", "scope", "verification_failure", "availability", "budget"].includes(
+		["initial", "steering", "scope", "runtime", "verification_failure", "availability", "budget"].includes(
 			value.trigger as string,
 		) &&
+		(value.signalSource === undefined ||
+			["manual", "todo", "task_graph", "task_batch"].includes(value.signalSource as string)) &&
 		[signals.fileCount, signals.independentTasks, signals.dependencyEdges, signals.confidence].every(
 			item => typeof item === "number" && Number.isFinite(item),
 		) &&
+		(signals.taskCount === undefined ||
+			(typeof signals.taskCount === "number" &&
+				Number.isSafeInteger(signals.taskCount) &&
+				signals.taskCount >= 0)) &&
+		(signals.runtime === undefined ||
+			(isRecord(signals.runtime) &&
+				[signals.runtime.completedCalls, signals.runtime.explorationCalls, signals.runtime.failedCalls].every(
+					item => typeof item === "number" && Number.isSafeInteger(item) && item >= 0,
+				) &&
+				(signals.runtime.editedFiles === undefined ||
+					(typeof signals.runtime.editedFiles === "number" &&
+						Number.isSafeInteger(signals.runtime.editedFiles) &&
+						signals.runtime.editedFiles >= 0)) &&
+				(signals.runtime.verificationFailures === undefined ||
+					(typeof signals.runtime.verificationFailures === "number" &&
+						Number.isSafeInteger(signals.runtime.verificationFailures) &&
+						signals.runtime.verificationFailures >= 0)) &&
+				(signals.runtime.failedWorkers === undefined ||
+					(typeof signals.runtime.failedWorkers === "number" &&
+						Number.isSafeInteger(signals.runtime.failedWorkers) &&
+						signals.runtime.failedWorkers >= 0)) &&
+				(signals.runtime.failedMutations === undefined ||
+					(typeof signals.runtime.failedMutations === "number" &&
+						Number.isSafeInteger(signals.runtime.failedMutations) &&
+						signals.runtime.failedMutations >= 0)))) &&
 		typeof signals.highRisk === "boolean" &&
 		(value.overrides === undefined || isRecord(value.overrides)) &&
 		decision.version === 1 &&
@@ -52,6 +79,7 @@ export function recordGovernorDecision(
 	session: AgentSession,
 	request: GovernorPreviewRequest,
 	trigger: GovernorRevisionTrigger,
+	signalSource?: GovernorSnapshot["signalSource"],
 ): GovernorSnapshot | undefined {
 	const previous = latestGovernorSnapshot(session.sessionManager);
 	const overrides = request.overrides === undefined ? previous?.overrides : request.overrides;
@@ -59,7 +87,14 @@ export function recordGovernorDecision(
 	if (!decision) return undefined;
 	const revisionTrigger =
 		trigger === "scope" && request.overrides && Object.keys(request.overrides).length > 0 ? "steering" : trigger;
-	const revision = reviseGovernorDecision(previous, decision, request.signals, revisionTrigger, overrides);
+	const revision = reviseGovernorDecision(
+		previous,
+		decision,
+		request.signals,
+		revisionTrigger,
+		overrides,
+		signalSource ?? previous?.signalSource,
+	);
 	if (!revision) return previous;
 	session.sessionManager.appendCustomEntry(GOVERNOR_DECISION_ENTRY_TYPE, revision);
 	return revision;
