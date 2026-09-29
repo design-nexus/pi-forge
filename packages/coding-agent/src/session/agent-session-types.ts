@@ -445,6 +445,9 @@ export interface ContextUsageBreakdown {
 	systemContextTokens: number;
 	skillsTokens: number;
 	messagesTokens: number;
+	/** Subsets of message tokens, shown separately in context telemetry. */
+	retainedNotesTokens: number;
+	todoContinuityTokens: number;
 }
 
 /** Session statistics for the `/session` command. */

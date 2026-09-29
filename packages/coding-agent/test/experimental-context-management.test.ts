@@ -261,6 +261,7 @@ describe("experimental context management", () => {
 		agent.replaceMessages([...agent.state.messages, ...third]);
 		await notesTool.execute("notebook-latest", {
 			text: "Latest durable notebook: retry only after migration backup.",
+			sourceEntryIds: [manager.getBranch()[0].id],
 		});
 		await session.compact();
 
@@ -278,15 +279,24 @@ describe("experimental context management", () => {
 		const historyText = history.content.find(content => content.type === "text");
 		if (historyText?.type !== "text") throw new Error("Expected full history text");
 		expect(historyText.text).toContain("earliest requirement: preserve the release-blocking migration.");
+		const cited = await readTool.execute("retrieve-cited-entry", {
+			path: `history://current/entry/${manager.getBranch()[0].id}`,
+		});
+		const citedText = cited.content.find(content => content.type === "text");
+		if (citedText?.type !== "text") throw new Error("Expected cited entry text");
+		expect(citedText.text).toContain("earliest requirement: preserve the release-blocking migration.");
+		expect(citedText.text).not.toContain("sixth task");
 
 		expect(getContextNotes(manager.getBranch())?.text).toBe(
 			"Latest durable notebook: retry only after migration backup.",
 		);
+		expect(getContextNotes(manager.getBranch())?.sourceEntryIds).toEqual([manager.getBranch()[0].id]);
 		const notebook = agent.state.messages.find(
 			message => message.role === "custom" && message.customType === CONTEXT_NOTES_ENTRY_TYPE,
 		);
 		if (notebook?.role !== "custom") throw new Error("Expected persisted context notebook");
 		expect(notebook.content).toContain("Latest durable notebook: retry only after migration backup.");
+		expect(notebook.content).toContain(manager.getBranch()[0].id);
 	});
 
 	it("consumes a new context request only after every tool result in its batch is journaled", async () => {

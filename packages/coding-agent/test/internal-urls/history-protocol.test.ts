@@ -339,6 +339,25 @@ describe("history:// protocol", () => {
 		expect(resource.sourcePath).toBeUndefined();
 	});
 
+	it("recovers one cited entry from the caller's branch without exposing other entries", async () => {
+		const branch = currentBranchFixture();
+		const resource = await InternalUrlRouter.instance().resolve("history://current/entry/before-first-compaction", {
+			experimentalContextManagement: true,
+			getSessionBranch: () => branch,
+		});
+		expect(resource.content).toContain("oldest raw request survives");
+		expect(resource.content).toContain("Entry before-first-compaction");
+		expect(resource.content).not.toContain("middle raw request survives");
+		expect(resource.content).not.toContain("latest raw request survives");
+		expect(resource.sourcePath).toBeUndefined();
+		await expect(
+			InternalUrlRouter.instance().resolve("history://current/entry/other-branch", {
+				experimentalContextManagement: true,
+				getSessionBranch: () => branch,
+			}),
+		).rejects.toThrow("Current branch entry not found");
+	});
+
 	it("rejects current/full when disabled or without a caller-bound branch", async () => {
 		await expect(
 			InternalUrlRouter.instance().resolve("history://current/full", {
@@ -351,11 +370,28 @@ describe("history:// protocol", () => {
 				experimentalContextManagement: true,
 			}),
 		).rejects.toThrow("bound live session branch");
+		await expect(
+			InternalUrlRouter.instance().resolve("history://current/entry/latest-entry", {
+				experimentalContextManagement: false,
+				getSessionBranch: currentBranchFixture,
+			}),
+		).rejects.toThrow("experimentalContextManagement");
+		await expect(
+			InternalUrlRouter.instance().resolve("history://current/entry/latest-entry", {
+				experimentalContextManagement: true,
+			}),
+		).rejects.toThrow("bound live session branch");
 	});
 
 	it("rejects malformed current history routes without consulting agent history", async () => {
 		await expect(
 			InternalUrlRouter.instance().resolve("history://current/full?unexpected=true", {
+				experimentalContextManagement: true,
+				getSessionBranch: currentBranchFixture,
+			}),
+		).rejects.toThrow("Invalid history://current route");
+		await expect(
+			InternalUrlRouter.instance().resolve("history://current/entry/%2F", {
 				experimentalContextManagement: true,
 				getSessionBranch: currentBranchFixture,
 			}),

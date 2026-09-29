@@ -2,6 +2,7 @@ import { describe, expect, it, spyOn } from "bun:test";
 import { defaultConvertToLlm } from "@oh-my-pi/pi-agent-core/compaction";
 import type { AssistantMessage } from "@oh-my-pi/pi-ai";
 import { buildSessionContext } from "@oh-my-pi/pi-coding-agent/session/session-context";
+import { USER_TODO_EDIT_CUSTOM_TYPE } from "@oh-my-pi/pi-coding-agent/tools/todo";
 import type {
 	BranchSummaryEntry,
 	CompactionEntry,
@@ -63,7 +64,108 @@ function modelChange(id: string, parentId: string | null, provider: string, mode
 	return { type: "model_change", id, parentId, timestamp: "2025-01-01T00:00:00Z", model: `${provider}/${modelId}` };
 }
 
+function todoEdit(
+	id: string,
+	parentId: string | null,
+	status: "in_progress" | "completed",
+	content = "Wire the parser",
+): SessionEntry {
+	return {
+		type: "custom",
+		id,
+		parentId,
+		timestamp: "2025-01-01T00:00:00Z",
+		customType: USER_TODO_EDIT_CUSTOM_TYPE,
+		data: { phases: [{ name: "Build", tasks: [{ content, status }] }] },
+	};
+}
+
 describe("buildSessionContext", () => {
+	it("restores incomplete todo state omitted by compaction only in model context", () => {
+		const entries: SessionEntry[] = [
+			msg("1", null, "user", "Build a parser"),
+			todoEdit("2", "1", "in_progress"),
+			compaction("3", "2", "Work is underway", ""),
+			msg("4", "3", "user", "Continue"),
+		];
+		const context = buildSessionContext(entries);
+		expect(context.messages.map(message => message.role)).toEqual(["compactionSummary", "custom", "user"]);
+		const continuity = context.messages[1];
+		if (continuity?.role !== "custom") throw new Error("Expected todo continuity message");
+		expect(continuity.content).toContain("Wire the parser");
+		expect(continuity.content).toContain("todo");
+		const transcript = buildSessionContext(entries, undefined, undefined, { transcript: true });
+		expect(
+			transcript.messages.some(
+				message =>
+					message.role === "custom" &&
+					typeof message.content === "string" &&
+					message.content.includes("Wire the parser"),
+			),
+		).toBe(false);
+	});
+
+	it("omits continuity when the todo is complete or a clear boundary supersedes compaction", () => {
+		const completed: SessionEntry[] = [
+			msg("1", null, "user", "Build a parser"),
+			todoEdit("2", "1", "completed"),
+			compaction("3", "2", "Done", ""),
+		];
+		expect(buildSessionContext(completed).messages.map(message => message.role)).toEqual(["compactionSummary"]);
+		const cleared: SessionEntry[] = [
+			...completed.slice(0, 2),
+			compaction("3", "2", "Work is underway", ""),
+			{ type: "reset_boundary", id: "4", parentId: "3", timestamp: "2025-01-01T00:00:00Z" },
+			msg("5", "4", "user", "New topic"),
+		];
+		expect(buildSessionContext(cleared).messages.map(message => message.role)).toEqual(["user"]);
+	});
+
+	it("does not repeat a todo snapshot already retained in model context", () => {
+		const todoResult: SessionMessageEntry = {
+			type: "message",
+			id: "2",
+			parentId: "1",
+			timestamp: "2025-01-01T00:00:00Z",
+			message: {
+				role: "toolResult",
+				toolCallId: "todo_call",
+				toolName: "todo",
+				content: [{ type: "text", text: "Wire the parser is in progress" }],
+				details: {
+					op: "init",
+					phases: [{ name: "Build", tasks: [{ content: "Wire the parser", status: "in_progress" }] }],
+				},
+				isError: false,
+				timestamp: 1,
+			},
+		};
+		const entries: SessionEntry[] = [
+			msg("1", null, "user", "Build a parser"),
+			todoResult,
+			compaction("3", "2", "Work is underway", "2"),
+		];
+		expect(buildSessionContext(entries).messages.map(message => message.role)).toEqual([
+			"compactionSummary",
+			"toolResult",
+		]);
+	});
+
+	it("keeps oversized todo labels out of the compacted reminder", () => {
+		const longTask = "large task ".repeat(1000);
+		const entries: SessionEntry[] = [
+			msg("1", null, "user", "Build a parser"),
+			todoEdit("2", "1", "in_progress", longTask),
+			compaction("3", "2", "Work is underway", ""),
+		];
+		const continuity = buildSessionContext(entries).messages[1];
+		if (continuity?.role !== "custom" || typeof continuity.content !== "string") {
+			throw new Error("Expected todo continuity message");
+		}
+		expect(continuity.content).toContain("1 remaining task");
+		expect(continuity.content).not.toContain(longTask);
+		expect(continuity.content).toContain("todo");
+	});
 	describe("trivial cases", () => {
 		it("empty entries returns empty context", () => {
 			const ctx = buildSessionContext([]);

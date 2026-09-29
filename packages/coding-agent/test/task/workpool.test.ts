@@ -365,6 +365,27 @@ describe("WorkPool dispatch", () => {
 		expect(cards.map(cardMode)).toContain("completed");
 	});
 
+	it("reports failed batches on a drained aggregate job", async () => {
+		const session = makeSession([], 1);
+		const manager = session.asyncJobManager!;
+		let delivered: { status: string; failedBatches: unknown } | undefined;
+		manager.registerDeliverySink("Main", (_id, _text, job) => {
+			if (job) delivered = { status: job.status, failedBatches: job.latestDetails?.workpoolFailedBatches };
+		});
+		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			const outcome = execution(id);
+			return { ...outcome, result: { ...outcome.result, exitCode: 1, error: "Worker failed" } };
+		});
+		const workpool = pool(session, "failed-pool");
+		workpool.push(["one"]);
+		await finishPool(session, workpool);
+		await manager.drainDeliveries({ filter: { ownerId: "Main" } });
+		expect(delivered).toEqual({ status: "completed", failedBatches: 1 });
+		expect(workpool.status().items.failed).toBe(1);
+	});
+
 	it("sends new work to the least context-loaded idle agent", async () => {
 		const session = makeSession([], 3);
 		const gates = new Map<string, PromiseWithResolvers<void>>();

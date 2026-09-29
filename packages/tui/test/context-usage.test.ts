@@ -11,6 +11,7 @@ import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import { arkToWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import {
 	type ContextBreakdown,
+	computeContextBreakdown,
 	computeNonMessageBreakdown,
 	computeNonMessageTokens,
 	estimateSkillsTokens,
@@ -21,6 +22,32 @@ import {
 } from "../src/status-line/context-usage";
 
 const tokenizer = new Tokenizer();
+
+describe("computeContextBreakdown retained context", () => {
+	it("shows retained notebook and todo tokens within the unchanged message total", () => {
+		const breakdown = computeContextBreakdown(
+			{
+				model: undefined,
+				agent: { tokenizer },
+				getContextBreakdown: () => ({
+					messagesTokens: 500,
+					retainedNotesTokens: 120,
+					todoContinuityTokens: 80,
+					skillsTokens: 0,
+					systemToolsTokens: 0,
+					systemContextTokens: 0,
+					systemPromptTokens: 100,
+					usedTokens: 600,
+				}),
+			} as never,
+			{ compaction: { enabled: false } as never },
+		);
+		expect(breakdown.categories.find(category => category.id === "retainedNotes")?.tokens).toBe(120);
+		expect(breakdown.categories.find(category => category.id === "todoContinuity")?.tokens).toBe(80);
+		expect(breakdown.categories.find(category => category.id === "messages")?.tokens).toBe(300);
+		expect(breakdown.categories.reduce((sum, category) => sum + category.tokens, 0)).toBe(breakdown.usedTokens);
+	});
+});
 
 describe("estimateToolSchemaTokens", () => {
 	it("counts arktype tool schemas by their wire JSON Schema, not arktype internals", () => {

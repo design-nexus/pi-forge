@@ -17,6 +17,69 @@ import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manage
 import { cfgTaskMaxConcurrency, cfgTaskMaxEffort } from "@oh-my-pi/pi-coding-agent/task/settings";
 import { TempDir } from "@oh-my-pi/pi-utils";
 
+it("counts bounded shell time since the last recorded progress on the current turn", async () => {
+	const manager = SessionManager.inMemory();
+	try {
+		manager.appendMessage({ role: "user", content: [{ type: "text", text: "Investigate" }], timestamp: 1 });
+		for (let index = 0; index < 4; index++) {
+			manager.appendMessage({
+				role: "toolResult",
+				toolCallId: `read-${index}`,
+				toolName: "read",
+				content: [{ type: "text", text: "source" }],
+				isError: false,
+				timestamp: 2 + index,
+			});
+		}
+		manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "slow-shell",
+			toolName: "bash",
+			content: [{ type: "text", text: "done" }],
+			details: { wallTimeMs: 130_000 },
+			isError: false,
+			timestamp: 7,
+		});
+		expect(recentGovernorToolSignals(manager)).toMatchObject({
+			explorationCalls: 4,
+			stalledExplorationCalls: 4,
+			stalledToolMs: 130_000,
+		});
+		manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "edit",
+			toolName: "edit",
+			content: [{ type: "text", text: "Applied" }],
+			details: { path: "src/example.ts" },
+			isError: false,
+			timestamp: 8,
+		});
+		expect(recentGovernorToolSignals(manager)).toMatchObject({ stalledExplorationCalls: 0, stalledToolMs: 0 });
+		manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "slow-again",
+			toolName: "bash",
+			content: [{ type: "text", text: "done" }],
+			details: { wallTimeMs: 700_000 },
+			isError: false,
+			timestamp: 9,
+		});
+		expect(recentGovernorToolSignals(manager)).toMatchObject({ stalledExplorationCalls: 0, stalledToolMs: 600_000 });
+		manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "todo-done",
+			toolName: "todo",
+			content: [{ type: "text", text: "Completed" }],
+			details: { completedTasks: [{ phase: "Work", content: "Fix" }] },
+			isError: false,
+			timestamp: 10,
+		});
+		expect(recentGovernorToolSignals(manager)).toMatchObject({ stalledExplorationCalls: 0, stalledToolMs: 0 });
+	} finally {
+		await manager.close();
+	}
+});
+
 it("previews a live Governor decision from settings and session ceilings without activating tools", async () => {
 	using dir = TempDir.createSync("@omp-governor-session-");
 	const cwd = dir.join("project");
@@ -94,6 +157,7 @@ it("previews a live Governor decision from settings and session ceilings without
 		).toBe("complex");
 		expect(() => cfgAdaptiveThresholds.set(settings, { complexMinFiles: 20, massiveMinFiles: 10 })).toThrow();
 		expect(() => cfgAdaptiveThresholds.set(settings, { complexMinTasks: 12, massiveMinTasks: 4 })).toThrow();
+		expect(() => cfgAdaptiveThresholds.set(settings, { runtimeStagnationMs: 0 })).toThrow();
 		await sessionManager.ensureOnDisk();
 		const first = session.recordGovernorDecision({ signals: facts }, "initial");
 		expect(first).toMatchObject({ revision: 1, decision: { band: "massive" } });
@@ -186,6 +250,66 @@ it("previews a live Governor decision from settings and session ceilings without
 	}
 });
 
+it("revises an inspected decision when the session thinking level changes", async () => {
+	using dir = TempDir.createSync("@omp-governor-thinking-");
+	const settings = Settings.isolated();
+	const bundled = getBundledModel("openai", "gpt-4o-mini");
+	if (!bundled) throw new Error("Expected bundled test model");
+	const model = {
+		...bundled,
+		reasoning: true,
+		thinking: { mode: "effort" as const, efforts: [Effort.Low, Effort.High] },
+	};
+	const authStorage = await AuthStorage.create(":memory:");
+	authStorage.keys.setRuntime("openai", "test-key");
+	const sessionManager = SessionManager.inMemory();
+	const { session } = await createAgentSession({
+		cwd: dir.join("project"),
+		agentDir: dir.join("agent"),
+		authStorage,
+		modelRegistry: new ModelRegistry(authStorage, dir.join("models.yml")),
+		settings,
+		sessionManager,
+		model,
+		thinkingLevelCeiling: Effort.High,
+		disableExtensionDiscovery: true,
+		skills: [],
+		contextFiles: [],
+		promptTemplates: [],
+		slashCommands: [],
+		enableMCP: false,
+		enableLsp: false,
+		skipPythonPreflight: true,
+	});
+	try {
+		cfgAdaptiveMode.set(settings, "inspect");
+		session.setThinkingLevel(Effort.Low);
+		session.recordGovernorDecision(
+			{
+				signals: {
+					fileCount: 1,
+					independentTasks: 0,
+					dependencyEdges: 0,
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"initial",
+		);
+		expect(session.getGovernorSnapshot()).toMatchObject({ revision: 1, decision: { effort: Effort.Low } });
+		session.setThinkingLevel(Effort.High);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			revision: 2,
+			trigger: "budget",
+			decision: { effort: Effort.High },
+		});
+	} finally {
+		await session.dispose();
+		await sessionManager.close();
+		authStorage.close();
+	}
+});
+
 it("tracks structured todo scope without treating todo items as parallel tasks or replacing a task graph", async () => {
 	using dir = TempDir.createSync("@omp-governor-todo-");
 	const cwd = dir.join("project");
@@ -225,10 +349,26 @@ it("tracks structured todo scope without treating todo items as parallel tasks o
 			signals: { taskCount: 4, independentTasks: 0 },
 			decision: { band: "complex", workerCount: 0 },
 		});
-		session.setTodoPhases([{ name: "Work", tasks: [tasks[0]!] }]);
+		session.setTodoPhases([
+			{
+				name: "Work",
+				tasks: [
+					tasks[0]!,
+					{ ...tasks[1]!, status: "completed" },
+					{ ...tasks[2]!, status: "completed" },
+					{ ...tasks[3]!, status: "abandoned" },
+				],
+			},
+		]);
 		expect(session.getGovernorSnapshot()).toMatchObject({
 			revision: 2,
 			signals: { taskCount: 1 },
+			decision: { band: "trivial" },
+		});
+		session.setTodoPhases([{ name: "Work", tasks: tasks.map(task => ({ ...task, status: "completed" as const })) }]);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			revision: 3,
+			signals: { taskCount: 0 },
 			decision: { band: "trivial" },
 		});
 		await session.routeGovernorTaskTransition(
@@ -313,6 +453,8 @@ it("tracks structured todo scope without treating todo items as parallel tasks o
 			verificationFailures: 0,
 			failedWorkers: 0,
 			failedMutations: 0,
+			stalledToolMs: 0,
+			stalledExplorationCalls: 0,
 		});
 		recordGovernorRuntimeSignals(session);
 		expect(session.getGovernorSnapshot()?.decision.band).toBe("trivial");
@@ -457,16 +599,19 @@ it("tracks structured todo scope without treating todo items as parallel tasks o
 		);
 		for (let index = 0; index < 2; index++) {
 			sessionManager.appendCustomMessageEntry(ASYNC_RESULT_MESSAGE_TYPE, "Background jobs settled", true, {
-				jobs: [
-					{ jobId: `ok-${index}`, type: "task", status: "completed" },
-					{ jobId: `failed-${index}`, type: "task", status: "failed" },
-					{ jobId: `shell-${index}`, type: "bash", status: "failed" },
-				],
+				jobs:
+					index === 0
+						? [
+								{ jobId: "ok", type: "task", status: "completed" },
+								{ jobId: "failed", type: "task", status: "failed" },
+								{ jobId: "shell", type: "bash", status: "failed" },
+							]
+						: [{ jobId: "workpool", type: "task", status: "completed", workpoolFailedBatches: 2 }],
 			});
 			recordGovernorRuntimeSignals(session);
 			expect(session.getGovernorSnapshot()).toMatchObject({
 				trigger: "runtime",
-				signals: { runtime: { failedWorkers: index + 1 } },
+				signals: { runtime: { failedWorkers: index === 0 ? 1 : 3 } },
 				decision: { band: index === 0 ? "normal" : "complex" },
 			});
 		}

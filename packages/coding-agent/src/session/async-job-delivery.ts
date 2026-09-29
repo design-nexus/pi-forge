@@ -51,6 +51,7 @@ type AsyncResultJobDetails = {
 	jobId: string;
 	type?: AsyncJobType;
 	status?: AsyncJob["status"];
+	workpoolFailedBatches?: number;
 	label?: string;
 	durationMs?: number;
 	/** Source capture metadata belongs to this job, not to the enclosing delivery report. */
@@ -95,6 +96,7 @@ export function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): Custo
 	if (entries.length === 0) return null;
 	const jobs = entries.map(entry => {
 		const structured = entry.job?.structured;
+		const failedBatches = entry.job?.latestDetails?.workpoolFailedBatches;
 		const hasStructuredData = structured ? Object.hasOwn(structured, "data") : false;
 		const structuredJson = structured && structured.status !== "valid" ? renderStructuredJson(structured) : undefined;
 		return {
@@ -109,6 +111,10 @@ export function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): Custo
 			result: entry.result,
 			type: entry.job?.type,
 			status: entry.job?.status,
+			workpoolFailedBatches:
+				typeof failedBatches === "number" && Number.isSafeInteger(failedBatches) && failedBatches >= 0
+					? failedBatches
+					: undefined,
 			label: entry.job?.label,
 			durationMs: entry.durationMs,
 			meta: entry.job?.latestDetails?.meta,
@@ -127,6 +133,7 @@ export function buildAsyncResultBatchMessage(entries: AsyncResultEntry[]): Custo
 			jobId: job.jobId,
 			type: job.type,
 			status: job.status,
+			...(job.workpoolFailedBatches !== undefined ? { workpoolFailedBatches: job.workpoolFailedBatches } : {}),
 			label: job.label,
 			durationMs: job.durationMs,
 			...(job.meta ? { meta: job.meta } : {}),

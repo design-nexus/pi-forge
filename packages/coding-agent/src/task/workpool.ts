@@ -183,7 +183,7 @@ export class WorkPool {
 		const id = manager.register(
 			"task",
 			this.name,
-			async ({ signal }) => {
+			async ({ signal, reportProgress }) => {
 				const onAbort = (): void => {
 					this.close();
 					for (const batch of this.batches) manager.cancel(batch.jobId, { ownerId: this.ownerId });
@@ -203,6 +203,9 @@ export class WorkPool {
 					manager.unwatchJobs(batchIds);
 					this.closed = true;
 					const summary = `Pool \`${this.name}\` drained: ${this.items.length} item(s), ${this.batches.length} batch(es).`;
+					await reportProgress(summary, {
+						workpoolFailedBatches: this.batches.filter(batch => batch.status === "failed").length,
+					});
 					this.#card(signal.aborted ? "cancelled" : "completed", this.ownerId, summary);
 					return this.#renderAggregateResult();
 				} finally {

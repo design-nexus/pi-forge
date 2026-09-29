@@ -29,6 +29,8 @@ import { computeNonMessageTokens } from "@oh-my-pi/pi-tui/status-line/context-us
 import { AgentSession, type AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
+import { CONTEXT_NOTES_ENTRY_TYPE, renderContextNotes } from "@oh-my-pi/pi-coding-agent/session/context-notes";
+import { convertToLlm, createCustomMessage } from "@oh-my-pi/pi-coding-agent/session/messages";
 import * as snapcompact from "@oh-my-pi/snapcompact";
 
 describe("AgentSession snapcompact frame-budget sizing", () => {
@@ -131,6 +133,10 @@ describe("AgentSession snapcompact frame-budget sizing", () => {
 		// regime where a shape-aware cap reserve actually matters.
 		const targetRecentTokens = 100_000;
 		const filler = "x".repeat(targetRecentTokens * 4);
+		sessionManager.appendCustomEntry(CONTEXT_NOTES_ENTRY_TYPE, {
+			version: 1,
+			text: Array.from({ length: 1200 }, (_, index) => `finding-${index.toString(36)}`).join(" "),
+		});
 		sessionManager.appendMessage({
 			role: "user",
 			content: [{ type: "text", text: filler }],
@@ -138,6 +144,7 @@ describe("AgentSession snapcompact frame-budget sizing", () => {
 		});
 
 		const branchEntries = sessionManager.getBranch();
+		expect(renderContextNotes(branchEntries)).not.toBe("");
 		const firstKeptEntry = branchEntries[branchEntries.length - 1];
 		if (!firstKeptEntry?.id) throw new Error("Expected branch entry with id");
 
@@ -153,6 +160,11 @@ describe("AgentSession snapcompact frame-budget sizing", () => {
 		});
 
 		await session.compact(undefined, { mode: "snapcompact" });
+		expect(renderContextNotes(sessionManager.getBranch())).not.toBe("");
+		expect(session.messages.map(message => (message.role === "custom" ? message.customType : message.role))).toContain(
+			CONTEXT_NOTES_ENTRY_TYPE,
+		);
+		expect(session.getContextBreakdown()?.retainedNotesTokens).toBeGreaterThan(0);
 
 		expect(compactSpy).toHaveBeenCalledTimes(1);
 		const opts = compactSpy.mock.calls[0]?.[1];
@@ -172,6 +184,10 @@ describe("AgentSession snapcompact frame-budget sizing", () => {
 		if (!preparation) throw new Error("Expected non-empty preparation");
 		let baseTokens = computeNonMessageTokens(session, session.agent.tokenizer, session.settings.revision);
 		baseTokens += session.agent.tokenizer.countMessages(preparation.recentMessages);
+		const notes = renderContextNotes(branchEntries);
+		baseTokens += session.agent.tokenizer.countMessages(
+			convertToLlm([createCustomMessage(CONTEXT_NOTES_ENTRY_TYPE, notes, false, undefined, new Date().toISOString())]),
+		);
 		const shape = snapcompact.resolveShape(model);
 		const edgeCap = snapcompact.geometry(shape).capacity;
 		// Worst-case `textHead + textTail` tokenized at the cl100k 4-chars/token
@@ -180,6 +196,83 @@ describe("AgentSession snapcompact frame-budget sizing", () => {
 		const worstCaseEdgeTokens = Math.ceil((2 * edgeCap) / 4) + 2000;
 		const fullProjection = baseTokens + (maxFrames ?? 0) * snapcompact.FRAME_TOKEN_ESTIMATE + worstCaseEdgeTokens;
 		expect(fullProjection).toBeLessThanOrEqual(budget);
+	});
+
+	it("skips snapcompact when the kept history and rebuilt notebook exceed the context budget", async () => {
+		const model = session.model;
+		if (!model) throw new Error("Expected model");
+		const budget =
+			(model.contextWindow ?? 0) -
+			effectiveReserveTokens(model.contextWindow ?? 0, {
+				enabled: true,
+				reserveTokens: 16384,
+				keepRecentTokens: 4000,
+			});
+		const noteText = Array.from({ length: 1200 }, (_, index) => `finding-${index.toString(36)}`).join(" ");
+		sessionManager.appendCustomEntry(CONTEXT_NOTES_ENTRY_TYPE, { version: 1, text: noteText });
+		const noteTokens = session.agent.tokenizer.countTokens(renderContextNotes(sessionManager.getBranch()));
+		const nonMessage = computeNonMessageTokens(session, session.agent.tokenizer, session.settings.revision);
+		const targetRecentTokens = budget - nonMessage - Math.floor(noteTokens / 2) - 500;
+		const keptId = sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "x".repeat(targetRecentTokens * 4) }],
+			timestamp: Date.now(),
+		});
+		const preparation = prepareCompaction(sessionManager.getBranch(), {
+			enabled: true,
+			reserveTokens: 16384,
+			keepRecentTokens: 4000,
+		});
+		if (!preparation) throw new Error("Expected compaction preparation");
+		const base = nonMessage + session.agent.tokenizer.countMessages(preparation.recentMessages);
+		expect(base).toBeLessThan(budget);
+		expect(base + noteTokens).toBeGreaterThan(budget);
+		const compactSpy = vi.spyOn(snapcompact, "compact").mockResolvedValue({
+			summary: "Archived history",
+			shortSummary: "Archived",
+			firstKeptEntryId: keptId,
+			tokensBefore: 100_000,
+			details: { readFiles: [], modifiedFiles: [] },
+			preserveData: { snapcompact: { frames: [], totalChars: 0, truncatedChars: 0 } },
+		});
+		await expect(session.compact(undefined, { mode: "snapcompact" })).rejects.toThrow("kept history alone exceeds");
+		expect(compactSpy).not.toHaveBeenCalled();
+		expect(sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(false);
+	});
+
+	it("rejects a snapcompact result if a notebook update arrives during local rendering", async () => {
+		const model = session.model;
+		if (!model) throw new Error("Expected model");
+		const budget =
+			(model.contextWindow ?? 0) -
+			effectiveReserveTokens(model.contextWindow ?? 0, {
+				enabled: true,
+				reserveTokens: 16384,
+				keepRecentTokens: 4000,
+			});
+		const noteText = Array.from({ length: 1200 }, (_, index) => `finding-${index.toString(36)}`).join(" ");
+		const noteTokens = session.agent.tokenizer.countTokens(noteText);
+		const nonMessage = computeNonMessageTokens(session, session.agent.tokenizer, session.settings.revision);
+		const targetRecentTokens = budget - nonMessage - Math.floor(noteTokens / 2) - 500;
+		const keptId = sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "x".repeat(targetRecentTokens * 4) }],
+			timestamp: Date.now(),
+		});
+		const compactSpy = vi.spyOn(snapcompact, "compact").mockImplementation(async () => {
+			sessionManager.appendCustomEntry(CONTEXT_NOTES_ENTRY_TYPE, { version: 1, text: noteText });
+			return {
+				summary: "Archived history",
+				shortSummary: "Archived",
+				firstKeptEntryId: keptId,
+				tokensBefore: 100_000,
+				details: { readFiles: [], modifiedFiles: [] },
+				preserveData: { snapcompact: { frames: [], totalChars: 0, truncatedChars: 0 } },
+			};
+		});
+		await expect(session.compact(undefined, { mode: "snapcompact" })).rejects.toThrow("under the limit locally");
+		expect(compactSpy).toHaveBeenCalledTimes(1);
+		expect(sessionManager.getEntries().some(entry => entry.type === "compaction")).toBe(false);
 	});
 
 	it("still invokes snapcompact with maxFrames=1 when residual headroom is below the summary-text reserve", async () => {

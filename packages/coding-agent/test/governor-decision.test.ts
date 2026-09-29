@@ -87,6 +87,56 @@ it("raises effort only when recent exploration and failures combine, while prese
 	).toBe("trivial");
 });
 
+it("raises prolonged exploration once and de-escalates when the progress signal clears", () => {
+	const signals = decisionInput().signals;
+	const stagnant = decideGovernor(
+		decisionInput({
+			signals: {
+				...signals,
+				runtime: {
+					completedCalls: 5,
+					explorationCalls: 4,
+					failedCalls: 0,
+					stalledToolMs: 130_000,
+					stalledExplorationCalls: 4,
+				},
+			},
+		}),
+	);
+	const progressing = decideGovernor(
+		decisionInput({
+			signals: {
+				...signals,
+				runtime: {
+					completedCalls: 6,
+					explorationCalls: 4,
+					failedCalls: 0,
+					stalledToolMs: 0,
+					stalledExplorationCalls: 0,
+				},
+			},
+		}),
+	);
+	expect(stagnant?.band).toBe("normal");
+	expect(progressing?.band).toBe("trivial");
+	expect(
+		decideGovernor(
+			decisionInput({
+				signals: {
+					...signals,
+					runtime: {
+						completedCalls: 1,
+						explorationCalls: 1,
+						failedCalls: 0,
+						stalledToolMs: 130_000,
+						stalledExplorationCalls: 1,
+					},
+				},
+			}),
+		)?.band,
+	).toBe("trivial");
+});
+
 it("honors explicit band and role while clamping effort and workers to OMP ceilings", () => {
 	const requestedModel = { ...model, id: "resolved-role-model" };
 	const decision = decideGovernor(

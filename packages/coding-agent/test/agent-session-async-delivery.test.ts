@@ -481,6 +481,26 @@ describe("AgentSession owner-routed async delivery", () => {
 		expect(message?.content).not.toContain("```json");
 	});
 
+	it("carries a completed workpool's failed-batch count into delivery details", () => {
+		const job: AsyncJob = {
+			id: "pool",
+			type: "task",
+			status: "completed",
+			startTime: Date.now(),
+			label: "pool",
+			abortController: new AbortController(),
+			promise: Promise.resolve(),
+			resultText: "Pool drained",
+			latestDetails: { workpoolFailedBatches: 2 },
+		};
+		const message = buildAsyncResultBatchMessage([
+			{ jobId: "pool", result: "Pool drained", job, durationMs: 1000, epoch: 0 },
+		]);
+		expect(message?.details?.jobs).toMatchObject([
+			{ jobId: "pool", type: "task", status: "completed", workpoolFailedBatches: 2 },
+		]);
+	});
+
 	it("advertises the agent:// URL using the task's agent id, not a disambiguated job id", () => {
 		// Regression: AsyncJobManager suffixes a requested job id when it
 		// collides with another live job (e.g. a task id reusing a vibe turn's
