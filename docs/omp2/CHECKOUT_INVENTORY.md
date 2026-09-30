@@ -534,3 +534,9 @@ Verification: all 25 focused workpool tests passed; repository `bun check` and `
 Task calls and eval workpools that declare high risk or required capabilities now fail before execution if their session does not provide Governor task-transition routing. This closes the optional-hook path where high-risk-only work could otherwise proceed without recording or applying the declared policy.
 
 Verification: 57 focused task-spawn and workpool tests passed; repository `bun check` and `git diff --check` passed. High-risk-only task and workpool cases both verify that no executor or worker starts when the hook is absent.
+
+## Structured task batches require a Governor plan
+
+Multi-item task calls with declared risk or capability facts now fail before worker startup when the session cannot provide either the full Governor plan or the legacy worker-count plan. A missing plan can no longer silently fall back to default batch execution for a declared Governor scope.
+
+Verification: 32 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The high-risk batch regression removes both planner hooks and confirms no subprocess starts.

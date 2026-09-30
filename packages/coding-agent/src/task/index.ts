@@ -806,13 +806,18 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			}
 		}
 		let governorPlan: { workerCount?: number; effort?: TaskEffort } | undefined;
+		let governorPlanAvailable = false;
 		if (params.tasks && spawnItems.length > 1) {
 			try {
 				if (this.session.routeGovernorTaskPlan) {
 					governorPlan = this.session.routeGovernorTaskPlan(spawnItems.length, highRisk);
+					governorPlanAvailable = governorPlan !== undefined;
 				} else {
 					const workerCount = this.session.routeGovernorTaskBatch?.(spawnItems.length, highRisk);
-					if (workerCount !== undefined) governorPlan = { workerCount };
+					if (workerCount !== undefined) {
+						governorPlan = { workerCount };
+						governorPlanAvailable = true;
+					}
 				}
 			} catch (error) {
 				logger.warn("Adaptive task batch routing failed", { error: String(error) });
@@ -821,6 +826,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						`Task Governor batch planning failed: ${error instanceof Error ? error.message : String(error)}`,
 					);
 				}
+			}
+			if (governorFactsDeclared && !governorPlanAvailable) {
+				return createTaskModeError("Task Governor batch planning is unavailable for this session.");
 			}
 		}
 		const normalizedSpawnParams = spawnItems.map(item =>
