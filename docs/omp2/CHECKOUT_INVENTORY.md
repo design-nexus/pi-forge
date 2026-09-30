@@ -504,3 +504,9 @@ Verification: 51 focused task-spawn and workpool tests passed; repository `bun c
 Structured task transitions now inspect every required capability before activating any of them. If one requirement is unavailable, disabled, or over budget, the decision returns the full set of preflight results and does not leave earlier capabilities newly promoted for a task that cannot start.
 
 Verification: 66 focused Prompt Engine, task-spawn, and workpool tests passed; repository `bun check` and `git diff --check` passed. The session regression declares an available debugger plus an unavailable exact MCP tool and verifies that the debugger remains inactive.
+
+## Workpool waits for the latest capability transition
+
+Before dispatching a queued item, the workpool now waits until the most recently queued capability transition settles. If another push adds requirements while an earlier transition is in flight, workers stay queued until the accumulated requirement set has been routed.
+
+Verification: all 23 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The regression gates two overlapping capability pushes independently and verifies neither worker starts until the second transition resolves.

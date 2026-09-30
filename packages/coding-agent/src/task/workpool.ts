@@ -340,20 +340,21 @@ export class WorkPool {
 
 	async #dispatch(item: WorkPoolItem): Promise<void> {
 		if (this.closed || item.status !== "queued") return;
-		await this.#capabilityRouting;
-		if (this.#capabilityTransitionDeferred) {
+		while (true) {
+			const pending = this.#capabilityRouting;
+			await pending;
+			if (pending !== this.#capabilityRouting) continue;
+			if (!this.#capabilityTransitionDeferred) break;
 			if (!this.session.waitForIdle) {
 				throw new ToolError("workpool capability routing was deferred, but the session cannot wait for idle");
 			}
-			while (this.#capabilityTransitionDeferred) {
-				await this.session.waitForIdle();
-				if (this.closed || item.status !== "queued") return;
-				const facts = this.#capabilityFacts;
-				if (!facts) break;
-				const routing = await this.session.routeGovernorTaskTransition?.({ facts }, "scope");
-				this.#capabilityTransitionDeferred = routing?.deferred === true;
-				this.#capabilityRouteError = this.#capabilityRoutingError(routing);
-			}
+			await this.session.waitForIdle();
+			if (this.closed || item.status !== "queued") return;
+			const facts = this.#capabilityFacts;
+			if (!facts) break;
+			const routing = await this.session.routeGovernorTaskTransition?.({ facts }, "scope");
+			this.#capabilityTransitionDeferred = routing?.deferred === true;
+			this.#capabilityRouteError = this.#capabilityRoutingError(routing);
 		}
 		if (this.#capabilityRouteError)
 			throw new ToolError(`workpool capability routing failed: ${this.#capabilityRouteError}`);

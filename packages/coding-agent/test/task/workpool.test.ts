@@ -433,6 +433,47 @@ describe("WorkPool dispatch", () => {
 		expect(spawn).toHaveBeenCalledTimes(1);
 	});
 
+	it("waits for the latest capability transition after overlapping pushes", async () => {
+		const session = makeSession([], 2, true);
+		const firstRoute = Promise.withResolvers<void>();
+		const secondRoute = Promise.withResolvers<void>();
+		let routeCount = 0;
+		session.routeGovernorTaskTransition = async request => {
+			routeCount++;
+			const count = routeCount;
+			await (count === 1 ? firstRoute.promise : secondRoute.promise);
+			return {
+				snapshot: undefined,
+				route: undefined,
+				capabilityRoutes:
+					count === 1
+						? [activeCapabilityRoute("browser")]
+						: (request.facts.requiredCapabilities ?? []).map(id =>
+								activeCapabilityRoute(id === "browser" ? "browser" : "debugger"),
+							),
+			};
+		};
+		const spawn = vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "overlapping-capability-pushes");
+		workpool.push(["inspect the page"], ["browser"]);
+		workpool.push(["inspect debugger output"], ["debugger"]);
+		await Bun.sleep(0);
+		expect(routeCount).toBe(1);
+		expect(spawn).not.toHaveBeenCalled();
+		firstRoute.resolve();
+		await Bun.sleep(0);
+		expect(routeCount).toBe(2);
+		expect(spawn).not.toHaveBeenCalled();
+		secondRoute.resolve();
+		await finishPool(session, workpool);
+		expect(spawn).toHaveBeenCalledTimes(2);
+		expect(workpool.status().items).toMatchObject({ completed: 2, queued: 0, running: 0, failed: 0 });
+	});
+
 	it("waits for a deferred capability transition before starting a workpool worker", async () => {
 		const session = makeSession();
 		const idle = Promise.withResolvers<void>();
