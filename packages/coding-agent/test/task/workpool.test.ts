@@ -415,6 +415,17 @@ describe("WorkPool dispatch", () => {
 		expect(workpool.status().items).toMatchObject({ failed: 1, queued: 0, running: 0 });
 	});
 
+	it("does not start a high-risk workpool item when the session lacks Governor preflight", async () => {
+		const session = makeSession();
+		session.routeGovernorTaskTransition = undefined;
+		const spawn = vi.spyOn(structured, "runStructuredSubagent");
+		const workpool = pool(session, "missing-governor-preflight");
+		workpool.push(["audit authentication changes"], undefined, true);
+		await finishPool(session, workpool);
+		expect(spawn).not.toHaveBeenCalled();
+		expect(workpool.status().items).toMatchObject({ failed: 1, queued: 0, running: 0 });
+	});
+
 	it("routes declared capabilities before starting a workpool worker", async () => {
 		const session = makeSession();
 		const route = Promise.withResolvers<void>();

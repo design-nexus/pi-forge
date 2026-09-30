@@ -765,8 +765,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				confidence: 0.9,
 				requiredCapabilities: declaredCapabilities,
 			};
+			const routeTransition = this.session.routeGovernorTaskTransition;
+			if (!routeTransition) {
+				return createTaskModeError("Task Governor preflight is unavailable for this session.");
+			}
 			try {
-				const routing = await this.session.routeGovernorTaskTransition?.({ facts }, "initial");
+				const routing = await routeTransition.call(this.session, { facts }, "initial");
 				if (routing?.deferred) {
 					return createTaskModeError(
 						"Task routing is waiting for the current provider turn to finish. Retry this task call after the turn settles.",
