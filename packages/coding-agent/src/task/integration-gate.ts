@@ -1,5 +1,6 @@
 import type { SingleResult } from "@oh-my-pi/pi-tui/tools/task";
 import { isRecord } from "@oh-my-pi/pi-utils";
+import type { GovernorVerificationPolicy } from "../governor/task-batch";
 
 export interface IntegrationWorkerResult {
 	result: SingleResult;
@@ -8,16 +9,18 @@ export interface IntegrationWorkerResult {
 }
 
 /** Map the gate's required structured outcome to the task's externally visible success state. */
-export function integrationGateFailure(result: SingleResult): string | undefined {
+export function integrationGateFailure(result: SingleResult, policy?: GovernorVerificationPolicy): string | undefined {
 	const structured = result.structuredOutput;
 	if (structured?.status !== "valid" || !isRecord(structured.data)) {
 		return `Integration verification did not return a valid structured outcome${structured?.error ? `: ${structured.error}` : "."}`;
 	}
 	const status = structured.data.status;
+	const verificationLevel = structured.data.verificationLevel;
 	const checks = structured.data.checks;
 	const repairAttempts = structured.data.repairAttempts;
 	if (
 		typeof structured.data.summary !== "string" ||
+		!(["V0", "V1", "V2", "V3", "V4"] as const).includes(verificationLevel as "V0" | "V1" | "V2" | "V3" | "V4") ||
 		!Array.isArray(checks) ||
 		checks.length === 0 ||
 		typeof repairAttempts !== "number" ||
@@ -25,7 +28,14 @@ export function integrationGateFailure(result: SingleResult): string | undefined
 		repairAttempts < 0 ||
 		repairAttempts > 1
 	) {
-		return "Integration verification omitted check evidence or exceeded its one-attempt repair budget.";
+		return "Integration verification omitted its level or check evidence, or exceeded its one-attempt repair budget.";
+	}
+	if (policy) {
+		const levels = ["V0", "V1", "V2", "V3", "V4"] as const;
+		const actual = levels.indexOf(verificationLevel as (typeof levels)[number]);
+		if (actual < levels.indexOf(policy.floor) || actual > levels.indexOf(policy.ceiling)) {
+			return `Integration verification level ${verificationLevel} is outside the selected ${policy.floor}–${policy.ceiling} range.`;
+		}
 	}
 	const invalidCheck = checks.find(
 		check =>

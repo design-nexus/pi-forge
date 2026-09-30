@@ -25,7 +25,7 @@ import { resolveCapabilityPolicies, resolvePromptPolicies } from "../prompt-engi
 import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "../prompt-engine/settings";
 import { cfgAdaptiveMode } from "../governor/settings";
 import type { GovernorTaskFacts } from "../governor/task-facts";
-import type { GovernorTaskPlan } from "../governor/task-batch";
+import type { GovernorTaskPlan, GovernorVerificationPolicy } from "../governor/task-batch";
 import { isTaskCapabilityId, type TaskCapabilityId } from "../prompt-engine/capability-catalog";
 import { classifyTaskCapabilities } from "../prompt-engine/task-capability-classifier";
 import type { EffectiveExtensionRoots } from "../capability/types";
@@ -428,6 +428,7 @@ interface TaskExecutionParams extends TaskParams {
 	integrationGateTask?: boolean;
 	integrationGateContext?: string;
 	integrationGateAssignments?: string;
+	integrationGateVerification?: GovernorVerificationPolicy;
 }
 
 interface IntegrationGateTaskMetadata {
@@ -443,6 +444,7 @@ const integrationGateOutputSchema = {
 	properties: {
 		status: { type: "string", enum: ["verified", "reconciled", "unresolved"] },
 		summary: { type: "string" },
+		verificationLevel: { type: "string", enum: ["V0", "V1", "V2", "V3", "V4"] },
 		checks: {
 			type: "array",
 			minItems: 1,
@@ -460,7 +462,7 @@ const integrationGateOutputSchema = {
 		files: { type: "array", items: { type: "string" } },
 		repairAttempts: { type: "integer", minimum: 0, maximum: 1 },
 	},
-	required: ["status", "summary", "checks", "files", "repairAttempts"],
+	required: ["status", "summary", "verificationLevel", "checks", "files", "repairAttempts"],
 } as const;
 
 interface GovernorReviewTaskItem extends TaskItem {
@@ -493,6 +495,7 @@ function spawnParamsFor(
 		spawn.integrationGateTask = true;
 		spawn.integrationGateContext = integrationMetadata.context;
 		spawn.integrationGateAssignments = integrationMetadata.assignments;
+		if (governorPlan?.verification) spawn.integrationGateVerification = governorPlan.verification;
 	}
 	if (!isGovernorReviewTaskItem(item) && governorPlan?.modelRole) {
 		spawn.governorModelRole = governorPlan.modelRole;
@@ -967,6 +970,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					context: truncateForPrompt(params.context?.trim() ?? "", 8_000),
 					assignments,
 					results: "Implementation worker results are added after the workers settle.",
+					strategy: "targeted_checks",
+					floor: "V1",
+					ceiling: "V2",
 				}),
 			};
 			integrationGateTaskMetadata.set(gateTask, {
@@ -2177,6 +2183,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				context: truncateForPrompt(params.integrationGateContext ?? "", 8_000),
 				assignments: truncateForPrompt(params.integrationGateAssignments ?? "", 8_000),
 				results: truncateForPrompt(results || "No implementation results were reported.", 12_000),
+				strategy: params.integrationGateVerification?.strategy ?? "targeted_checks",
+				floor: params.integrationGateVerification?.floor ?? "V1",
+				ceiling: params.integrationGateVerification?.ceiling ?? "V2",
 			});
 		}
 		const context = this.#isBatchEnabled() ? params.context?.trim() || undefined : undefined;
@@ -2236,7 +2245,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				},
 			});
 			if (params.integrationGateTask) {
-				const failure = integrationGateFailure(execution.result);
+				const failure = integrationGateFailure(execution.result, params.integrationGateVerification);
 				if (failure) execution.result.error = failure;
 			}
 			if (!params.integrationGateTask) {
