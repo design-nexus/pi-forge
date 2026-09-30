@@ -212,6 +212,30 @@ describe("task spawn routing", () => {
 		expect(plannedRisk).toBe(true);
 	});
 
+	it("sends a call-level high-risk declaration into Governor task facts", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
+		let observedRisk = false;
+		let plannedRisk = false;
+		session.routeGovernorTaskTransition = async request => {
+			observedRisk = request.facts.highRisk;
+			return { snapshot: undefined, route: undefined };
+		};
+		session.routeGovernorTaskPlan = (_count, highRisk) => {
+			plannedRisk = highRisk === true;
+			return undefined;
+		};
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-call-risk", {
+			context: "Change credential handling.",
+			highRisk: true,
+			tasks: [{ task: "Update credential validation." }, { task: "Update credential tests." }],
+		} as TaskParams);
+		expect(observedRisk).toBe(true);
+		expect(plannedRisk).toBe(true);
+	});
+
 	it("does not start a task whose Governor transition is deferred", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
 		const runSpy = vi

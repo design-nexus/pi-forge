@@ -564,3 +564,9 @@ Verification: all 29 focused workpool tests passed; repository `bun check` and `
 Task and eval workpool calls now invoke Governor routing only for `highRisk: true` or a non-empty capability list. Explicit `highRisk: false` and `capabilities: []` are treated as no-op declarations, so they do not defer ordinary work behind the provider turn.
 
 Verification: 63 focused task-spawn and workpool tests passed; repository `bun check` and `git diff --check` passed. Both entry points verify an empty/low-risk declaration skips transition routing and still executes the task.
+
+## Call-level high-risk declarations reach Governor planning
+
+Task calls can declare high-risk scope once for a whole batch. The call-level flag is included in structured Governor task facts and the batch planning input, matching the item-level behavior.
+
+Verification: all 34 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The regression verifies the top-level declaration reaches both transition facts and batch planning.
