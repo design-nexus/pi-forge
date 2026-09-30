@@ -455,6 +455,18 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 		}
 
 		async push(...items) {
+			let capabilities;
+			const trailing = items.at(-1);
+			if (isPlainObject(trailing) && Object.hasOwn(trailing, "capabilities")) {
+				items.pop();
+				if (Object.keys(trailing).some(key => key !== "capabilities")) {
+					throw new TypeError("WorkPool.push() options only accept capabilities");
+				}
+				capabilities = trailing.capabilities;
+				if (!Array.isArray(capabilities) || !capabilities.every(value => typeof value === "string")) {
+					throw new TypeError("WorkPool.push() capabilities must be an array of strings");
+				}
+			}
 			if (!items.every(item => typeof item === "string")) {
 				throw new TypeError("WorkPool.push() expects string items");
 			}
@@ -462,6 +474,7 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 				op: "push",
 				name: this.name,
 				items,
+				...(capabilities === undefined ? {} : { capabilities }),
 			});
 			return result?.ids ?? [];
 		}

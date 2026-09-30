@@ -33,6 +33,7 @@ export interface GovernorRuntimeSignals {
 	failedMutations?: number;
 	stalledToolMs?: number;
 	stalledExplorationCalls?: number;
+	longestTaskDurationMs?: number;
 }
 
 export const DEFAULT_GOVERNOR_BAND_BUDGETS: Record<TaskBand, GovernorBandBudget> = {
@@ -146,6 +147,7 @@ function selectEffort(
 	input: GovernorDecisionInput,
 	model: Model,
 	roleEffort: Effort | "off" | undefined,
+	band: TaskBand,
 	clamps: string[],
 ): Effort | undefined {
 	if (input.overrides?.effort === undefined && roleEffort === "off") return undefined;
@@ -154,10 +156,30 @@ function selectEffort(
 	const ceilings = [input.ceilings.sessionEffort, input.ceilings.taskMaxEffort].filter(
 		(value): value is Effort => value !== undefined,
 	);
-	const maximum = Math.min(effortIndex(requested), ...ceilings.map(effortIndex));
-	const supported = getSupportedEfforts(model).filter(effort => effortIndex(effort) <= maximum);
+	const available = getSupportedEfforts(model);
+	if (available.length === 0) {
+		clamps.push("requested effort unavailable");
+		return undefined;
+	}
+	const requestedIndex = available.filter(effort => effortIndex(effort) <= effortIndex(requested)).length - 1;
+	if (requestedIndex < 0) {
+		clamps.push("requested effort unavailable");
+		return undefined;
+	}
+	const policyIndex =
+		input.overrides?.effort !== undefined || roleEffort !== undefined
+			? requestedIndex
+			: band === "complex"
+				? requestedIndex + 1
+				: band === "massive"
+					? available.length - 1
+					: requestedIndex;
+	const desired = available[Math.max(0, Math.min(available.length - 1, policyIndex))];
+	if (!desired) return undefined;
+	const maximum = Math.min(effortIndex(desired), ...ceilings.map(effortIndex));
+	const supported = available.filter(effort => effortIndex(effort) <= maximum);
 	const selected = supported.at(-1);
-	if (selected !== requested) clamps.push(selected ? `effort clamped to ${selected}` : "requested effort unavailable");
+	if (selected !== desired) clamps.push(selected ? `effort clamped to ${selected}` : "requested effort unavailable");
 	return selected;
 }
 
@@ -255,6 +277,16 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 		band = "normal";
 		evidence.push("prolonged exploration without recorded progress raised effort");
 	}
+	const longestTaskDurationMs = runtime?.longestTaskDurationMs ?? 0;
+	if (longestTaskDurationMs >= thresholds.runtimeStagnationMs) {
+		if (longestTaskDurationMs >= thresholds.runtimeStagnationMs * 2 && band === "normal") {
+			band = "complex";
+			evidence.push("a long-running task raised the effort band");
+		} else if (band === "trivial") {
+			band = "normal";
+			evidence.push("a long-running task raised the effort band");
+		}
+	}
 	if (input.overrides?.band) {
 		band = input.overrides.band;
 		evidence.push("explicit task band");
@@ -281,7 +313,7 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 			clamps.push(`role ${requestedRole} unavailable; current model retained`);
 		}
 	}
-	const effort = selectEffort(input, model, roleEffort, clamps);
+	const effort = selectEffort(input, model, roleEffort, band, clamps);
 	const taskLimit =
 		input.ceilings.taskMaxConcurrency === 0
 			? Number.POSITIVE_INFINITY

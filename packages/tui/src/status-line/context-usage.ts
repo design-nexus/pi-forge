@@ -101,8 +101,17 @@ export interface ContextBreakdown {
 	usedTokens: number;
 	autoCompactBufferTokens: number;
 	freeTokens: number;
+	/** Current model's notebook allowance, when the host supplies one. */
+	retainedNotesBudgetTokens?: number;
 	/** Estimated snapcompact wire savings; set when requested and a snapcompact.* setting is enabled. */
 	snapcompact?: ContextSavingsEstimate;
+}
+
+export function retainedNotesOverBudget(breakdown: ContextBreakdown): { tokens: number; budget: number } | undefined {
+	const budget = breakdown.retainedNotesBudgetTokens;
+	if (budget === undefined) return undefined;
+	const tokens = breakdown.categories.find(category => category.id === "retainedNotes")?.tokens ?? 0;
+	return tokens > budget ? { tokens, budget } : undefined;
 }
 
 /** Percent positions (0–100 of the context window) for the auto-compaction boundaries. */
@@ -619,6 +628,15 @@ function buildLegendLines(breakdown: ContextBreakdown, theme: Theme): string[] {
 		const tokens = formatNumber(category.tokens);
 		const pct = percentString(category.tokens, contextWindow);
 		lines.push(`${dot} ${label}: ${theme.bold(tokens)} ${theme.fg("dim", `tokens (${pct})`)}`);
+	}
+	const oversizedNotes = retainedNotesOverBudget(breakdown);
+	if (oversizedNotes) {
+		lines.push(
+			theme.fg(
+				"warning",
+				`Retained notes exceed this model's notebook budget (${formatNumber(oversizedNotes.tokens)}/${formatNumber(oversizedNotes.budget)} tokens).`,
+			),
+		);
 	}
 
 	const freeDot = theme.fg("dim", CELL_FREE);

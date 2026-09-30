@@ -9,6 +9,7 @@ import {
 } from "@oh-my-pi/pi-tui/status-line/context-usage";
 import type { ScopeLike } from "../config/registry";
 import type { AgentSession } from "./agent-session";
+import { contextNotesTokenBudget } from "./context-notes";
 import { resolveSpeculationMethod } from "./compaction-methods";
 import { estimateInlineSavings } from "./snapcompact-inline";
 import { resolveSpeculationLeadTokens } from "./speculation-lead";
@@ -59,10 +60,12 @@ export function computeSessionContextBreakdown(
 			});
 		}
 	}
-	return computeContextBreakdown(session, {
+	const breakdown = computeContextBreakdown(session, {
 		compaction: cfgCompaction.get(session.settings),
 		sourceRevision: session.settings.revision,
 		skillful: cfgSkillful.get(session.settings),
 		snapcompact,
 	});
+	const retainedNotesBudgetTokens = contextNotesTokenBudget(breakdown.contextWindow);
+	return retainedNotesBudgetTokens === undefined ? breakdown : { ...breakdown, retainedNotesBudgetTokens };
 }

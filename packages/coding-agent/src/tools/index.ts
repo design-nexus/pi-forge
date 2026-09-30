@@ -6,6 +6,8 @@ import type { AsyncJobManager } from "../async/job-manager";
 import type { Rule } from "../capability/rule";
 import type { EffectiveExtensionRoots } from "../capability/types";
 import type { EvalPreludeDefinition } from "../eval/preludes";
+import type { GovernorTaskFacts } from "../governor/task-facts";
+import type { GovernorTaskTransitionResult } from "../governor/transition";
 import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
 import { EditTool } from "../edit";
@@ -462,6 +464,12 @@ export interface ToolSession {
 	getTodoPhases?: () => TodoPhase[];
 	/** Optional Governor cap for one concrete task batch; undefined keeps OMP's concurrency behavior. */
 	routeGovernorTaskBatch?: (taskCount: number) => number | undefined;
+	routeGovernorTaskPlan?: (taskCount: number) => { workerCount?: number; effort?: "lo" | "med" | "hi" } | undefined;
+	/** Route explicitly declared direct-tool needs for a structured task call. */
+	routeGovernorTaskTransition?: (
+		request: { facts: GovernorTaskFacts },
+		trigger: "initial" | "scope" | "steering",
+	) => Promise<GovernorTaskTransitionResult>;
 	/** Replace cached todo phases for this session. */
 	setTodoPhases?: (phases: TodoPhase[]) => void;
 	/**

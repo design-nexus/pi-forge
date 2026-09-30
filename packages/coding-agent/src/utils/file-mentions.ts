@@ -28,31 +28,14 @@ import { resolveReadPath } from "../tools/path-utils";
 import { formatDimensionNote, resizeImage } from "./image-resize";
 import { VideoError, buildVideoContactSheetPng, formatVideoDetails, probeVideo, videoMimeForPath } from "./video";
 import { createVideoPreviewImage, isVideoPath } from "@oh-my-pi/pi-tui/prompt/video";
+export * from "./file-mention-parser";
 
-/** Regex to match @filepath patterns in text */
-const FILE_MENTION_REGEX = /@(?:"([^"]+)"|'([^']+)'|([^\s@]+))/g;
-const LEADING_PUNCTUATION_REGEX = /^[`"'([{<]+/;
-const TRAILING_PUNCTUATION_REGEX = /[)\]}>.,;:!?"'`]+$/;
-const MENTION_BOUNDARY_REGEX = /[\s([{<"'`]/;
 const DEFAULT_DIR_LIMIT = 500;
 
 // Avoid OOM when users @mention very large files. Above these limits we skip
 // auto-reading and only include the path in the message.
 const MAX_AUTO_READ_TEXT_BYTES = 5 * 1024 * 1024; // 5MB
 const MAX_AUTO_READ_IMAGE_BYTES = 25 * 1024 * 1024; // 25MB
-
-function isMentionBoundary(text: string, index: number): boolean {
-	if (index === 0) return true;
-	return MENTION_BOUNDARY_REGEX.test(text[index - 1]);
-}
-
-function sanitizeMentionPath(rawPath: string): string | null {
-	let cleaned = rawPath.trim();
-	cleaned = cleaned.replace(LEADING_PUNCTUATION_REGEX, "");
-	cleaned = cleaned.replace(TRAILING_PUNCTUATION_REGEX, "");
-	cleaned = cleaned.trim();
-	return cleaned.length > 0 ? cleaned : null;
-}
 
 async function resolveMentionPath(
 	filePath: string,
@@ -162,27 +145,6 @@ async function buildDirectoryListing(absolutePath: string): Promise<{ output: st
 	}
 
 	return { output, lineCount: output.split("\n").length };
-}
-
-/** Extract all @filepath mentions from text */
-export function extractFileMentions(text: string): string[] {
-	const matches = [...text.matchAll(FILE_MENTION_REGEX)];
-	const mentions: string[] = [];
-
-	for (const match of matches) {
-		const index = match.index ?? 0;
-		if (!isMentionBoundary(text, index)) continue;
-
-		const rawPath = match[1] ?? match[2] ?? match[3];
-		if (!rawPath) continue;
-
-		const cleaned = match[1] !== undefined || match[2] !== undefined ? rawPath.trim() : sanitizeMentionPath(rawPath);
-		if (!cleaned) continue;
-
-		mentions.push(cleaned);
-	}
-
-	return [...new Set(mentions)];
 }
 
 /**

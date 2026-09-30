@@ -2147,6 +2147,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			getFileMutationVersion: path => fileMutationVersions.get(path) ?? 0,
 			getTodoPhases: () => session.getTodoPhases(),
 			routeGovernorTaskBatch: taskCount => session?.routeGovernorTaskBatch(taskCount),
+			routeGovernorTaskPlan: taskCount => session?.routeGovernorTaskPlan(taskCount),
+			routeGovernorTaskTransition: (request, trigger) => session.routeGovernorTaskTransition(request, trigger),
 			setTodoPhases: phases => session.setTodoPhases(phases),
 			persistTodoPhases: phases => sessionManager.appendCustomEntry(USER_TODO_EDIT_CUSTOM_TYPE, { phases }),
 			getWorkPoolYieldItems: () => session?.getWorkPoolYieldItems() ?? [],

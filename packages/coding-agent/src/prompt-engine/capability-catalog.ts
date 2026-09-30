@@ -24,3 +24,12 @@ export type RoutableToolCapabilityId = {
 		? K
 		: never;
 }[keyof typeof TOOL_CAPABILITY_CATALOG];
+
+export const ROUTABLE_TOOL_CAPABILITY_IDS = Object.keys(TOOL_CAPABILITY_CATALOG).filter(
+	(id): id is RoutableToolCapabilityId =>
+		TOOL_CAPABILITY_CATALOG[id as keyof typeof TOOL_CAPABILITY_CATALOG].routeable,
+);
+
+export const TASK_TOOL_CAPABILITY_IDS = ROUTABLE_TOOL_CAPABILITY_IDS.filter(
+	(id): id is Exclude<RoutableToolCapabilityId, "subagents"> => id !== "subagents",
+);

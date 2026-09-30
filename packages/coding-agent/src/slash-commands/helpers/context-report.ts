@@ -1,6 +1,7 @@
 import { computeSessionContextBreakdown } from "../../session/context-usage-runtime";
 import type { SlashCommandRuntime } from "../types";
 import { renderAsciiBar } from "@oh-my-pi/pi-tui/chrome/format";
+import { retainedNotesOverBudget } from "@oh-my-pi/pi-tui/status-line/context-usage";
 
 /**
  * Build the `/context` ACP-mode text. Tries the rich breakdown first
@@ -19,6 +20,12 @@ export function buildContextReportText(runtime: SlashCommandRuntime): string {
 			if (category.tokens === 0) continue;
 			const fraction = category.tokens / breakdown.contextWindow;
 			lines.push(`  ${category.label.padEnd(16)} ${renderAsciiBar(fraction)}  ${category.tokens} tokens`);
+		}
+		const oversizedNotes = retainedNotesOverBudget(breakdown);
+		if (oversizedNotes) {
+			lines.push(
+				`Retained notes exceed this model's notebook budget (${oversizedNotes.tokens}/${oversizedNotes.budget} tokens). Shorten the notes or use a larger model.`,
+			);
 		}
 		if (breakdown.autoCompactBufferTokens > 0) {
 			const fraction = breakdown.autoCompactBufferTokens / breakdown.contextWindow;

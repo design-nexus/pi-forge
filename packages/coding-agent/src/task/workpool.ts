@@ -15,16 +15,21 @@ import {
 	runStructuredSubagent,
 } from "./structured-subagent";
 import { type AgentProgress, oneLineLabel, type SingleResult, type TaskToolDetails } from "@oh-my-pi/pi-tui/tools/task";
+import type { TaskEffort } from "@oh-my-pi/pi-tui/thinking";
 import { buildWorkPoolOutputSchema, type WorkPoolYieldItem } from "./workpool-yield";
 
 import { cfgEvalWorkpoolFreshAgents } from "../eval/settings";
 import { cfgTaskMaxConcurrency, cfgTaskMaxRuntimeMs } from "./settings";
+import { sessionTaskSemaphore } from "./parallel";
+import type { GovernorTaskFacts } from "../governor/task-facts";
+import { TASK_TOOL_CAPABILITY_IDS } from "../prompt-engine/capability-catalog";
 
 /** One user-supplied unit tracked through a workpool batch. */
 export interface WorkPoolItem {
 	id: string;
 	seq: number;
 	text: string;
+	governorEffort?: TaskEffort;
 	agentId?: string;
 	batchId?: string;
 	status: "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -49,7 +54,7 @@ export interface WorkPoolBatch {
 	items: WorkPoolItem[];
 	jobId: string;
 	startedAt: number;
-	status: "running" | "completed" | "failed" | "cancelled";
+	status: "queued" | "running" | "completed" | "failed" | "cancelled";
 	output?: string;
 }
 
@@ -152,22 +157,51 @@ export class WorkPool {
 	}
 
 	/** Queue items and start the aggregate pool job on the first non-empty push. */
-	push(texts: string[]): string[] {
+	push(texts: string[], capabilities?: readonly (typeof TASK_TOOL_CAPABILITY_IDS)[number][]): string[] {
 		if (this.closed) throw new ToolError(`workpool ${this.name} is closed`);
 		if (texts.length === 0) return [];
-		const queued: WorkPoolItem[] = [];
-		for (const text of texts) {
-			const seq = this.#nextSeq++;
-			const item: WorkPoolItem = { id: `${this.name}#${seq}`, seq, text, status: "queued" };
-			this.items.push(item);
-			queued.push(item);
+		if (capabilities !== undefined) {
+			const facts: GovernorTaskFacts = {
+				files: [],
+				tasks: texts.map((_, index) => ({
+					id: `pool-${this.name}-${this.#nextSeq + index}`,
+					dependsOn: [],
+					requiredCapabilities: capabilities,
+				})),
+				highRisk: false,
+				confidence: 0.9,
+			};
+			void this.session.routeGovernorTaskTransition?.({ facts }, "scope").catch(error => {
+				logger.warn("Adaptive workpool capability routing failed", { pool: this.name, error: String(error) });
+			});
 		}
-		const pendingCount = this.items.filter(item => item.status === "queued" || item.status === "running").length;
+		const pendingCount =
+			this.items.filter(item => item.status === "queued" || item.status === "running").length + texts.length;
+		let governorEffort: TaskEffort | undefined;
 		try {
-			this.#governorLimit = this.session.routeGovernorTaskBatch?.(pendingCount);
+			if (this.session.routeGovernorTaskPlan) {
+				const plan = this.session.routeGovernorTaskPlan(pendingCount);
+				this.#governorLimit = plan?.workerCount;
+				governorEffort = plan?.effort;
+			} else {
+				this.#governorLimit = this.session.routeGovernorTaskBatch?.(pendingCount);
+			}
 		} catch (error) {
 			logger.warn("Adaptive workpool routing failed", { error: String(error) });
 			this.#governorLimit = undefined;
+		}
+		const queued: WorkPoolItem[] = [];
+		for (const text of texts) {
+			const seq = this.#nextSeq++;
+			const item: WorkPoolItem = {
+				id: `${this.name}#${seq}`,
+				seq,
+				text,
+				status: "queued",
+				...(governorEffort ? { governorEffort } : {}),
+			};
+			this.items.push(item);
+			queued.push(item);
 		}
 		this.#ensurePoolJob();
 		for (const item of queued) this.#queueDispatch(item);
@@ -202,12 +236,23 @@ export class WorkPool {
 					manager.consumeJobResults(batchIds);
 					manager.unwatchJobs(batchIds);
 					this.closed = true;
-					const summary = `Pool \`${this.name}\` drained: ${this.items.length} item(s), ${this.batches.length} batch(es).`;
+					const counts = this.status().items;
+					const mode =
+						counts.failed > 0 ? "failed" : signal.aborted || counts.cancelled > 0 ? "cancelled" : "completed";
+					const outcome =
+						mode === "completed"
+							? "completed"
+							: mode === "failed"
+								? `drained with ${counts.failed} failed item(s)${counts.cancelled > 0 ? ` and ${counts.cancelled} cancelled item(s)` : ""}`
+								: `drained with ${counts.cancelled} cancelled item(s)`;
+					const summary = `Pool \`${this.name}\` ${outcome} (${this.items.length} item(s), ${this.batches.length} batch(es)).`;
 					await reportProgress(summary, {
 						workpoolFailedBatches: this.batches.filter(batch => batch.status === "failed").length,
 					});
-					this.#card(signal.aborted ? "cancelled" : "completed", this.ownerId, summary);
-					return this.#renderAggregateResult();
+					this.#card(mode, this.ownerId, summary);
+					const result = this.#renderAggregateResult(summary);
+					if (mode === "failed") throw new Error(result);
+					return result;
 				} finally {
 					signal.removeEventListener("abort", onAbort);
 				}
@@ -340,10 +385,9 @@ export class WorkPool {
 			items,
 			jobId: id,
 			startedAt: Date.now(),
-			status: "running",
+			status: "queued",
 		};
 		for (const item of items) {
-			item.status = "running";
 			item.agentId = agent.id;
 			item.batchId = batch.id;
 		}
@@ -375,7 +419,7 @@ export class WorkPool {
 			"task",
 			batch.id,
 			async ({ signal, reportProgress, markRunning }) => {
-				markRunning();
+				let sessionAcquired = false;
 				const onProgress = (progress: AgentProgress): void => {
 					if (progress.contextTokens !== undefined) agent.contextTokens = progress.contextTokens;
 					if (progress.contextWindow !== undefined) agent.contextWindow = progress.contextWindow;
@@ -389,6 +433,14 @@ export class WorkPool {
 				};
 				let result: SingleResult;
 				try {
+					await sessionTaskSemaphore(this.session, cfgTaskMaxConcurrency.get(this.session.settings)).acquire(
+						signal,
+					);
+					sessionAcquired = true;
+					signal.throwIfAborted();
+					batch.status = "running";
+					for (const item of batch.items) item.status = "running";
+					markRunning();
 					if (agent.turns === 0) {
 						const execution = await runStructuredSubagent({
 							session: this.session,
@@ -396,6 +448,7 @@ export class WorkPool {
 							assignment: message,
 							...(this.context ? { context: this.context } : {}),
 							agent: this.policy.agentName,
+							...(batch.items[0]?.governorEffort ? { effort: batch.items[0].governorEffort } : {}),
 							identity: { id: agent.id },
 							customTools: this.customTools,
 							outputSchema,
@@ -428,11 +481,14 @@ export class WorkPool {
 					}
 				} catch (error) {
 					const output = error instanceof Error ? error.message : String(error);
-					return this.#settleTurn(agent, batch, { exitCode: 1, output, error: output });
+					return this.#settleTurn(agent, batch, { exitCode: 1, output, error: output, aborted: signal.aborted });
+				} finally {
+					if (sessionAcquired)
+						sessionTaskSemaphore(this.session, cfgTaskMaxConcurrency.get(this.session.settings)).release();
 				}
 				return this.#settleTurn(agent, batch, result);
 			},
-			{ id: batch.id, agentId: agent.id, ownerId: this.ownerId },
+			{ id: batch.id, agentId: agent.id, ownerId: this.ownerId, queued: true },
 		);
 		batch.jobId = jobId;
 		agent.jobId = jobId;
@@ -514,10 +570,8 @@ export class WorkPool {
 		this.#notifyDrained();
 	}
 
-	#renderAggregateResult(): string {
-		const lines = [
-			`Pool \`${this.name}\` completed (${this.items.length} item(s), ${this.batches.length} batch(es)).`,
-		];
+	#renderAggregateResult(summary: string): string {
+		const lines = [summary];
 		for (const batch of this.batches) {
 			lines.push("", `## ${batch.id} · agent \`${batch.agentId}\` · ${batch.status}`);
 			for (const item of batch.items) {
@@ -589,9 +643,13 @@ export class WorkPool {
 		};
 	}
 
-	/** Stop accepting work and cancel items not yet assigned to a turn. */
+	/** Stop accepting work and cancel items whose turn has not started. */
 	close(): { dropped: string[] } {
 		this.closed = true;
+		const manager = this.session.asyncJobManager;
+		for (const batch of this.batches) {
+			if (batch.status === "queued") manager?.cancel(batch.jobId, { ownerId: this.ownerId });
+		}
 		const dropped: string[] = [];
 		for (const item of this.items) {
 			if (item.status !== "queued") continue;
@@ -605,7 +663,7 @@ export class WorkPool {
 	}
 
 	#card(
-		mode: "spawned" | "dispatched" | "queued" | "batch" | "completed" | "cancelled",
+		mode: "spawned" | "dispatched" | "queued" | "batch" | "completed" | "failed" | "cancelled",
 		agentId: string,
 		body: string,
 	): void {

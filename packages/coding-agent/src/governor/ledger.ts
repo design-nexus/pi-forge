@@ -59,7 +59,11 @@ function isGovernorSnapshot(value: unknown): value is GovernorSnapshot {
 				(signals.runtime.stalledExplorationCalls === undefined ||
 					(typeof signals.runtime.stalledExplorationCalls === "number" &&
 						Number.isSafeInteger(signals.runtime.stalledExplorationCalls) &&
-						signals.runtime.stalledExplorationCalls >= 0)))) &&
+						signals.runtime.stalledExplorationCalls >= 0)) &&
+				(signals.runtime.longestTaskDurationMs === undefined ||
+					(typeof signals.runtime.longestTaskDurationMs === "number" &&
+						Number.isSafeInteger(signals.runtime.longestTaskDurationMs) &&
+						signals.runtime.longestTaskDurationMs >= 0)))) &&
 		typeof signals.highRisk === "boolean" &&
 		(value.overrides === undefined || isRecord(value.overrides)) &&
 		decision.version === 1 &&

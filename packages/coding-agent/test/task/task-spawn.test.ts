@@ -28,6 +28,7 @@ import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 import { snapshotJobs } from "@oh-my-pi/pi-coding-agent/async/job-control";
 
 import { cfgTaskMaxConcurrency } from "@oh-my-pi/pi-coding-agent/task/settings";
+import { runEvalAgent } from "@oh-my-pi/pi-coding-agent/eval/agent-bridge";
 
 const taskAgent: AgentDefinition = {
 	name: "task",
@@ -650,12 +651,41 @@ describe("task spawn routing", () => {
 		gates.get(started[0]!)!.resolve();
 		await firstJob.promise;
 		await pollUntil(() => started.length === 2);
-		expect(started).toEqual(["First", "Second"]);
+		expect([...started].sort()).toEqual(["First", "Second"]);
 
 		gates.get("Second")!.resolve();
 		await secondJob.promise;
 		expect(firstJob.status).toBe("completed");
 		expect(secondJob.status).toBe("completed");
+	});
+
+	it("shares the session concurrency limit between task and eval agent handles", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const gate = deferred();
+		const started: string[] = [];
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			started.push(options.assignment ?? "");
+			if (options.assignment === "Work A.") await gate.promise;
+			return makeResult(options.id ?? "?");
+		});
+		const manager = createManager();
+		const session = createSession({
+			manager,
+			settings: { "task.maxConcurrency": 1, "task.isolation.enabled": false },
+		});
+		const tool = await TaskTool.create(session);
+		const task = await tool.execute("tc-1", { agent: "task", name: "First", task: "Work A." } as TaskParams);
+		await pollUntil(() => started.length === 1);
+		const evalHandle = await runEvalAgent({ prompt: "Work B." }, { session });
+		try {
+			expect(started).toEqual(["Work A."]);
+			expect(manager.getJob(evalHandle.id)?.queued).toBe(true);
+		} finally {
+			gate.resolve();
+		}
+		await Promise.all([manager.getJob(task.details!.async!.jobId)?.promise, manager.getJob(evalHandle.id)?.promise]);
+		expect(started).toEqual(["Work A.", "Work B."]);
+		expect(manager.getJob(evalHandle.id)?.status).toBe("completed");
 	});
 
 	it("bounds one automatic task batch without changing the session concurrency setting", async () => {
@@ -688,8 +718,7 @@ describe("task spawn routing", () => {
 		await pollUntil(() => started.length === 3);
 		gates.get("Second")!.resolve();
 		await pollUntil(() => started.length === 4);
-		gates.get("Third")!.resolve();
-		gates.get("Fourth")!.resolve();
+		for (const name of started.slice(2)) gates.get(name)!.resolve();
 		await Promise.all(["First", "Second", "Third", "Fourth"].map(name => manager.getJob(name)!.promise));
 		expect(cfgTaskMaxConcurrency.get(session.settings)).toBe(32);
 	});
@@ -714,13 +743,12 @@ describe("task spawn routing", () => {
 			tasks: ["First", "Second", "Third", "Fourth"].map(name => ({ name, task: `Work ${name}.` })),
 		} as TaskParams);
 		await pollUntil(() => started.length === 2);
-		expect(started).toEqual(["First", "Second"]);
+		expect([...started].sort()).toEqual(["First", "Second"]);
 		gates.get("First")!.resolve();
 		await pollUntil(() => started.length === 3);
 		gates.get("Second")!.resolve();
 		await pollUntil(() => started.length === 4);
-		gates.get("Third")!.resolve();
-		gates.get("Fourth")!.resolve();
+		for (const name of started.slice(2)) gates.get(name)!.resolve();
 		const result = await execution;
 		expect(result.details?.results).toHaveLength(4);
 	});

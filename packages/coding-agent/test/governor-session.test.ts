@@ -80,6 +80,31 @@ it("counts bounded shell time since the last recorded progress on the current tu
 	}
 });
 
+it("keeps the longest settled task duration across direct and async task results", async () => {
+	const manager = SessionManager.inMemory();
+	try {
+		manager.appendMessage({ role: "user", content: [{ type: "text", text: "Run workers" }], timestamp: 1 });
+		manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "task-direct",
+			toolName: "task",
+			content: [{ type: "text", text: "done" }],
+			details: { totalDurationMs: 3_000 },
+			isError: false,
+			timestamp: 2,
+		});
+		manager.appendCustomMessageEntry(ASYNC_RESULT_MESSAGE_TYPE, "Worker completed", true, {
+			jobs: [
+				{ jobId: "task-slow", type: "task", durationMs: 8_000 },
+				{ jobId: "shell", type: "bash", durationMs: 20_000 },
+			],
+		});
+		expect(recentGovernorToolSignals(manager).longestTaskDurationMs).toBe(8_000);
+	} finally {
+		await manager.close();
+	}
+});
+
 it("previews a live Governor decision from settings and session ceilings without activating tools", async () => {
 	using dir = TempDir.createSync("@omp-governor-session-");
 	const cwd = dir.join("project");

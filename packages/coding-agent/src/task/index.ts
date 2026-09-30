@@ -23,6 +23,9 @@ import { $env, logger, prompt } from "@oh-my-pi/pi-utils";
 import type { ToolSession } from "..";
 import { resolveCapabilityPolicies, resolvePromptPolicies } from "../prompt-engine/profiles";
 import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "../prompt-engine/settings";
+import { cfgAdaptiveMode } from "../governor/settings";
+import type { GovernorTaskFacts } from "../governor/task-facts";
+import { TASK_TOOL_CAPABILITY_IDS } from "../prompt-engine/capability-catalog";
 import type { EffectiveExtensionRoots } from "../capability/types";
 import type { Theme } from "@oh-my-pi/pi-tui/theme";
 import subagentUserPromptTemplate from "../prompts/system/subagent-user-prompt.md" with { type: "text" };
@@ -54,7 +57,7 @@ import { type DiscoveryResult, discoverAgents } from "./discovery";
 import { createEvalCustomTools, describeEvalTools, evalToolsEnabled } from "./eval-tools";
 import { generateTaskName } from "./name-generator";
 import { AgentOutputManager } from "./output-manager";
-import { mapWithConcurrencyLimitAllSettled, Semaphore } from "./parallel";
+import { mapWithConcurrencyLimitAllSettled, Semaphore, sessionTaskSemaphore } from "./parallel";
 import { renderResult, renderCall as renderTaskCall } from "@oh-my-pi/pi-tui/tools/task";
 import { repairTaskParams } from "@oh-my-pi/pi-tui/tools/task-repair-args";
 import { resolveEffectiveSubagentPolicy, runStructuredSubagent, StructuredSubagentError } from "./structured-subagent";
@@ -142,6 +145,7 @@ interface TaskDescriptionOptions {
 	batchEnabled: boolean;
 	effortEnabled: boolean;
 	evalToolsEnabled: boolean;
+	capabilityRoutingEnabled: boolean;
 	asyncEnabled: boolean;
 	ircEnabled: boolean;
 	parentSpawns: string;
@@ -177,6 +181,7 @@ function renderDescription(options: TaskDescriptionOptions): string {
 		batchEnabled: options.batchEnabled,
 		effortEnabled: options.effortEnabled,
 		evalToolsEnabled: options.evalToolsEnabled,
+		capabilityRoutingEnabled: options.capabilityRoutingEnabled,
 		asyncEnabled: options.asyncEnabled,
 		hasBlockingAgents: renderedAgents.some(agent => agent.blocking),
 		hasModelMentions: options.sessionAgents.length > 0,
@@ -206,7 +211,16 @@ function validateShapeParams(batchEnabled: boolean, params: TaskParams): string 
 			return `task.batch is disabled, so the task tool does not accept ${disallowed.map(f => `\`${f}\``).join(" or ")}. Spawn one agent per call with \`task\`, or enable the task.batch setting.`;
 		}
 	}
+	if (params.capabilities !== undefined) {
+		if (!Array.isArray(params.capabilities) || params.capabilities.some(id => !isTaskToolCapabilityId(id))) {
+			return "`capabilities` must contain supported direct-tool capability names.";
+		}
+	}
 	return undefined;
+}
+
+function isTaskToolCapabilityId(value: string): value is (typeof TASK_TOOL_CAPABILITY_IDS)[number] {
+	return TASK_TOOL_CAPABILITY_IDS.some(id => id === value);
 }
 
 /**
@@ -243,6 +257,9 @@ function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string 
 			}
 			const effortError = validateEffort(item.effort, `Task ${i + 1}${item.name ? ` (\`${item.name}\`)` : ""}`);
 			if (effortError) return effortError;
+			if (item.capabilities?.some(id => !isTaskToolCapabilityId(id))) {
+				return `Task ${i + 1} has an unsupported direct-tool capability.`;
+			}
 		}
 		const seen = new Map<string, string>();
 		for (const item of tasks) {
@@ -296,7 +313,12 @@ function resolveSpawnItems(params: TaskParams): TaskItem[] {
  * distinguishes an absent `isolated` from an explicit one. The item's
  * `isolated` (batch form) wins over the top-level flag (flat form).
  */
-function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string): TaskParams {
+function spawnParamsFor(
+	params: TaskParams,
+	item: TaskItem,
+	defaultAgent: string,
+	governorEffort?: TaskEffort,
+): TaskParams {
 	const spawn: TaskParams = { agent: item.agent?.trim() || defaultAgent };
 	if (item.name !== undefined) spawn.name = item.name;
 	if (item.task !== undefined) spawn.task = item.task;
@@ -305,6 +327,7 @@ function spawnParamsFor(params: TaskParams, item: TaskItem, defaultAgent: string
 	if ("schemaMode" in item) spawn.schemaMode = item.schemaMode;
 	if ("tools" in item) spawn.tools = item.tools;
 	if ("effort" in item) spawn.effort = item.effort;
+	else if (governorEffort !== undefined) spawn.effort = governorEffort;
 	if (item.isolated !== undefined) {
 		spawn.isolated = item.isolated;
 	} else if ("isolated" in params) {
@@ -588,14 +611,6 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	readonly mergeCallAndResult = true;
 	readonly #discoveredAgents: AgentDefinition[];
 	readonly #blockedAgent: string | undefined;
-	/**
-	 * One semaphore per TaskTool instance (i.e. per session): bounds concurrent
-	 * subagents across parallel `task` calls within the session. Resized in
-	 * place from `task.maxConcurrency` before every acquire/release so a
-	 * mid-session settings change (UI toggle, `/settings`) applies to both new
-	 * spawns and work already parked in the semaphore queue.
-	 */
-	#spawnSemaphore: Semaphore | undefined;
 
 	get parameters(): TaskToolSchemaInstance {
 		const planMode = this.session.getPlanModeState?.()?.enabled === true;
@@ -606,6 +621,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			batchEnabled: this.#isBatchEnabled(),
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
 			evalToolsEnabled: evalToolsEnabled(this.session),
+			capabilityRoutingEnabled: cfgAdaptiveMode.get(this.session.settings) === "auto",
 			defaultAgent,
 		});
 	}
@@ -630,6 +646,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			batchEnabled: this.#isBatchEnabled(),
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
 			evalToolsEnabled: evalToolsEnabled(this.session),
+			capabilityRoutingEnabled: cfgAdaptiveMode.get(this.session.settings) === "auto",
 			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
 			ircEnabled: isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0),
 			parentSpawns: this.session.getSessionSpawns() ?? "*",
@@ -648,13 +665,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	}
 
 	#getSpawnSemaphore(): Semaphore {
-		const max = cfgTaskMaxConcurrency.get(this.session.settings);
-		if (this.#spawnSemaphore) {
-			this.#spawnSemaphore.resize(max);
-		} else {
-			this.#spawnSemaphore = new Semaphore(max);
-		}
-		return this.#spawnSemaphore;
+		return sessionTaskSemaphore(this.session, cfgTaskMaxConcurrency.get(this.session.settings));
 	}
 
 	#releaseSpawnSemaphore(): void {
@@ -724,7 +735,45 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				);
 			}
 		}
-		const normalizedSpawnParams = spawnItems.map(item => spawnParamsFor(params, item, defaultAgent));
+		const declaredCapabilities = [
+			...new Set([...(params.capabilities ?? []), ...spawnItems.flatMap(item => item.capabilities ?? [])]),
+		].filter(isTaskToolCapabilityId);
+		const capabilitiesDeclared =
+			Object.hasOwn(params, "capabilities") || spawnItems.some(item => Object.hasOwn(item, "capabilities"));
+		if (capabilitiesDeclared) {
+			const facts: GovernorTaskFacts = {
+				files: [],
+				tasks: spawnItems.map((item, index) => ({
+					id: `task-${index + 1}`,
+					dependsOn: [],
+					requiredCapabilities: item.capabilities?.filter(isTaskToolCapabilityId),
+				})),
+				highRisk: false,
+				confidence: 0.9,
+				requiredCapabilities: declaredCapabilities,
+			};
+			try {
+				await this.session.routeGovernorTaskTransition?.({ facts }, "initial");
+			} catch (error) {
+				logger.warn("Task capability routing failed", { error: String(error) });
+			}
+		}
+		let governorPlan: { workerCount?: number; effort?: TaskEffort } | undefined;
+		if (params.tasks && spawnItems.length > 1) {
+			try {
+				if (this.session.routeGovernorTaskPlan) {
+					governorPlan = this.session.routeGovernorTaskPlan(spawnItems.length);
+				} else {
+					const workerCount = this.session.routeGovernorTaskBatch?.(spawnItems.length);
+					if (workerCount !== undefined) governorPlan = { workerCount };
+				}
+			} catch (error) {
+				logger.warn("Adaptive task batch routing failed", { error: String(error) });
+			}
+		}
+		const normalizedSpawnParams = spawnItems.map(item =>
+			spawnParamsFor(params, item, defaultAgent, governorPlan?.effort),
+		);
 		const resolvedAgents = normalizedSpawnParams.map(spawn => spawn.agent ?? defaultAgent);
 		// Resolve every item before choosing an execution path. No executor or
 		// job manager may observe a batch unless every effective policy is valid.
@@ -755,14 +804,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 		const policies = preflights.map(preflight => preflight.policy!);
 		const itemBlocking = policies.map(policy => policy.effectiveAgent.blocking === true);
-		let batchConcurrency: number | undefined;
-		if (params.tasks && spawnItems.length > 1) {
-			try {
-				batchConcurrency = this.session.routeGovernorTaskBatch?.(spawnItems.length);
-			} catch (error) {
-				logger.warn("Adaptive task batch routing failed", { error: String(error) });
-			}
-		}
+		const batchConcurrency = governorPlan?.workerCount;
 		const batchSemaphore = batchConcurrency && batchConcurrency > 0 ? new Semaphore(batchConcurrency) : undefined;
 
 		// Execution mode is per item: an item whose agent type declares

@@ -1,6 +1,7 @@
 import type { AgentSession } from "../session/agent-session";
 import { ASYNC_RESULT_MESSAGE_TYPE } from "../session/async-job-delivery";
 import type { SessionManager } from "../session/session-manager";
+import { toolResultPaths } from "../session/tool-result-paths";
 import type { GovernorRuntimeSignals } from "./decision";
 import { latestGovernorSnapshot, recordGovernorDecision } from "./ledger";
 import { cfgAdaptiveMode } from "./settings";
@@ -8,23 +9,6 @@ import { cfgAdaptiveMode } from "./settings";
 const RECENT_TOOL_RESULT_LIMIT = 16;
 const MAX_STALLED_TOOL_MS = 600_000;
 const EXPLORATION_TOOLS = new Set(["read", "find", "grep", "glob", "lsp", "ast_grep"]);
-
-function editedPaths(toolName: string, details: unknown): string[] {
-	if (!details || typeof details !== "object") return [];
-	if (toolName === "write") {
-		return "resolvedPath" in details && typeof details.resolvedPath === "string" ? [details.resolvedPath] : [];
-	}
-	if (toolName !== "edit") return [];
-	const files =
-		"perFileResults" in details && Array.isArray(details.perFileResults) ? details.perFileResults : [details];
-	return files.flatMap(file => {
-		if (!file || typeof file !== "object") return [];
-		const paths: string[] = [];
-		if ("path" in file && typeof file.path === "string") paths.push(file.path);
-		if ("sourcePath" in file && typeof file.sourcePath === "string") paths.push(file.sourcePath);
-		return paths;
-	});
-}
 
 function failedWorkerCount(toolName: string, details: unknown): number {
 	if (toolName !== "task" || !details || typeof details !== "object") return 0;
@@ -57,6 +41,22 @@ function failedAsyncWorkerCount(details: unknown): number {
 	}, 0);
 }
 
+function longestTaskDuration(details: unknown): number {
+	if (!details || typeof details !== "object") return 0;
+	if ("totalDurationMs" in details && typeof details.totalDurationMs === "number") {
+		return Number.isFinite(details.totalDurationMs) && details.totalDurationMs > 0
+			? Math.ceil(details.totalDurationMs)
+			: 0;
+	}
+	if (!("jobs" in details) || !Array.isArray(details.jobs)) return 0;
+	return details.jobs.reduce<number>((longest, job) => {
+		if (!job || typeof job !== "object" || !("type" in job) || job.type !== "task") return longest;
+		if (!("durationMs" in job) || typeof job.durationMs !== "number" || !Number.isFinite(job.durationMs))
+			return longest;
+		return Math.max(longest, Math.ceil(job.durationMs));
+	}, 0);
+}
+
 /** Count settled execution results from the current branch; never infer check failure from shell output. */
 export function recentGovernorToolSignals(sessionManager: SessionManager): GovernorRuntimeSignals {
 	let completedCalls = 0;
@@ -67,12 +67,14 @@ export function recentGovernorToolSignals(sessionManager: SessionManager): Gover
 	let failedMutations = 0;
 	let stalledToolMs = 0;
 	let stalledExplorationCalls = 0;
+	let longestTaskDurationMs = 0;
 	let progressSeen = false;
 	const editedFiles = new Set<string>();
 	for (const entry of sessionManager.getBranch().reverse()) {
 		if (entry.type === "custom_message" && entry.customType === ASYNC_RESULT_MESSAGE_TYPE) {
 			completedCalls++;
 			failedWorkers += failedAsyncWorkerCount(entry.details);
+			longestTaskDurationMs = Math.max(longestTaskDurationMs, longestTaskDuration(entry.details));
 			if (completedCalls === RECENT_TOOL_RESULT_LIMIT) break;
 			continue;
 		}
@@ -93,6 +95,9 @@ export function recentGovernorToolSignals(sessionManager: SessionManager): Gover
 			continue;
 		}
 		completedCalls++;
+		if (entry.message.toolName === "task") {
+			longestTaskDurationMs = Math.max(longestTaskDurationMs, longestTaskDuration(entry.message.details));
+		}
 		const details = entry.message.details;
 		const verification =
 			details && typeof details === "object" && "verification" in details ? details.verification : undefined;
@@ -133,8 +138,8 @@ export function recentGovernorToolSignals(sessionManager: SessionManager): Gover
 			entry.message.details.verification.passed === false
 		)
 			verificationFailures++;
-		if (!entry.message.isError) {
-			for (const path of editedPaths(entry.message.toolName, entry.message.details)) editedFiles.add(path);
+		if (!entry.message.isError && (entry.message.toolName === "edit" || entry.message.toolName === "write")) {
+			for (const path of toolResultPaths(entry.message.toolName, entry.message.details)) editedFiles.add(path);
 		}
 		if (completedCalls === RECENT_TOOL_RESULT_LIMIT) break;
 	}
@@ -148,6 +153,7 @@ export function recentGovernorToolSignals(sessionManager: SessionManager): Gover
 		failedMutations,
 		stalledToolMs,
 		stalledExplorationCalls,
+		...(longestTaskDurationMs > 0 ? { longestTaskDurationMs } : {}),
 	};
 }
 

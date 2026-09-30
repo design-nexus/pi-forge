@@ -22,7 +22,7 @@ import { latestGovernorSnapshot, recordGovernorDecision } from "../governor/ledg
 import type { GovernorRevisionTrigger, GovernorSnapshot } from "../governor/revision";
 import { recordGovernorRuntimeSignals } from "../governor/runtime-signals";
 import { cfgAdaptiveMode } from "../governor/settings";
-import { routeGovernorTaskBatch } from "../governor/task-batch";
+import { routeGovernorTaskBatch, routeGovernorTaskPlan } from "../governor/task-batch";
 import {
 	cfgGovernorBudgetInputs,
 	inspectGovernorDecision,
@@ -37,6 +37,7 @@ import {
 import { recordGovernorTodoScope } from "../governor/todo-scope";
 import type { PromptComposition } from "../prompt-engine/compose";
 import {
+	releaseToolCapability,
 	routeDelegationCapability,
 	routeToolCapability,
 	selectDelegationCapability,
@@ -5794,11 +5795,33 @@ export class AgentSession implements SettingsScope {
 		request: GovernorTaskTransitionRequest,
 		trigger: "initial" | "scope" | "steering",
 	): Promise<GovernorTaskTransitionResult> {
+		if (this.isStreaming) {
+			this.#schedulePostPromptTask(async signal => {
+				if (signal.aborted || this.#isDisposed) return;
+				try {
+					const result = await routeGovernorTaskTransition(this, request, trigger);
+					logger.debug("Deferred Governor task transition applied", {
+						trigger,
+						capabilityRoutes: result.capabilityRoutes?.map(route => ({
+							id: route.id,
+							state: route.state,
+						})),
+					});
+				} catch (error) {
+					logger.warn("Deferred Governor task transition failed", { error: String(error) });
+				}
+			});
+			return Promise.resolve({ snapshot: latestGovernorSnapshot(this.sessionManager), route: undefined });
+		}
 		return routeGovernorTaskTransition(this, request, trigger);
 	}
 
 	routeGovernorTaskBatch(taskCount: number): number | undefined {
 		return routeGovernorTaskBatch(this, taskCount);
+	}
+
+	routeGovernorTaskPlan(taskCount: number) {
+		return routeGovernorTaskPlan(this, taskCount);
 	}
 
 	selectToolCapability(request: ToolCapabilityRouteRequest): ToolCapabilityRouteDecision {
@@ -5811,6 +5834,10 @@ export class AgentSession implements SettingsScope {
 			this.#governorTaskWasMounted = undefined;
 		}
 		return route;
+	}
+
+	releaseToolCapability(request: ToolCapabilityRouteRequest): Promise<ToolCapabilityRouteDecision> {
+		return releaseToolCapability(this, request);
 	}
 
 	selectDelegationCapability(request: DelegationRouteRequest): DelegationRouteDecision {

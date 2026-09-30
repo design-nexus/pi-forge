@@ -143,6 +143,48 @@ function spyOverlapBarrier(count: number): { maxInFlight: () => number } {
 	return { maxInFlight: () => maxInFlight };
 }
 
+async function until(predicate: () => boolean): Promise<void> {
+	for (let attempt = 0; attempt < 200; attempt++) {
+		if (predicate()) return;
+		await Bun.sleep(5);
+	}
+	throw new Error("condition did not become true");
+}
+
+async function measureEvalAgentConcurrency(
+	session: ToolSession,
+	count: number,
+	expected: number,
+): Promise<{ started: number; maxInFlight: number }> {
+	const gate = Promise.withResolvers<void>();
+	let started = 0;
+	let inFlight = 0;
+	let maxInFlight = 0;
+	vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => {
+		started++;
+		inFlight++;
+		maxInFlight = Math.max(maxInFlight, inFlight);
+		try {
+			await gate.promise;
+			return singleResult(options);
+		} finally {
+			inFlight--;
+		}
+	});
+	const handles = await Promise.all(
+		Array.from({ length: count }, (_, index) => runEvalAgent({ prompt: `item ${index}` }, { session })),
+	);
+	let atCapacity = 0;
+	try {
+		await until(() => started >= expected);
+		atCapacity = started;
+	} finally {
+		gate.resolve();
+	}
+	await Promise.all(handles.map(handle => session.asyncJobManager?.getJob(handle.id)?.promise));
+	return { started: atCapacity, maxInFlight };
+}
+
 function singleResult(options: ExecutorOptions, overrides: Partial<SingleResult> = {}): SingleResult {
 	return {
 		index: options.index,
@@ -205,6 +247,62 @@ describe("runEvalAgent", () => {
 		expect(overrideResult.text).toBe("reviewer");
 		expect(runSpy.mock.calls[0]?.[0].agent.name).toBe("task");
 		expect(runSpy.mock.calls[1]?.[0].agent.name).toBe("reviewer");
+	});
+
+	it("queues eval agent handles under the explicit task concurrency limit", async () => {
+		mockAgents();
+		const session = makeSession({
+			settings: Settings.isolated({ "task.maxConcurrency": 1, "task.isolation.enabled": false }),
+		});
+		const observed = await measureEvalAgentConcurrency(session, 3, 1);
+		expect(observed).toEqual({ started: 1, maxInFlight: 1 });
+	});
+
+	it("narrows independent eval handles to the Governor's worker cap", async () => {
+		mockAgents();
+		const session = makeSession();
+		const counts: number[] = [];
+		Object.assign(session, {
+			routeGovernorTaskBatch: (count: number) => {
+				counts.push(count);
+				return count >= 2 ? 2 : undefined;
+			},
+		});
+		const observed = await measureEvalAgentConcurrency(session, 4, 2);
+		expect(observed).toEqual({ started: 2, maxInFlight: 2 });
+		expect(counts).toEqual([1, 2, 3, 4]);
+	});
+
+	it("releases a cancelled queued handle without blocking the next eval agent", async () => {
+		mockAgents();
+		const session = makeSession({
+			settings: Settings.isolated({ "task.maxConcurrency": 1, "task.isolation.enabled": false }),
+		});
+		const gate = Promise.withResolvers<void>();
+		let started = 0;
+		vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => {
+			started++;
+			if (started === 1) await gate.promise;
+			return singleResult(options);
+		});
+		const first = await runEvalAgent({ prompt: "first" }, { session });
+		const cancelled = await runEvalAgent({ prompt: "cancelled" }, { session });
+		try {
+			await until(() => started === 1);
+			expect(session.asyncJobManager?.getJob(cancelled.id)?.queued).toBe(true);
+			expect(session.asyncJobManager?.cancel(cancelled.id)).toBe(true);
+		} finally {
+			gate.resolve();
+		}
+		await Promise.all([
+			session.asyncJobManager?.getJob(first.id)?.promise,
+			session.asyncJobManager?.getJob(cancelled.id)?.promise,
+		]);
+		const next = await runEvalAgent({ prompt: "next" }, { session });
+		await session.asyncJobManager?.getJob(next.id)?.promise;
+		expect(session.asyncJobManager?.getJob(cancelled.id)?.status).toBe("cancelled");
+		expect(session.asyncJobManager?.getJob(next.id)?.status).toBe("completed");
+		expect(started).toBe(2);
 	});
 
 	it("throws for an unknown agent", async () => {

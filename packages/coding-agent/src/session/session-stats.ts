@@ -246,7 +246,9 @@ export class SessionStatsTracker {
 			activeMessages.filter(message => message.role === "custom" && message.customType === CONTEXT_NOTES_ENTRY_TYPE),
 		);
 		const todoContinuityTokens = this.#tokenizer.countMessages(
-			activeMessages.filter(message => message.role === "custom" && message.customType === TODO_CONTINUITY_MESSAGE_TYPE),
+			activeMessages.filter(
+				message => message.role === "custom" && message.customType === TODO_CONTINUITY_MESSAGE_TYPE,
+			),
 		);
 		let anchorIndex = -1;
 		let anchorAssistant: AssistantMessage | undefined;
