@@ -526,6 +526,42 @@ it("tracks structured todo scope without treating todo items as parallel tasks o
 		expect(session.getGovernorSnapshot()?.decision.band).toBe("trivial");
 		sessionManager.appendMessage({
 			role: "toolResult",
+			toolCallId: "long-task",
+			toolName: "task",
+			content: [{ type: "text", text: "Task finished" }],
+			details: { totalDurationMs: 241_000 },
+			isError: false,
+			timestamp: Date.now(),
+		});
+		recordGovernorRuntimeSignals(session);
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			trigger: "runtime",
+			signals: { runtime: { longestTaskDurationMs: 241_000 } },
+			decision: { band: "normal" },
+		});
+		sessionManager.appendMessage({
+			role: "user",
+			content: [{ type: "text", text: "Start an unrelated follow-up" }],
+			timestamp: Date.now(),
+		});
+		const followup = await session.routeGovernorTaskTransition(
+			{
+				facts: {
+					files: [],
+					tasks: [{ id: "followup", dependsOn: [] }],
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"scope",
+		);
+		expect(followup.snapshot).toMatchObject({
+			signals: { runtime: { completedCalls: 0 } },
+			decision: { band: "trivial" },
+		});
+		expect(followup.snapshot?.signals.runtime?.longestTaskDurationMs).toBeUndefined();
+		sessionManager.appendMessage({
+			role: "toolResult",
 			toolCallId: "multi-edit",
 			toolName: "edit",
 			content: [{ type: "text", text: "Applied" }],
