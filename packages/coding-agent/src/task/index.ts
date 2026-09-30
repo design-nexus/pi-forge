@@ -757,6 +757,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			} catch (error) {
 				logger.warn("Task capability routing failed", { error: String(error) });
 			}
+		} else {
+			try {
+				await this.session.releaseGovernorTaskCapabilityRoutes?.();
+			} catch (error) {
+				logger.warn("Task capability release failed", { error: String(error) });
+			}
 		}
 		let governorPlan: { workerCount?: number; effort?: TaskEffort } | undefined;
 		if (params.tasks && spawnItems.length > 1) {

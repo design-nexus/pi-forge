@@ -470,6 +470,8 @@ export interface ToolSession {
 		request: { facts: GovernorTaskFacts },
 		trigger: "initial" | "scope" | "steering",
 	) => Promise<GovernorTaskTransitionResult>;
+	/** Release Governor-owned direct-tool routes when the next task declares none. */
+	releaseGovernorTaskCapabilityRoutes?: () => Promise<void>;
 	/** Replace cached todo phases for this session. */
 	setTodoPhases?: (phases: TodoPhase[]) => void;
 	/**
