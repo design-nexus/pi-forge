@@ -572,11 +572,11 @@ it("tracks structured todo scope without treating todo items as parallel tasks o
 			decision: { band: "complex" },
 		});
 		cfgAdaptiveMode.set(settings, "auto");
-		expect(session.routeGovernorTaskBatch(3)).toBe(2);
+		expect(session.routeGovernorTaskBatch(3, true)).toBe(2);
 		expect(session.getGovernorSnapshot()).toMatchObject({
 			signalSource: "task_batch",
-			signals: { taskCount: 3, runtime: { editedFiles: 5 } },
-			decision: { band: "complex", workerCount: 2 },
+			signals: { taskCount: 3, highRisk: true, runtime: { editedFiles: 5 } },
+			decision: { band: "complex", workerCount: 2, verificationFloor: "V3" },
 		});
 		for (let index = 0; index < 16; index++) {
 			sessionManager.appendMessage({
@@ -589,6 +589,7 @@ it("tracks structured todo scope without treating todo items as parallel tasks o
 			});
 		}
 		recordGovernorRuntimeSignals(session);
+		expect(session.routeGovernorTaskBatch(3, false)).toBeUndefined();
 		expect(session.getGovernorSnapshot()).toMatchObject({
 			signals: { runtime: { editedFiles: 0 } },
 			decision: { band: "normal" },

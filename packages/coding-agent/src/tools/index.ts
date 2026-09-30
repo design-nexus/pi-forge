@@ -463,8 +463,11 @@ export interface ToolSession {
 	/** Get cached todo phases for this session. */
 	getTodoPhases?: () => TodoPhase[];
 	/** Optional Governor cap for one concrete task batch; undefined keeps OMP's concurrency behavior. */
-	routeGovernorTaskBatch?: (taskCount: number) => number | undefined;
-	routeGovernorTaskPlan?: (taskCount: number) => { workerCount?: number; effort?: "lo" | "med" | "hi" } | undefined;
+	routeGovernorTaskBatch?: (taskCount: number, highRisk?: boolean) => number | undefined;
+	routeGovernorTaskPlan?: (
+		taskCount: number,
+		highRisk?: boolean,
+	) => { workerCount?: number; effort?: "lo" | "med" | "hi" } | undefined;
 	/** Route explicitly declared direct-tool needs for a structured task call. */
 	routeGovernorTaskTransition?: (
 		request: { facts: GovernorTaskFacts },

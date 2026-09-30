@@ -119,11 +119,13 @@ function createTaskSchema(options: {
 	effortEnabled: boolean;
 	evalToolsEnabled: boolean;
 	capabilityRoutingEnabled: boolean;
+	governorEnabled: boolean;
 }): BaseType {
 	const agent = taskAgentSchemaRule(options.defaultAgent);
 	const effortField = options.effortEnabled ? { "effort?": effortRule } : {};
 	const toolsField = options.evalToolsEnabled ? { "tools?": "string[]" } : {};
 	const capabilitiesField = options.capabilityRoutingEnabled ? { "capabilities?": "string[]" } : {};
+	const highRiskField = options.governorEnabled ? { "highRisk?": "boolean" } : {};
 	if (options.batchEnabled) {
 		if (options.isolationEnabled) {
 			const item = type.raw({
@@ -135,6 +137,7 @@ function createTaskSchema(options: {
 				"schemaMode?": '"permissive" | "strict"',
 				...toolsField,
 				...capabilitiesField,
+				...highRiskField,
 				"isolated?": "boolean",
 				"+": "delete",
 			});
@@ -142,6 +145,7 @@ function createTaskSchema(options: {
 				context: "string",
 				tasks: item.array(),
 				...capabilitiesField,
+				...highRiskField,
 				"+": "delete",
 			});
 		}
@@ -154,12 +158,14 @@ function createTaskSchema(options: {
 			"schemaMode?": '"permissive" | "strict"',
 			...toolsField,
 			...capabilitiesField,
+			...highRiskField,
 			"+": "delete",
 		});
 		return type.raw({
 			context: "string",
 			tasks: item.array(),
 			...capabilitiesField,
+			...highRiskField,
 			"+": "delete",
 		});
 	}
@@ -173,6 +179,7 @@ function createTaskSchema(options: {
 			"schemaMode?": '"permissive" | "strict"',
 			...toolsField,
 			...capabilitiesField,
+			...highRiskField,
 			"isolated?": "boolean",
 			"+": "delete",
 		});
@@ -186,6 +193,7 @@ function createTaskSchema(options: {
 		"schemaMode?": '"permissive" | "strict"',
 		...toolsField,
 		...capabilitiesField,
+		...highRiskField,
 		"+": "delete",
 	});
 }
@@ -198,17 +206,19 @@ export function getTaskSchema(options: {
 	/** Advertise the `tools` field for eval-defined tools (`eval.tools.enabled`, default on). */
 	evalToolsEnabled?: boolean;
 	capabilityRoutingEnabled?: boolean;
+	governorEnabled?: boolean;
 	defaultAgent?: string;
 }): TaskToolSchemaInstance {
 	const defaultAgent = options.defaultAgent ?? "task";
 	const effortEnabled = options.effortEnabled ?? false;
 	const evalToolsEnabled = options.evalToolsEnabled ?? true;
 	const capabilityRoutingEnabled = options.capabilityRoutingEnabled ?? false;
-	if (defaultAgent === "task" && !effortEnabled && evalToolsEnabled && !capabilityRoutingEnabled) {
+	const governorEnabled = options.governorEnabled ?? false;
+	if (defaultAgent === "task" && !effortEnabled && evalToolsEnabled && !capabilityRoutingEnabled && !governorEnabled) {
 		if (options.batchEnabled) return options.isolationEnabled ? taskSchemaBatch : taskSchemaBatchNoIsolation;
 		return options.isolationEnabled ? taskSchema : taskSchemaNoIsolation;
 	}
-	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}:${evalToolsEnabled ? "tools" : "notools"}:${capabilityRoutingEnabled ? "capabilities" : "nocapabilities"}:${defaultAgent}`;
+	const key = `${options.isolationEnabled ? "iso" : "flat"}:${options.batchEnabled ? "batch" : "single"}:${effortEnabled ? "effort" : "default"}:${evalToolsEnabled ? "tools" : "notools"}:${capabilityRoutingEnabled ? "capabilities" : "nocapabilities"}:${governorEnabled ? "governor" : "nogovernor"}:${defaultAgent}`;
 	const cached = taskSchemaCache.get(key);
 	if (cached) return cached;
 	const schema = createTaskSchema({
@@ -216,6 +226,7 @@ export function getTaskSchema(options: {
 		effortEnabled,
 		evalToolsEnabled,
 		capabilityRoutingEnabled,
+		governorEnabled,
 		defaultAgent,
 	});
 	taskSchemaCache.set(key, schema);

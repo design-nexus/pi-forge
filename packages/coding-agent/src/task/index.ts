@@ -146,6 +146,7 @@ interface TaskDescriptionOptions {
 	effortEnabled: boolean;
 	evalToolsEnabled: boolean;
 	capabilityRoutingEnabled: boolean;
+	governorEnabled: boolean;
 	asyncEnabled: boolean;
 	ircEnabled: boolean;
 	parentSpawns: string;
@@ -182,6 +183,7 @@ function renderDescription(options: TaskDescriptionOptions): string {
 		effortEnabled: options.effortEnabled,
 		evalToolsEnabled: options.evalToolsEnabled,
 		capabilityRoutingEnabled: options.capabilityRoutingEnabled,
+		governorEnabled: options.governorEnabled,
 		asyncEnabled: options.asyncEnabled,
 		hasBlockingAgents: renderedAgents.some(agent => agent.blocking),
 		hasModelMentions: options.sessionAgents.length > 0,
@@ -202,6 +204,9 @@ function createTaskModeError(text: string): AgentToolResult<TaskToolDetails> {
  * `schema` remains an eval-only alias and is rejected.
  */
 function validateShapeParams(batchEnabled: boolean, params: TaskParams): string | undefined {
+	if (params.highRisk !== undefined && typeof params.highRisk !== "boolean") {
+		return "`highRisk` must be a boolean.";
+	}
 	if (Object.hasOwn(params, "schema")) {
 		return "The task tool uses `outputSchema`; rename the stale `schema` field.";
 	}
@@ -259,6 +264,9 @@ function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string 
 			if (effortError) return effortError;
 			if (item.capabilities?.some(id => !isTaskToolCapabilityId(id))) {
 				return `Task ${i + 1} has an unsupported direct-tool capability.`;
+			}
+			if (item.highRisk !== undefined && typeof item.highRisk !== "boolean") {
+				return `Task ${i + 1} has an invalid highRisk value.`;
 			}
 		}
 		const seen = new Map<string, string>();
@@ -622,6 +630,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
 			evalToolsEnabled: evalToolsEnabled(this.session),
 			capabilityRoutingEnabled: cfgAdaptiveMode.get(this.session.settings) === "auto",
+			governorEnabled: cfgAdaptiveMode.get(this.session.settings) !== "off",
 			defaultAgent,
 		});
 	}
@@ -647,6 +656,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			effortEnabled: cfgTaskEnableEffort.get(this.session.settings),
 			evalToolsEnabled: evalToolsEnabled(this.session),
 			capabilityRoutingEnabled: cfgAdaptiveMode.get(this.session.settings) === "auto",
+			governorEnabled: cfgAdaptiveMode.get(this.session.settings) !== "off",
 			asyncEnabled: cfgAsyncEnabled.get(this.session.settings),
 			ircEnabled: isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0),
 			parentSpawns: this.session.getSessionSpawns() ?? "*",
@@ -738,9 +748,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const declaredCapabilities = [
 			...new Set([...(params.capabilities ?? []), ...spawnItems.flatMap(item => item.capabilities ?? [])]),
 		].filter(isTaskToolCapabilityId);
-		const capabilitiesDeclared =
-			Object.hasOwn(params, "capabilities") || spawnItems.some(item => Object.hasOwn(item, "capabilities"));
-		if (capabilitiesDeclared) {
+		const highRisk = params.highRisk === true || spawnItems.some(item => item.highRisk === true);
+		const governorFactsDeclared =
+			Object.hasOwn(params, "capabilities") ||
+			Object.hasOwn(params, "highRisk") ||
+			spawnItems.some(item => Object.hasOwn(item, "capabilities") || Object.hasOwn(item, "highRisk"));
+		if (governorFactsDeclared) {
 			const facts: GovernorTaskFacts = {
 				files: [],
 				tasks: spawnItems.map((item, index) => ({
@@ -748,7 +761,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					dependsOn: [],
 					requiredCapabilities: item.capabilities?.filter(isTaskToolCapabilityId),
 				})),
-				highRisk: false,
+				highRisk,
 				confidence: 0.9,
 				requiredCapabilities: declaredCapabilities,
 			};
@@ -768,9 +781,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		if (params.tasks && spawnItems.length > 1) {
 			try {
 				if (this.session.routeGovernorTaskPlan) {
-					governorPlan = this.session.routeGovernorTaskPlan(spawnItems.length);
+					governorPlan = this.session.routeGovernorTaskPlan(spawnItems.length, highRisk);
 				} else {
-					const workerCount = this.session.routeGovernorTaskBatch?.(spawnItems.length);
+					const workerCount = this.session.routeGovernorTaskBatch?.(spawnItems.length, highRisk);
 					if (workerCount !== undefined) governorPlan = { workerCount };
 				}
 			} catch (error) {

@@ -1736,6 +1736,8 @@ export interface TaskItem {
 	tools?: string[];
 	/** Direct capabilities required by this structured task batch. */
 	capabilities?: string[];
+	/** Mark work whose failure could cause security, data, compatibility, or production impact. */
+	highRisk?: boolean;
 	/** Run this spawn in an isolated worktree (batch form; flat form carries it top-level). */
 	isolated?: boolean;
 }
@@ -1763,6 +1765,8 @@ export interface TaskParams {
 	tools?: string[];
 	/** Direct capabilities required by this structured task call. */
 	capabilities?: string[];
+	/** Mark work whose failure could cause security, data, compatibility, or production impact. */
+	highRisk?: boolean;
 	/** Batch form (`task.batch`): one subagent per item. */
 	tasks?: TaskItem[];
 	/** Batch form: shared background prepended to every assignment; required by the batch schema. */
