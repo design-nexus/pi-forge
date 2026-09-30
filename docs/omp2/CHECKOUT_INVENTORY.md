@@ -558,3 +558,9 @@ Verification: all 28 focused workpool tests passed; repository `bun check` and `
 Pool dispatch now races its pending capability-routing promise against the pool close signal. Closing a pool can settle queued work even if the session's route transition has not returned; late routing completion cannot start the cancelled item.
 
 Verification: all 29 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The regression leaves the transition unresolved, closes the pool, and verifies the aggregate settles without starting a worker.
+
+## Empty Governor declarations do not defer task execution
+
+Task and eval workpool calls now invoke Governor routing only for `highRisk: true` or a non-empty capability list. Explicit `highRisk: false` and `capabilities: []` are treated as no-op declarations, so they do not defer ordinary work behind the provider turn.
+
+Verification: 63 focused task-spawn and workpool tests passed; repository `bun check` and `git diff --check` passed. Both entry points verify an empty/low-risk declaration skips transition routing and still executes the task.

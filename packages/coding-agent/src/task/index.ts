@@ -749,10 +749,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			...new Set([...(params.capabilities ?? []), ...spawnItems.flatMap(item => item.capabilities ?? [])]),
 		].filter(isTaskToolCapabilityId);
 		const highRisk = params.highRisk === true || spawnItems.some(item => item.highRisk === true);
-		const governorFactsDeclared =
-			Object.hasOwn(params, "capabilities") ||
-			Object.hasOwn(params, "highRisk") ||
-			spawnItems.some(item => Object.hasOwn(item, "capabilities") || Object.hasOwn(item, "highRisk"));
+		const governorFactsDeclared = declaredCapabilities.length > 0 || highRisk;
 		if (governorFactsDeclared) {
 			const facts: GovernorTaskFacts = {
 				files: [],
