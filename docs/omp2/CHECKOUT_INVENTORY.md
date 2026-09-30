@@ -486,3 +486,9 @@ Verification: 63 focused Prompt Engine, task-spawn, and workpool tests passed; r
 When task facts arrive during an active provider turn, `routeGovernorTaskTransition` now reports the deferred state without scheduling an automatic post-turn mutation. Direct task calls return a retry response for any deferred Governor transition, including risk-only declarations. Workpool dispatch waits for idle and retries from its retained task facts before launching workers. This prevents a rejected direct call from activating tools later without a corresponding task execution.
 
 Verification: 15 focused Prompt Engine tests and 63 Prompt Engine, task-spawn, and workpool tests passed; repository `bun check` and `git diff --check` passed. The session regression confirms a deferred route does not appear after idle, task-spawn coverage includes a deferred high-risk-only transition, and workpool coverage verifies idle wait/retry and route-before-worker behavior.
+
+## Task Governor preflight fails closed
+
+If applying structured task facts throws, the task tool now returns a preflight error instead of logging the failure and continuing without the declared capability or risk policy. Calls without Governor facts retain their existing path.
+
+Verification: 28 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The regression makes the transition fail after a task declares `debugger` and verifies the worker executor is never called.

@@ -788,6 +788,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				}
 			} catch (error) {
 				logger.warn("Task capability routing failed", { error: String(error) });
+				if (governorFactsDeclared) {
+					return createTaskModeError(
+						`Task Governor preflight failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
 			}
 		} else {
 			try {
