@@ -1087,4 +1087,26 @@ describe("queued user delivery policy", () => {
 		expect(requests).toHaveLength(2);
 		expect(requests[1].systemPrompt).toEqual(requests[0].systemPrompt);
 	});
+
+	it("drops the prior task override when base policy changes before a synthetic continuation", async () => {
+		let base = BASE;
+		const { requests, events } = setup(undefined, async () => ({ systemPrompt: base }));
+		await session.prompt("user task");
+		base = [...BASE, "changed tool policy"];
+		await session.refreshBaseSystemPrompt();
+		await session.followUp("internal continuation", undefined, { synthetic: true });
+		await session.waitForIdle();
+		expect(events.map(event => event.prompt)).toEqual(["user task"]);
+		expect(requests[1].systemPrompt).toEqual(base);
+	});
+
+	it("drops the prior task override when the model changes with an identical base prompt", async () => {
+		const { agent, requests, events } = setup();
+		await session.prompt("user task");
+		agent.setModel({ ...agent.state.model!, id: "another-model" });
+		await session.followUp("internal continuation", undefined, { synthetic: true });
+		await session.waitForIdle();
+		expect(events.map(event => event.prompt)).toEqual(["user task"]);
+		expect(requests[1].systemPrompt).toEqual(BASE);
+	});
 });

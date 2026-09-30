@@ -155,7 +155,7 @@ export function selectToolCapability(
 			reason: `${toolName} tool is already active`,
 		};
 	}
-	if (session.isStreaming) {
+	if (session.isStreaming && session.canRoutePromptTools !== true) {
 		return { ...base, state: "unavailable", selected: false, reason: "tool routing waits for an idle turn" };
 	}
 	if (model.thinking?.prefixBinding && session.messages.some(message => message.role === "assistant")) {
@@ -299,7 +299,7 @@ export async function releaseStaleTaskCapabilityRoutes(
 ): Promise<void> {
 	await session.runToolRegistryMutation(async () => {
 		const leases = taskCapabilityActivationLeases.get(session);
-		if (!leases || session.isStreaming) return;
+		if (!leases || (session.isStreaming && session.canRoutePromptTools !== true)) return;
 		const retainedKeys = new Set<string>(retained);
 		for (const [key, lease] of leases) {
 			if (retainedKeys.has(key) || !lease.owners.has(ownerId)) continue;
@@ -336,7 +336,7 @@ export async function releaseToolCapability(
 		const key = capabilityLeaseKey(request);
 		const leases = capabilityActivationLeases.get(session);
 		const lease = leases?.get(key);
-		if (session.isStreaming) {
+		if (session.isStreaming && session.canRoutePromptTools !== true) {
 			const decision = selectToolCapability(session, request);
 			return {
 				...decision,

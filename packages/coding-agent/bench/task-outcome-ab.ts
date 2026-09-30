@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isRecord } from "@oh-my-pi/pi-utils";
 
-interface PacketManifest {
+export interface PacketManifest {
 	id: string;
 	category: string;
 	sourceCommit: string;
@@ -13,7 +13,7 @@ interface PacketManifest {
 	notes: string;
 }
 
-interface RunSummary {
+export interface RunSummary {
 	system: "omp" | "piforge";
 	cliPath: string;
 	model: string;
@@ -33,6 +33,8 @@ interface RunSummary {
 	wallTimeMs: number;
 	humanInterventions: number;
 	transcriptPath: string;
+	sessionDirectory: string;
+	workspacePath: string;
 	testOutput: string;
 }
 
@@ -60,7 +62,7 @@ function numberField(record: Record<string, unknown>, key: string): number {
 	return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function parseTranscript(
+export function parseTranscript(
 	transcript: string,
 ): Pick<
 	RunSummary,
@@ -91,11 +93,14 @@ function parseTranscript(
 		} catch {
 			continue;
 		}
-		if (!isRecord(event) || event.type !== "message_end" || !isRecord(event.message)) continue;
-		const message = event.message;
-		if (message.role !== "assistant") continue;
-		totals.assistantTurns++;
-		if (Array.isArray(message.content)) {
+		if (!isRecord(event)) continue;
+		const auxiliary = event.type === "model_usage";
+		const message = auxiliary ? event : event.message;
+		if (!isRecord(message)) continue;
+		if (!auxiliary && ((event.type !== "message_end" && event.type !== "message") || message.role !== "assistant"))
+			continue;
+		if (!auxiliary) totals.assistantTurns++;
+		if (!auxiliary && Array.isArray(message.content)) {
 			for (const part of message.content) {
 				if (isRecord(part) && part.type === "toolCall" && typeof part.name === "string") toolCalls.push(part.name);
 			}
@@ -130,7 +135,7 @@ async function runCommand(
 	};
 }
 
-async function fileSnapshot(root: string): Promise<Map<string, string>> {
+export async function fileSnapshot(root: string): Promise<Map<string, string>> {
 	const files = new Map<string, string>();
 	const glob = new Bun.Glob("**/*");
 	for await (const relative of glob.scan({ cwd: root, onlyFiles: true, dot: true })) {
@@ -140,7 +145,7 @@ async function fileSnapshot(root: string): Promise<Map<string, string>> {
 	return files;
 }
 
-async function runSystem(
+export async function runSystem(
 	system: RunSummary["system"],
 	cliPath: string,
 	model: string,
@@ -150,8 +155,9 @@ async function runSystem(
 	repeat: number,
 	packetFiles: Map<string, string>,
 ): Promise<RunSummary> {
-	const runDir = path.join(outputDir, `${system}-${repeat}`);
-	await fs.mkdir(runDir, { recursive: true });
+	const artifactDir = await fs.mkdtemp(path.join(outputDir, `${system}-${repeat}-`));
+	const runDir = path.join(artifactDir, "workspace");
+	const sessionDirectory = path.join(artifactDir, "sessions");
 	await fs.cp(packetDir, runDir, { recursive: true, force: true });
 	const prompt = `@${manifest.taskFile}`;
 	const startedAt = performance.now();
@@ -167,7 +173,8 @@ async function runSystem(
 			model,
 			"--cwd",
 			runDir,
-			"--no-session",
+			"--session-dir",
+			sessionDirectory,
 			"--max-time",
 			"10m",
 			prompt,
@@ -175,9 +182,9 @@ async function runSystem(
 		runDir,
 	);
 	const wallTimeMs = performance.now() - startedAt;
-	const transcriptPath = path.join(outputDir, `${system}-${repeat}.jsonl`);
+	const transcriptPath = path.join(artifactDir, "transcript.jsonl");
 	await Bun.write(transcriptPath, transcript);
-	const telemetry = parseTranscript(transcript);
+	const telemetry = await readRunTelemetry(sessionDirectory);
 	const test = await runCommand(manifest.acceptanceCommand, runDir);
 	const runFiles = await fileSnapshot(runDir);
 	const changed = [...new Set([...packetFiles.keys(), ...runFiles.keys()])].filter(
@@ -202,52 +209,85 @@ async function runSystem(
 		wallTimeMs,
 		humanInterventions: 0,
 		transcriptPath,
+		sessionDirectory,
+		workspacePath: runDir,
 		testOutput: test.output,
 	};
 }
 
-const args = parseArgs(process.argv.slice(2));
-const packetDir = path.resolve(
-	args.get("--packet") ?? path.join(import.meta.dir, "fixtures/prompt-profile-retry-delay-v1"),
-);
-const outputDir = path.resolve(required(args, "--out"));
-const ompCli = required(args, "--omp-cli");
-const piforgeCli = required(args, "--piforge-cli");
-const ompRevision = args.get("--omp-revision");
-const piforgeRevision = args.get("--piforge-revision");
-const model = args.get("--model") ?? "openai-codex/gpt-5.5";
-const manifest = (await Bun.file(path.join(packetDir, "manifest.json")).json()) as PacketManifest;
-const taskText = await Bun.file(path.join(packetDir, manifest.taskFile)).text();
-if (!taskText.trim() || manifest.repeatCount < 1)
-	throw new Error("The benchmark packet is missing a task or repeat count.");
-await fs.mkdir(outputDir, { recursive: true });
-const packetFiles = await fileSnapshot(packetDir);
-const runs: RunSummary[] = [];
-for (let repeat = 1; repeat <= manifest.repeatCount; repeat++) {
-	const systems =
-		repeat % 2 === 1
-			? ([
-					["omp", ompCli],
-					["piforge", piforgeCli],
-				] as const)
-			: ([
-					["piforge", piforgeCli],
-					["omp", ompCli],
-				] as const);
-	for (const [system, cliPath] of systems) {
-		runs.push(await runSystem(system, cliPath, model, packetDir, manifest, outputDir, repeat, packetFiles));
+/** Persisted assistant messages are authoritative; task result summaries repeat worker usage. */
+export async function readRunTelemetry(sessionDirectory: string): Promise<BenchmarkTelemetry> {
+	const totals = parseTranscript("");
+	const glob = new Bun.Glob("**/*.jsonl");
+	let files = 0;
+	for await (const relative of glob.scan({ cwd: sessionDirectory, onlyFiles: true })) {
+		files++;
+		const transcript = await Bun.file(path.join(sessionDirectory, relative)).text();
+		const parsed = parseTranscript(transcript);
+		totals.toolCalls.push(...parsed.toolCalls);
+		for (const key of telemetryNumbers) totals[key] += parsed[key];
 	}
+	if (files === 0) throw new Error(`No persisted session telemetry in ${sessionDirectory}`);
+	return totals;
 }
-const report = {
-	packet: manifest,
-	model,
-	createdAt: new Date().toISOString(),
-	conditions: { autoApprove: true, sessionPersistence: false, taskPrompt: manifest.taskFile },
-	sources: {
-		omp: { cliPath: path.resolve(ompCli), revision: ompRevision ?? null },
-		piforge: { cliPath: path.resolve(piforgeCli), revision: piforgeRevision ?? null },
-	},
-	runs,
-};
-await Bun.write(path.join(outputDir, "summary.json"), `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify(report, null, 2));
+
+const telemetryNumbers = [
+	"assistantTurns",
+	"inputTokens",
+	"outputTokens",
+	"cacheReadTokens",
+	"cacheWriteTokens",
+	"totalTokens",
+	"costUsd",
+] as const;
+type BenchmarkTelemetry = Pick<RunSummary, "toolCalls" | (typeof telemetryNumbers)[number]>;
+
+async function main(): Promise<void> {
+	const args = parseArgs(process.argv.slice(2));
+	const packetDir = path.resolve(
+		args.get("--packet") ?? path.join(import.meta.dir, "fixtures/prompt-profile-retry-delay-v1"),
+	);
+	const outputDir = path.resolve(required(args, "--out"));
+	const ompCli = required(args, "--omp-cli");
+	const piforgeCli = required(args, "--piforge-cli");
+	const ompRevision = args.get("--omp-revision");
+	const piforgeRevision = args.get("--piforge-revision");
+	const model = args.get("--model") ?? "openai-codex/gpt-5.5";
+	const manifest = (await Bun.file(path.join(packetDir, "manifest.json")).json()) as PacketManifest;
+	const taskText = await Bun.file(path.join(packetDir, manifest.taskFile)).text();
+	if (!taskText.trim() || manifest.repeatCount < 1)
+		throw new Error("The benchmark packet is missing a task or repeat count.");
+	await fs.mkdir(outputDir, { recursive: true });
+	const packetFiles = await fileSnapshot(packetDir);
+	const runs: RunSummary[] = [];
+	for (let repeat = 1; repeat <= manifest.repeatCount; repeat++) {
+		const systems =
+			repeat % 2 === 1
+				? ([
+						["omp", ompCli],
+						["piforge", piforgeCli],
+					] as const)
+				: ([
+						["piforge", piforgeCli],
+						["omp", ompCli],
+					] as const);
+		for (const [system, cliPath] of systems) {
+			runs.push(await runSystem(system, cliPath, model, packetDir, manifest, outputDir, repeat, packetFiles));
+		}
+	}
+	const report = {
+		packet: manifest,
+		model,
+		createdAt: new Date().toISOString(),
+		conditions: { autoApprove: true, sessionPersistence: true, taskPrompt: manifest.taskFile },
+		sources: {
+			omp: { cliPath: path.resolve(ompCli), revision: ompRevision ?? null },
+			piforge: { cliPath: path.resolve(piforgeCli), revision: piforgeRevision ?? null },
+		},
+		runs,
+	};
+	await Bun.write(path.join(outputDir, "summary.json"), `${JSON.stringify(report, null, 2)}\n`);
+	console.log(JSON.stringify(report, null, 2));
+}
+
+if (import.meta.main) await main();

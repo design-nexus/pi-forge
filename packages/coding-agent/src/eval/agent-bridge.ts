@@ -121,19 +121,19 @@ function buildSubagentFailureMessage(agentName: string, result: SingleResult): s
 
 async function buildEvalAgentResult(execution: StructuredSubagentResult): Promise<EvalAgentResult> {
 	const { result, policy, mergeSummary, changesApplied, artifactsDir } = execution;
+	if (policy.isIsolated && changesApplied === false && result.exitCode === 0 && !result.aborted) {
+		const summary = mergeSummary.replace(/<\/?system-notification>/g, "").trim();
+		const recoveryHint = await buildStructuredSubagentRecoveryHint(result, artifactsDir);
+		throw new ToolError(
+			`agent() isolated apply failed for ${result.id}${summary ? `: ${summary}` : ""}${recoveryHint}`,
+		);
+	}
 	if (result.exitCode !== 0 || result.error || result.aborted) {
 		const failureMessage = buildSubagentFailureMessage(policy.agentName, result)
 			.replace(/<\/?system-notification>/g, "")
 			.trim();
 		const recoveryHint = policy.isIsolated ? await buildStructuredSubagentRecoveryHint(result, artifactsDir) : "";
 		throw new ToolError(`${failureMessage}${recoveryHint}`);
-	}
-	if (policy.isIsolated && changesApplied === false) {
-		const summary = mergeSummary.replace(/<\/?system-notification>/g, "").trim();
-		const recoveryHint = await buildStructuredSubagentRecoveryHint(result, artifactsDir);
-		throw new ToolError(
-			`agent() isolated apply failed for ${result.id}${summary ? `: ${summary}` : ""}${recoveryHint}`,
-		);
 	}
 
 	const structuredOutput = result.structuredOutput;

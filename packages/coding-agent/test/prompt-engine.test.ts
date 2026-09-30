@@ -555,8 +555,28 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 		session.agent.state.isStreaming = true;
 		const deferred = await session.routeGovernorTaskTransition({ facts }, "initial");
 		expect(deferred.deferred).toBe(true);
-		session.agent.state.isStreaming = false;
-		await session.waitForIdle();
+		// A model-issued task runs while the agent loop remains streaming.
+		session.agent.state.pendingToolCalls.add("task-routing");
+		session.agent.state.streamMessage = {
+			role: "assistant",
+			content: [],
+			api: "openai-responses",
+			provider: "openai",
+			model: session.model!.id,
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "toolUse",
+			timestamp: 1,
+		};
+		expect((await session.routeGovernorTaskTransition({ facts }, "initial")).deferred).toBe(true);
+		session.agent.state.streamMessage = null;
+
 		expect(session.getActiveToolNames()).not.toContain("debug");
 		const activated = await session.routeGovernorTaskTransition({ facts }, "initial");
 		expect(activated.capabilityRoutes).toMatchObject([{ id: "debugger", selected: true, state: "active" }]);
@@ -584,6 +604,9 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 		expect(session.getActiveToolNames()).toContain("debug");
 		await session.releaseGovernorTaskCapabilityRoutes("scope-b");
 		expect(session.getActiveToolNames()).not.toContain("debug");
+		session.agent.state.pendingToolCalls.delete("task-routing");
+		session.agent.state.isStreaming = false;
+		await session.waitForIdle();
 		await session.routeGovernorTaskTransition({ facts, ownerId: "scope-c" }, "scope");
 		await session.routeToolCapability({ id: "debugger", signal: "explicit" });
 		await session.releaseToolCapability({ id: "debugger", signal: "explicit" });

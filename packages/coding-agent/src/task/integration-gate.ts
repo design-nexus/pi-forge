@@ -1,5 +1,5 @@
 import type { SingleResult } from "@oh-my-pi/pi-tui/tools/task";
-import { isRecord } from "@oh-my-pi/pi-utils";
+import { isRecord, untilAborted } from "@oh-my-pi/pi-utils";
 import type { GovernorVerificationPolicy } from "../governor/task-batch";
 
 export interface IntegrationWorkerResult {
@@ -201,6 +201,8 @@ export class IntegrationGate {
 	#settled: Map<number, Promise<void>>;
 	#resolve: Map<number, () => void>;
 	#done = new Set<number>();
+	#started = new Map<number, Promise<void>>();
+	#startResolve = new Map<number, () => void>();
 	#workerResults = new Map<number, IntegrationWorkerResult>();
 	#reconciliationAttempts = 0;
 
@@ -213,13 +215,35 @@ export class IntegrationGate {
 			const deferred = Promise.withResolvers<void>();
 			this.#settled.set(index, deferred.promise);
 			this.#resolve.set(index, deferred.resolve);
+			const started = Promise.withResolvers<void>();
+			this.#started.set(index, started.promise);
+			this.#startResolve.set(index, started.resolve);
 		}
 	}
 
-	async apply<T>(index: number, operation: () => Promise<T>): Promise<T> {
+	/** Acquire execution slots in integration order so a later merger cannot starve its predecessor. */
+	async start(index: number, acquire: () => Promise<void>, signal?: AbortSignal): Promise<void> {
+		try {
+			const position = this.#order.indexOf(index);
+			if (position >= 0) {
+				await untilAborted(
+					signal,
+					Promise.all(this.#order.slice(0, position).map(previous => this.#started.get(previous))),
+				);
+			}
+			await acquire();
+		} finally {
+			this.#startResolve.get(index)?.();
+		}
+	}
+
+	async apply<T>(index: number, operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
 		const position = this.#order.indexOf(index);
 		if (position < 0) return operation();
-		await Promise.all(this.#order.slice(0, position).map(previous => this.#settled.get(previous)));
+		await untilAborted(
+			signal,
+			Promise.all(this.#order.slice(0, position).map(previous => this.#settled.get(previous))),
+		);
 		return operation();
 	}
 
@@ -227,6 +251,7 @@ export class IntegrationGate {
 		if (this.#done.has(index)) return;
 		this.#done.add(index);
 		this.#resolve.get(index)?.();
+		this.#startResolve.get(index)?.();
 	}
 
 	recordWorkerResult(index: number, result: IntegrationWorkerResult): void {
