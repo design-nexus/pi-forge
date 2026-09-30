@@ -505,6 +505,12 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 			highRisk: false,
 			confidence: 0.9,
 		};
+		session.agent.state.isStreaming = true;
+		const deferred = await session.routeGovernorTaskTransition({ facts }, "initial");
+		expect(deferred.deferred).toBe(true);
+		session.agent.state.isStreaming = false;
+		await session.waitForIdle();
+		expect(session.getActiveToolNames()).not.toContain("debug");
 		const activated = await session.routeGovernorTaskTransition({ facts }, "initial");
 		expect(activated.capabilityRoutes).toMatchObject([{ id: "debugger", selected: true, state: "active" }]);
 		expect(session.getActiveToolNames()).toContain("debug");
