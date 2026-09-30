@@ -570,3 +570,9 @@ Verification: 63 focused task-spawn and workpool tests passed; repository `bun c
 Task calls can declare high-risk scope once for a whole batch. The call-level flag is included in structured Governor task facts and the batch planning input, matching the item-level behavior.
 
 Verification: all 34 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The regression verifies the top-level declaration reaches both transition facts and batch planning.
+
+## Task batches route the union of item-level capabilities
+
+Per-item capability requirements are aggregated into the task transition before any batch worker starts. A batch whose items require different capabilities routes the combined set and proceeds only after each route is active.
+
+Verification: all 35 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The regression declares browser on one item and debugger on another, checks both reach Governor facts, and confirms both workers run after active route results.

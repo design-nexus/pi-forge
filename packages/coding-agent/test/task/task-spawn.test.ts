@@ -236,6 +236,57 @@ describe("task spawn routing", () => {
 		expect(plannedRisk).toBe(true);
 	});
 
+	it("routes the union of item-level capability declarations", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
+		let routedCapabilities: readonly string[] = [];
+		session.routeGovernorTaskTransition = async request => {
+			routedCapabilities = request.facts.requiredCapabilities ?? [];
+			return {
+				snapshot: undefined,
+				route: undefined,
+				capabilityRoutes: [
+					{
+						id: "debugger",
+						toolName: "debug",
+						state: "active",
+						selected: true,
+						source: "built-in",
+						estimatedGuidanceTokens: 0,
+						estimatedToolSchemaTokens: 0,
+						estimatedActivationTokens: 0,
+						reason: "debug tool active",
+					},
+					{
+						id: "browser",
+						toolName: "eval",
+						state: "active",
+						selected: true,
+						source: "built-in",
+						estimatedGuidanceTokens: 0,
+						estimatedToolSchemaTokens: 0,
+						estimatedActivationTokens: 0,
+						reason: "browser tool active",
+					},
+				],
+			};
+		};
+		session.routeGovernorTaskPlan = () => ({ workerCount: 2 });
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-item-capabilities", {
+			context: "Inspect browser behavior and the debugger output.",
+			tasks: [
+				{ task: "Inspect the browser trace.", capabilities: ["browser"] },
+				{ task: "Inspect the debugger output.", capabilities: ["debugger"] },
+			],
+		} as TaskParams);
+		expect(routedCapabilities).toEqual(["browser", "debugger"]);
+		expect(runSpy).toHaveBeenCalledTimes(2);
+	});
+
 	it("does not start a task whose Governor transition is deferred", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
 		const runSpy = vi
