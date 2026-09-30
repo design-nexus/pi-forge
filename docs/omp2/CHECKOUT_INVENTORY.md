@@ -474,3 +474,9 @@ Verification: 39 focused task schema/spawn and Governor session tests passed; co
 Python `WorkPool.push(..., high_risk=True)` and JavaScript `.push(..., { highRisk: true })` can mark an eval pool high risk alongside its direct-tool requirements. Capability requirements accumulate across later pushes, and once any push marks the pool high risk, subsequent worker planning keeps that risk signal. The bridge rejects non-boolean values. This matches the pool's live queue lifetime without treating a later low-risk push as permission to lower verification for earlier work.
 
 Verification: 34 focused workpool, bridge, and Python/JavaScript prelude tests passed; repository `bun check` and `git diff --check` passed. Coverage checks cumulative pool facts and plan inputs, wrapper serialization, and bridge validation.
+
+## Deferred capability transition handling
+
+Task calls now stop before spawning when a required capability transition is queued until the active provider turn settles, and return a retry-after-turn response. Workpool dispatch retains that deferred state, waits for session idle, retries the transition, and starts workers only after all required capability routes are active. Missing routes fail the task or batch before worker execution.
+
+Verification: 63 focused Prompt Engine, task-spawn, and workpool tests passed; repository `bun check` and `git diff --check` passed. Regression coverage confirms no task or workpool worker starts while routing is deferred or unavailable.

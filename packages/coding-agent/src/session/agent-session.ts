@@ -5820,7 +5820,11 @@ export class AgentSession implements SettingsScope {
 					logger.warn("Deferred Governor task transition failed", { error: String(error) });
 				}
 			});
-			return Promise.resolve({ snapshot: latestGovernorSnapshot(this.sessionManager), route: undefined });
+			return Promise.resolve({
+				snapshot: latestGovernorSnapshot(this.sessionManager),
+				route: undefined,
+				deferred: true,
+			});
 		}
 		return routeGovernorTaskTransition(this, request, trigger);
 	}

@@ -22,6 +22,7 @@ import { cfgEvalWorkpoolFreshAgents } from "../eval/settings";
 import { cfgTaskMaxConcurrency, cfgTaskMaxRuntimeMs } from "./settings";
 import { sessionTaskSemaphore } from "./parallel";
 import type { GovernorTaskFacts } from "../governor/task-facts";
+import type { GovernorTaskTransitionResult } from "../governor/transition";
 import type { TaskCapabilityId } from "../prompt-engine/capability-catalog";
 
 /** One user-supplied unit tracked through a workpool batch. */
@@ -128,6 +129,9 @@ export class WorkPool {
 	#lastCardTs = 0;
 	#dispatchChain: Promise<void> = Promise.resolve();
 	#capabilityRouting: Promise<void> = Promise.resolve();
+	#capabilityTransitionDeferred = false;
+	#capabilityFacts: GovernorTaskFacts | undefined;
+	#capabilityRouteError: string | undefined;
 	#requiredCapabilities = new Set<TaskCapabilityId>();
 	#highRisk = false;
 	#poolJobStarted = false;
@@ -177,11 +181,20 @@ export class WorkPool {
 				confidence: 0.9,
 				requiredCapabilities: [...this.#requiredCapabilities],
 			};
+			this.#capabilityFacts = facts;
 			this.#capabilityRouting = this.#capabilityRouting
 				.then(async () => {
-					await this.session.routeGovernorTaskTransition?.({ facts }, "scope");
+					const routing = await this.session.routeGovernorTaskTransition?.({ facts }, "scope");
+					this.#capabilityTransitionDeferred ||= routing?.deferred === true;
+					this.#capabilityRouteError = this.#capabilityRoutingError(routing);
 				})
 				.catch(error => {
+					this.#capabilityRouteError =
+						this.#requiredCapabilities.size > 0
+							? error instanceof Error
+								? error.message
+								: String(error)
+							: undefined;
 					logger.warn("Adaptive workpool capability routing failed", { pool: this.name, error: String(error) });
 				});
 		}
@@ -328,6 +341,22 @@ export class WorkPool {
 	async #dispatch(item: WorkPoolItem): Promise<void> {
 		if (this.closed || item.status !== "queued") return;
 		await this.#capabilityRouting;
+		if (this.#capabilityTransitionDeferred) {
+			if (!this.session.waitForIdle) {
+				throw new ToolError("workpool capability routing was deferred, but the session cannot wait for idle");
+			}
+			while (this.#capabilityTransitionDeferred) {
+				await this.session.waitForIdle();
+				if (this.closed || item.status !== "queued") return;
+				const facts = this.#capabilityFacts;
+				if (!facts) break;
+				const routing = await this.session.routeGovernorTaskTransition?.({ facts }, "scope");
+				this.#capabilityTransitionDeferred = routing?.deferred === true;
+				this.#capabilityRouteError = this.#capabilityRoutingError(routing);
+			}
+		}
+		if (this.#capabilityRouteError)
+			throw new ToolError(`workpool capability routing failed: ${this.#capabilityRouteError}`);
 		if (this.closed || item.status !== "queued") return;
 		if (this.freshAgents) {
 			if (this.agents.length < this.limit()) {
@@ -358,6 +387,17 @@ export class WorkPool {
 		item.agentId = busy.id;
 		busy.queue.push(item);
 		this.#card("queued", busy.id, `[${item.id}] ${item.text}`);
+	}
+
+	#capabilityRoutingError(routing: GovernorTaskTransitionResult | undefined): string | undefined {
+		if (this.#requiredCapabilities.size === 0) return undefined;
+		const routes = routing?.capabilityRoutes ?? [];
+		const failed = routes.filter(route => !route.selected || route.state !== "active");
+		if (failed.length > 0) return failed.map(route => `${route.toolName}: ${route.reason}`).join("; ");
+		if (routes.length !== this.#requiredCapabilities.size) {
+			return "declared capabilities require adaptive.mode=auto and an available direct-tool route";
+		}
+		return undefined;
 	}
 
 	async #spawn(item: WorkPoolItem): Promise<void> {

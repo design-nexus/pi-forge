@@ -212,6 +212,44 @@ describe("task spawn routing", () => {
 		expect(plannedRisk).toBe(true);
 	});
 
+	it("does not start a task whose required capability transition is deferred", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "async.enabled": false } });
+		session.routeGovernorTaskTransition = async () => ({
+			snapshot: undefined,
+			route: undefined,
+			deferred: true,
+		});
+		const tool = await TaskTool.create(session);
+		const result = await tool.execute("tc-deferred", {
+			agent: "task",
+			task: "Use the debugger to inspect the failing route.",
+			capabilities: ["debugger"],
+		} as TaskParams);
+		expect(getFirstText(result)).toContain("Retry this task call after the turn settles");
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
+	it("does not start a task when its declared capability has no active route", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "async.enabled": false } });
+		session.routeGovernorTaskTransition = async () => ({ snapshot: undefined, route: undefined });
+		const tool = await TaskTool.create(session);
+		const result = await tool.execute("tc-unroutable", {
+			agent: "task",
+			task: "Use the connected service.",
+			capabilities: ["mcp__server__tool"],
+		} as TaskParams);
+		expect(getFirstText(result)).toContain("adaptive.mode=auto");
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
 	for (const { label, runnerOverrides, expectRetained } of [
 		{
 			label: "tells the parent an isolated agent cannot be messaged instead of calling it idle",

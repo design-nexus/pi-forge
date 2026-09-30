@@ -16,6 +16,7 @@ import type { AgentDefinition } from "../../src/task/types";
 import type { SingleResult } from "@oh-my-pi/pi-tui/tools/task";
 import { WorkPool, WorkPoolRegistry } from "../../src/task/workpool";
 import type { ToolSession } from "../../src/tools";
+import type { ToolCapabilityRouteDecision } from "../../src/prompt-engine/capability-router";
 import { prompt } from "@oh-my-pi/pi-utils";
 
 const AGENT: AgentDefinition = {
@@ -134,6 +135,20 @@ function cardMode(card: CustomMessage): string | undefined {
 
 function pool(session: ToolSession, name = "review"): WorkPool {
 	return new WorkPool(session, { name, policy: POLICY });
+}
+
+function activeCapabilityRoute(id: "lsp" | "debugger" | "browser"): ToolCapabilityRouteDecision {
+	return {
+		id,
+		toolName: id,
+		state: "active",
+		selected: true,
+		source: "built-in",
+		estimatedGuidanceTokens: 0,
+		estimatedToolSchemaTokens: 0,
+		estimatedActivationTokens: 0,
+		reason: "capability is active",
+	};
 }
 
 async function finishPool(session: ToolSession, workpool: WorkPool): Promise<void> {
@@ -322,7 +337,11 @@ describe("WorkPool dispatch", () => {
 		let routedFacts: unknown;
 		session.routeGovernorTaskTransition = async request => {
 			routedFacts = request.facts;
-			return { snapshot: undefined, route: undefined };
+			return {
+				snapshot: undefined,
+				route: undefined,
+				capabilityRoutes: [activeCapabilityRoute("lsp")],
+			};
 		};
 		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
 			const id = request.identity?.id ?? "missing";
@@ -346,7 +365,11 @@ describe("WorkPool dispatch", () => {
 		const plannedRisks: boolean[] = [];
 		session.routeGovernorTaskTransition = async request => {
 			routedFacts = request.facts;
-			return { snapshot: undefined, route: undefined };
+			return {
+				snapshot: undefined,
+				route: undefined,
+				capabilityRoutes: [activeCapabilityRoute("debugger")],
+			};
 		};
 		session.routeGovernorTaskPlan = (_count, highRisk) => {
 			plannedRisks.push(highRisk === true);
@@ -370,7 +393,11 @@ describe("WorkPool dispatch", () => {
 		const route = Promise.withResolvers<void>();
 		session.routeGovernorTaskTransition = async () => {
 			await route.promise;
-			return { snapshot: undefined, route: undefined };
+			return {
+				snapshot: undefined,
+				route: undefined,
+				capabilityRoutes: [activeCapabilityRoute("browser")],
+			};
 		};
 		const spawn = vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
 			const id = request.identity?.id ?? "missing";
@@ -384,6 +411,63 @@ describe("WorkPool dispatch", () => {
 		route.resolve();
 		await finishPool(session, workpool);
 		expect(spawn).toHaveBeenCalledTimes(1);
+	});
+
+	it("waits for a deferred capability transition before starting a workpool worker", async () => {
+		const session = makeSession();
+		const idle = Promise.withResolvers<void>();
+		let waitingForIdle = false;
+		let firstTransition = true;
+		session.routeGovernorTaskTransition = async () => {
+			if (firstTransition) {
+				firstTransition = false;
+				return { snapshot: undefined, route: undefined, deferred: true };
+			}
+			return {
+				snapshot: undefined,
+				route: undefined,
+				capabilityRoutes: [activeCapabilityRoute("browser")],
+			};
+		};
+		session.waitForIdle = async () => {
+			waitingForIdle = true;
+			await idle.promise;
+		};
+		const spawn = vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "deferred-capability-gate");
+		workpool.push(["inspect the page"], ["browser"]);
+		await Bun.sleep(0);
+		expect(waitingForIdle).toBe(true);
+		expect(spawn).not.toHaveBeenCalled();
+		idle.resolve();
+		await finishPool(session, workpool);
+		expect(spawn).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not start a workpool worker when a required capability is unavailable", async () => {
+		const session = makeSession();
+		session.routeGovernorTaskTransition = async () => ({
+			snapshot: undefined,
+			route: undefined,
+			capabilityRoutes: [
+				{
+					...activeCapabilityRoute("browser"),
+					state: "unavailable",
+					selected: false,
+					reason: "browser runtime is unavailable",
+				},
+			],
+		});
+		const spawn = vi.spyOn(structured, "runStructuredSubagent");
+		const workpool = pool(session, "unavailable-capability");
+		workpool.push(["inspect the page"], ["browser"]);
+		await finishPool(session, workpool);
+		expect(spawn).not.toHaveBeenCalled();
+		expect(workpool.status().items.failed).toBe(1);
 	});
 
 	it("hands a queued batch to a follow-up turn after the first turn settles", async () => {

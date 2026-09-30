@@ -766,7 +766,26 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				requiredCapabilities: declaredCapabilities,
 			};
 			try {
-				await this.session.routeGovernorTaskTransition?.({ facts }, "initial");
+				const routing = await this.session.routeGovernorTaskTransition?.({ facts }, "initial");
+				if (routing?.deferred && declaredCapabilities.length > 0) {
+					return createTaskModeError(
+						"Task capability routing is waiting for the current provider turn to finish. Retry this task call after the turn settles.",
+					);
+				}
+				if (declaredCapabilities.length > 0) {
+					const routes = routing?.capabilityRoutes ?? [];
+					const failedRoutes = routes.filter(route => !route.selected || route.state !== "active");
+					if (failedRoutes.length > 0) {
+						return createTaskModeError(
+							`Task capability routing failed: ${failedRoutes.map(route => `${route.toolName}: ${route.reason}`).join("; ")}`,
+						);
+					}
+					if (routes.length !== declaredCapabilities.length) {
+						return createTaskModeError(
+							"Task capability requirements need adaptive.mode=auto and an available direct-tool route.",
+						);
+					}
+				}
 			} catch (error) {
 				logger.warn("Task capability routing failed", { error: String(error) });
 			}
