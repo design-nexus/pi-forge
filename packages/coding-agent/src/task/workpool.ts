@@ -132,6 +132,7 @@ export class WorkPool {
 	#capabilityTransitionDeferred = false;
 	#capabilityFacts: GovernorTaskFacts | undefined;
 	#capabilityRouteError: string | undefined;
+	#governorPlanningError: string | undefined;
 	#requiredCapabilities = new Set<TaskCapabilityId>();
 	#highRisk = false;
 	#poolJobStarted = false;
@@ -213,6 +214,9 @@ export class WorkPool {
 		} catch (error) {
 			logger.warn("Adaptive workpool routing failed", { error: String(error) });
 			this.#governorLimit = undefined;
+			if (this.#highRisk || this.#requiredCapabilities.size > 0) {
+				this.#governorPlanningError = error instanceof Error ? error.message : String(error);
+			}
 		}
 		const queued: WorkPoolItem[] = [];
 		for (const text of texts) {
@@ -358,6 +362,8 @@ export class WorkPool {
 		}
 		if (this.#capabilityRouteError)
 			throw new ToolError(`workpool capability routing failed: ${this.#capabilityRouteError}`);
+		if (this.#governorPlanningError)
+			throw new ToolError(`workpool Governor planning failed: ${this.#governorPlanningError}`);
 		if (this.closed || item.status !== "queued") return;
 		if (this.freshAgents) {
 			if (this.agents.length < this.limit()) {

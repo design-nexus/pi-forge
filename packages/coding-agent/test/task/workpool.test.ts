@@ -388,6 +388,20 @@ describe("WorkPool dispatch", () => {
 		expect(plannedRisks).toEqual([true, true]);
 	});
 
+	it("does not start a high-risk workpool item when Governor planning throws", async () => {
+		const session = makeSession();
+		session.routeGovernorTaskTransition = async () => ({ snapshot: undefined, route: undefined });
+		session.routeGovernorTaskPlan = () => {
+			throw new Error("worker limits are unavailable");
+		};
+		const spawn = vi.spyOn(structured, "runStructuredSubagent");
+		const workpool = pool(session, "governor-plan-error");
+		workpool.push(["audit authentication changes"], undefined, true);
+		await finishPool(session, workpool);
+		expect(spawn).not.toHaveBeenCalled();
+		expect(workpool.status().items).toMatchObject({ failed: 1, queued: 0, running: 0 });
+	});
+
 	it("routes declared capabilities before starting a workpool worker", async () => {
 		const session = makeSession();
 		const route = Promise.withResolvers<void>();

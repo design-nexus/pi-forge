@@ -516,3 +516,9 @@ Verification: all 23 focused workpool tests passed; repository `bun check` and `
 When a task call declares Governor facts and batch plan selection throws, the task tool now returns a planning error instead of starting the batch with default execution settings. Calls without declared Governor facts retain the previous fallback behavior.
 
 Verification: 30 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. A high-risk two-item batch with a failing Governor planner returns the error and never invokes the worker executor.
+
+## Eval workpool Governor planning fails closed
+
+When a workpool has accumulated a high-risk declaration or required capabilities, a thrown Governor plan is retained as a pool error. Queued items fail before worker startup rather than dispatching with an unbounded default plan. Undeclared pools keep the fallback behavior.
+
+Verification: all 24 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The high-risk pool regression confirms the worker is not started and the queued item settles as failed.
