@@ -23,6 +23,8 @@ export interface ToolCapabilityRouteRequest {
 	contextBudgetTokens?: number;
 	/** Structured task scope that owns an automatic activation lease. */
 	ownerId?: string;
+	/** Confidence attached to a capability inferred from natural-language task text. */
+	classificationConfidence?: number;
 }
 
 export interface ToolCapabilityRouteDecision {
@@ -204,7 +206,11 @@ export function selectToolCapability(
 				? request.id === "subagents"
 					? "explicit delegation request"
 					: "explicit capability request"
-				: "parallel work selected",
+				: request.classificationConfidence === undefined
+					? request.required
+						? "required by structured task"
+						: "parallel work selected"
+					: `inferred from task text (${Math.round(request.classificationConfidence * 100)}% confidence)`,
 	};
 }
 

@@ -26,6 +26,7 @@ import type { GovernorTaskFacts } from "../governor/task-facts";
 import type { GovernorVerificationPolicy } from "../governor/task-batch";
 import type { GovernorTaskTransitionResult } from "../governor/transition";
 import type { TaskCapabilityId } from "../prompt-engine/capability-catalog";
+import { classifyTaskCapabilities } from "../prompt-engine/task-capability-classifier";
 
 /** One user-supplied unit tracked through a workpool batch. */
 export interface WorkPoolItem {
@@ -137,6 +138,7 @@ export class WorkPool {
 	#capabilityRouteError: string | undefined;
 	#governorPlanningError: string | undefined;
 	#requiredCapabilities = new Set<TaskCapabilityId>();
+	#inferredCapabilities = new Map<TaskCapabilityId, number>();
 	#highRisk = false;
 	#poolJobStarted = false;
 	#governorLimit: number | undefined;
@@ -174,7 +176,18 @@ export class WorkPool {
 		if (texts.length === 0) return [];
 		for (const capability of capabilities ?? []) this.#requiredCapabilities.add(capability);
 		this.#highRisk ||= highRisk;
-		if ((capabilities?.length ?? 0) > 0 || highRisk) {
+		const classification = classifyTaskCapabilities(texts);
+		for (const capability of classification.capabilities) {
+			this.#inferredCapabilities.set(
+				capability,
+				Math.max(this.#inferredCapabilities.get(capability) ?? 0, classification.confidence),
+			);
+		}
+		const inferredCapabilities = [...this.#inferredCapabilities.keys()];
+		const capabilityConfidence = inferredCapabilities.length
+			? Math.min(...inferredCapabilities.map(capability => this.#inferredCapabilities.get(capability)!))
+			: 0;
+		if ((capabilities?.length ?? 0) > 0 || inferredCapabilities.length > 0 || highRisk) {
 			const facts: GovernorTaskFacts = {
 				files: [],
 				tasks: texts.map((_, index) => ({
@@ -185,6 +198,8 @@ export class WorkPool {
 				highRisk: this.#highRisk,
 				confidence: 0.9,
 				requiredCapabilities: [...this.#requiredCapabilities],
+				inferredCapabilities,
+				capabilityConfidence,
 			};
 			this.#capabilityFacts = facts;
 			this.#capabilityRouting = this.#capabilityRouting

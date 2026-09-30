@@ -54,30 +54,47 @@ export async function routeGovernorTaskTransition(
 		if (mode !== "auto" || !snapshot) {
 			return { snapshot, route: undefined };
 		}
-		const requiredCapabilities = [
+		const declaredCapabilities = [
 			...new Set([
 				...(request.facts.requiredCapabilities ?? []),
 				...request.facts.tasks.flatMap(task => task.requiredCapabilities ?? []),
 			]),
 		];
+		const declaredSet = new Set(declaredCapabilities);
+		const inferredCapabilities = (request.facts.inferredCapabilities ?? []).filter(id => !declaredSet.has(id));
+		const requiredCapabilities = [...declaredCapabilities, ...inferredCapabilities];
 		const retainedRouteKeys = requiredCapabilities.map(id => (isTaskMcpCapability(id) ? `mcp:${id}` : id));
 		const ownerId = request.ownerId ?? "default";
 		await releaseStaleTaskCapabilityRoutes(session, new Set(retainedRouteKeys), ownerId);
 		const capabilityRequests = requiredCapabilities.map(id => ({
-			id: isTaskMcpCapability(id) ? ("mcp" as const) : id,
-			...(isTaskMcpCapability(id) ? { toolName: id } : {}),
-			required: true,
-			signal: "task_transition" as const,
-			contextBudgetTokens: snapshot.decision.contextBudgetTokens,
-			ownerId,
+			capabilityId: id,
+			routeRequest: {
+				id: isTaskMcpCapability(id) ? ("mcp" as const) : id,
+				...(isTaskMcpCapability(id) ? { toolName: id } : {}),
+				required: true,
+				signal: "task_transition" as const,
+				contextBudgetTokens: snapshot.decision.contextBudgetTokens,
+				ownerId,
+				...(!declaredSet.has(id) ? { classificationConfidence: request.facts.capabilityConfidence } : {}),
+			},
 		}));
-		const capabilityPreflight = capabilityRequests.map(request => selectToolCapability(session, request));
-		const canActivateAll = capabilityPreflight.every(decision => decision.state === "active" || decision.selected);
-		const capabilityRoutes: ToolCapabilityRouteDecision[] = canActivateAll ? [] : capabilityPreflight;
-		if (canActivateAll) {
-			for (const request of capabilityRequests) {
-				capabilityRoutes.push(await routeToolCapability(session, request));
+		const explicitRequests = capabilityRequests.filter(request => declaredSet.has(request.capabilityId));
+		const inferredRequests = capabilityRequests.filter(request => !declaredSet.has(request.capabilityId));
+		const capabilityRoutes: ToolCapabilityRouteDecision[] = [];
+		const explicitPreflight = explicitRequests.map(({ routeRequest }) => selectToolCapability(session, routeRequest));
+		const canActivateAllExplicit = explicitPreflight.every(
+			decision => decision.state === "active" || decision.selected,
+		);
+		if (canActivateAllExplicit) {
+			for (const { routeRequest } of explicitRequests) {
+				capabilityRoutes.push(await routeToolCapability(session, routeRequest));
 			}
+		} else {
+			capabilityRoutes.push(...explicitPreflight);
+		}
+		for (const { routeRequest } of inferredRequests) {
+			const preflight = selectToolCapability(session, routeRequest);
+			capabilityRoutes.push(preflight.selected ? await routeToolCapability(session, routeRequest) : preflight);
 		}
 		if (snapshot?.decision.executionMode !== "parallel") {
 			await session.releaseGovernorTaskPromotion();

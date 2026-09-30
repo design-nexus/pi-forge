@@ -37,6 +37,7 @@ import {
 } from "../governor/transition";
 import { recordGovernorTodoScope } from "../governor/todo-scope";
 import type { PromptComposition } from "../prompt-engine/compose";
+import { classifyTaskCapabilities } from "../prompt-engine/task-capability-classifier";
 import {
 	releaseToolCapability,
 	releaseStaleTaskCapabilityRoutes,
@@ -5825,6 +5826,30 @@ export class AgentSession implements SettingsScope {
 		return releaseStaleTaskCapabilityRoutes(this, new Set(), ownerId);
 	}
 
+	async routePromptCapabilities(text: string): Promise<ToolCapabilityRouteDecision[]> {
+		if (this.isStreaming) return [];
+		const ownerId = "prompt:auto";
+		if (cfgAdaptiveMode.get(this.settings) !== "auto") {
+			await releaseStaleTaskCapabilityRoutes(this, new Set(), ownerId);
+			return [];
+		}
+		const classification = classifyTaskCapabilities([text]);
+		await releaseStaleTaskCapabilityRoutes(this, new Set(classification.capabilities), ownerId);
+		const decisions: ToolCapabilityRouteDecision[] = [];
+		for (const id of classification.capabilities) {
+			decisions.push(
+				await routeToolCapability(this, {
+					id,
+					required: true,
+					signal: "task_transition",
+					ownerId,
+					classificationConfidence: classification.confidence,
+				}),
+			);
+		}
+		return decisions;
+	}
+
 	routeGovernorTaskBatch(taskCount: number, highRisk = false): number | undefined {
 		return routeGovernorTaskBatch(this, taskCount, highRisk);
 	}
@@ -7041,6 +7066,10 @@ export class AgentSession implements SettingsScope {
 			});
 			outcome.sessionClaimed = true;
 			return true;
+		}
+
+		if (!options?.synthetic) {
+			await this.routePromptCapabilities(expandedText);
 		}
 
 		if (externalThinkingToolChoice) {
