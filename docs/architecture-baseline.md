@@ -29,8 +29,9 @@ The earlier authenticated single-turn comparison in [the Phase 1 report](omp2/PH
 | 0: inventory and baseline | **COMPLETED (2026-09-30)** | Architecture inventory, initial benchmark fixtures, paired upstream/Pi Forge first-turn input baseline, and initial tiny-edit outcome baseline are recorded. |
 | 1: Prompt Engine | **COMPLETED (2026-09-30)** | Profiles, overrides, commands, inspection, live prompt measurements, and matched tiny-edit task outcomes are recorded. Broader task-quality measurement remains follow-up evaluation. |
 | 2: Capability Router | **IN PROGRESS** | Direct tool catalog and opt-in delegation routing exist. Browser/MCP runtime gates, automatic task signals, and lifecycle telemetry remain open. |
-| 3: Adaptive Effort Governor | **IN PROGRESS** | Opt-in decisions, session snapshots, revision triggers, and bounded worker/context policy exist. Model-role selection is inspectable but not dispatched. Verification floors are provisional labels. |
-| 3B–8 | **SEE PLAN** | Current individual statuses and phase records are in [PLAN.md](../PLAN.md). |
+| 3: Adaptive Effort Governor | **COMPLETED** | Opt-in decisions, session snapshots, revision triggers, and bounded worker/context policy are implemented. See the Phase 3 record in [PLAN.md](../PLAN.md). |
+| 3B: Continuous Effort Reassessment | **COMPLETED** | Persisted runtime signals revise effort decisions in-session and recover on a fresh scope; focused decision and session tests pass. Broader policy calibration remains follow-up work. |
+| 4–8 | **SEE PLAN** | Current individual statuses and phase records are in [PLAN.md](../PLAN.md). |
 | 9: Evaluation and Optimization | **COMPLETED (initial harness)** | One frozen tiny-edit packet has three matched task-outcome pairs. The runner and scoped results are recorded in [the Phase 9 evaluation](phase9-evaluation.md); broader task categories remain follow-up evaluation. |
 
 ## Evaluation contract to establish next
