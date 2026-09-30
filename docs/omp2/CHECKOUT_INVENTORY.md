@@ -582,3 +582,9 @@ Verification: all 35 focused task-spawn tests passed; repository `bun check` and
 Governor task transitions continue to leave a required capability discoverable when its individual activation cost exceeds the selected context budget. The route result explains the budget rejection and the tool stays inactive.
 
 Verification: all 15 focused Prompt Engine tests passed; repository `bun check` and `git diff --check` passed. The session regression selects a zero-token band budget and confirms the debugger route is rejected without activation.
+
+## Item-level empty Governor declarations are no-ops
+
+Batch items with `highRisk: false` and `capabilities: []` also skip task-transition routing. This matches the call-level no-op behavior and prevents empty per-item metadata from deferring an otherwise ordinary task.
+
+Verification: all 35 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The regression verifies both flat call-level and item-level no-op declarations execute without invoking Governor transitions.

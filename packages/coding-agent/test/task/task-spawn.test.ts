@@ -313,7 +313,7 @@ describe("task spawn routing", () => {
 		const runSpy = vi
 			.spyOn(executorModule, "runSubprocess")
 			.mockImplementation(async options => makeResult(options.id ?? "?"));
-		const session = createSession({ settings: { "async.enabled": false } });
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
 		const transition = vi.fn(async () => ({ snapshot: undefined, route: undefined, deferred: true as const }));
 		session.routeGovernorTaskTransition = transition;
 		const tool = await TaskTool.create(session);
@@ -323,8 +323,18 @@ describe("task spawn routing", () => {
 			capabilities: [],
 			highRisk: false,
 		} as TaskParams);
+		await tool.execute("tc-item-empty-governor-facts", {
+			context: "Inspect the route implementation.",
+			tasks: [
+				{
+					task: "Inspect the route implementation.",
+					capabilities: [],
+					highRisk: false,
+				},
+			],
+		} as TaskParams);
 		expect(transition).not.toHaveBeenCalled();
-		expect(runSpy).toHaveBeenCalledTimes(1);
+		expect(runSpy).toHaveBeenCalledTimes(2);
 	});
 
 	it("does not start a task when its declared capability has no active route", async () => {
