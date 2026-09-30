@@ -750,6 +750,15 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		].filter(isTaskToolCapabilityId);
 		const highRisk = params.highRisk === true || spawnItems.some(item => item.highRisk === true);
 		const governorFactsDeclared = declaredCapabilities.length > 0 || highRisk;
+		const governorOwnerId = `task:${toolCallId}`;
+		const releaseGovernorOwner = async (): Promise<void> => {
+			if (!governorFactsDeclared) return;
+			try {
+				await this.session.releaseGovernorTaskCapabilityRoutes?.(governorOwnerId);
+			} catch (error) {
+				logger.warn("Task capability lease release failed", { owner: governorOwnerId, error: String(error) });
+			}
+		};
 		if (governorFactsDeclared) {
 			const facts: GovernorTaskFacts = {
 				files: [],
@@ -767,8 +776,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				return createTaskModeError("Task Governor preflight is unavailable for this session.");
 			}
 			try {
-				const routing = await routeTransition.call(this.session, { facts }, "initial");
+				const routing = await routeTransition.call(this.session, { facts, ownerId: governorOwnerId }, "initial");
 				if (routing?.deferred) {
+					await releaseGovernorOwner();
 					return createTaskModeError(
 						"Task routing is waiting for the current provider turn to finish. Retry this task call after the turn settles.",
 					);
@@ -777,11 +787,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					const routes = routing?.capabilityRoutes ?? [];
 					const failedRoutes = routes.filter(route => route.state !== "active");
 					if (failedRoutes.length > 0) {
+						await releaseGovernorOwner();
 						return createTaskModeError(
 							`Task capability routing failed: ${failedRoutes.map(route => `${route.toolName}: ${route.reason}`).join("; ")}`,
 						);
 					}
 					if (routes.length !== declaredCapabilities.length) {
+						await releaseGovernorOwner();
 						return createTaskModeError(
 							"Task capability requirements need adaptive.mode=auto and an available direct-tool route.",
 						);
@@ -790,6 +802,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			} catch (error) {
 				logger.warn("Task capability routing failed", { error: String(error) });
 				if (governorFactsDeclared) {
+					await releaseGovernorOwner();
 					return createTaskModeError(
 						`Task Governor preflight failed: ${error instanceof Error ? error.message : String(error)}`,
 					);
@@ -819,12 +832,14 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			} catch (error) {
 				logger.warn("Adaptive task batch routing failed", { error: String(error) });
 				if (governorFactsDeclared) {
+					await releaseGovernorOwner();
 					return createTaskModeError(
 						`Task Governor batch planning failed: ${error instanceof Error ? error.message : String(error)}`,
 					);
 				}
 			}
 			if (governorFactsDeclared && !governorPlanAvailable) {
+				await releaseGovernorOwner();
 				return createTaskModeError("Task Governor batch planning is unavailable for this session.");
 			}
 		}
@@ -847,6 +862,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			.map((preflight, index) => ("error" in preflight ? { index, error: preflight.error } : undefined))
 			.filter((failure): failure is { index: number; error: string } => failure !== undefined);
 		if (preflightFailures.length > 0) {
+			await releaseGovernorOwner();
 			if (!batchEnabled) {
 				return createTaskModeError(`Task execution failed: ${preflightFailures[0]!.error}`);
 			}
@@ -897,15 +913,20 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 							this.session.getSessionSpawns?.() ?? "*",
 						),
 					});
-			const result = await this.#executeSyncFanout(
-				toolCallId,
-				params,
-				spawnItems.map((item, index) => ({ item, index })),
-				defaultAgent,
-				signal,
-				onUpdate,
-				batchSemaphore,
-			);
+			let result: AgentToolResult<TaskToolDetails>;
+			try {
+				result = await this.#executeSyncFanout(
+					toolCallId,
+					params,
+					spawnItems.map((item, index) => ({ item, index })),
+					defaultAgent,
+					signal,
+					onUpdate,
+					batchSemaphore,
+				);
+			} finally {
+				await releaseGovernorOwner();
+			}
 			if (!advisory) return result;
 			let appended = false;
 			const content = result.content.map(part => {
@@ -1021,6 +1042,15 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// the call returns, so post-return job updates never drop them.
 		let settledCount = 0;
 		let failedCount = 0;
+		let syncSettled = syncSpawns.length === 0;
+		let governorOwnerReleased = false;
+		const releaseSettledGovernorOwner = (): void => {
+			if (!syncSettled || settledCount < asyncSpawns.length || governorOwnerReleased) return;
+			governorOwnerReleased = true;
+			void releaseGovernorOwner().catch(error => {
+				logger.warn("Task capability lease release failed", { error: String(error) });
+			});
+		};
 		let primaryJobId = asyncSpawns[0].agentId;
 		const syncResults: SingleResult[] = [];
 		// oxlint-disable-next-line prefer-const -- read by buildAsyncDetails before assignment
@@ -1059,6 +1089,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					onSettled: failed => {
 						settledCount += 1;
 						if (failed) failedCount += 1;
+						releaseSettledGovernorOwner();
 					},
 				});
 				if (started.length === 0) primaryJobId = jobId;
@@ -1069,10 +1100,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				spawn.progress.status = "failed";
 				settledCount += 1;
 				failedCount += 1;
+				releaseSettledGovernorOwner();
 			}
 		}
 
 		if (started.length === 0 && syncSpawns.length === 0) {
+			releaseSettledGovernorOwner();
 			return {
 				content: [
 					{
@@ -1153,24 +1186,30 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			],
 			details: buildAsyncDetails(),
 		});
-		const payloads = await this.#runSyncSpawns({
-			toolCallId,
-			params,
-			defaultAgent,
-			signal,
-			spawns: syncSpawns.map(spawn => ({ item: spawn.item, index: spawn.index, preAllocatedId: spawn.agentId })),
-			batchSemaphore,
-			onItemProgress: onUpdate
-				? (index, progress) => {
-						const spawn = spawns.find(candidate => candidate.index === index);
-						if (spawn) spawn.progress = { ...progress, index };
-						onUpdate({
-							content: [{ type: "text", text: `Running ${syncLabel} inline...` }],
-							details: buildAsyncDetails(),
-						});
-					}
-				: undefined,
-		});
+		let payloads: (AgentToolResult<TaskToolDetails> | undefined)[];
+		try {
+			payloads = await this.#runSyncSpawns({
+				toolCallId,
+				params,
+				defaultAgent,
+				signal,
+				spawns: syncSpawns.map(spawn => ({ item: spawn.item, index: spawn.index, preAllocatedId: spawn.agentId })),
+				batchSemaphore,
+				onItemProgress: onUpdate
+					? (index, progress) => {
+							const spawn = spawns.find(candidate => candidate.index === index);
+							if (spawn) spawn.progress = { ...progress, index };
+							onUpdate({
+								content: [{ type: "text", text: `Running ${syncLabel} inline...` }],
+								details: buildAsyncDetails(),
+							});
+						}
+					: undefined,
+			});
+		} finally {
+			syncSettled = true;
+			releaseSettledGovernorOwner();
+		}
 		const merged = mergeSyncPayloads(
 			syncSpawns.map(spawn => ({ item: spawn.item, index: spawn.index })),
 			payloads,

@@ -588,3 +588,32 @@ Verification: all 15 focused Prompt Engine tests passed; repository `bun check` 
 Batch items with `highRisk: false` and `capabilities: []` also skip task-transition routing. This matches the call-level no-op behavior and prevents empty per-item metadata from deferring an otherwise ordinary task.
 
 Verification: all 35 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The regression verifies both flat call-level and item-level no-op declarations execute without invoking Governor transitions.
+
+## Scoped capability leases for overlapping work
+
+Automatic direct-tool routes now track task-scope owners. A scope releases only its own lease; a shared route remains active until its last owner releases it. Explicit unroute transfers control back to any still-active structured scope. Task calls use a per-call owner and retain it until all background and inline workers settle; failed preflight/planning and completed synchronous calls release it. Workpools use a stable pool owner and release after the most recent route transition settles on close, so closing during routing cannot strand a late activation. Automatic browser cleanup restores the previous browser policy; it uses the capability ID because browser routing is implemented through the `eval` tool.
+
+The 20 contracts closed in this slice batch are:
+
+1. Existing callers retain the default owner when they omit `ownerId`.
+2. Separate scopes can own the same automatic route.
+3. Releasing one owner leaves a shared route active for the remaining owner.
+4. Releasing the final owner restores the tool's prior enabled and mounted presentation.
+5. A task transition that finds a leased tool already active adds its owner.
+6. Releasing an unrelated or unknown owner leaves an existing tool active.
+7. Explicit routing adopts automatic presentation without erasing its task owners.
+8. Explicit unroute preserves a route still required by a task owner.
+9. Releasing that final task owner after explicit unroute restores the original presentation.
+10. Each declared task call uses its tool-call ID as its owner.
+11. All capabilities in a task call's declared union share that owner.
+12. Synchronous task completion releases its owner.
+13. Background tasks retain the owner after the parent tool call returns.
+14. Background worker failure also releases the owner.
+15. Mixed inline and background calls wait for both execution paths to settle.
+16. A cleanup error cannot replace a successful synchronous task result.
+17. Each workpool uses a stable pool-scoped owner.
+18. Closing a workpool releases its owner after any pending route transition settles.
+19. A rejected pending route still reaches close-time owner cleanup.
+20. Browser route cleanup restores a prior policy or removes the temporary override when none existed.
+
+Verification: Prompt Engine, task-spawn, and workpool suites passed (87 tests, 403 assertions); repository `bun check` and `git diff --check` passed.

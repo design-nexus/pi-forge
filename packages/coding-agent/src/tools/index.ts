@@ -470,11 +470,11 @@ export interface ToolSession {
 	) => { workerCount?: number; effort?: "lo" | "med" | "hi" } | undefined;
 	/** Route explicitly declared direct-tool needs for a structured task call. */
 	routeGovernorTaskTransition?: (
-		request: { facts: GovernorTaskFacts },
+		request: { facts: GovernorTaskFacts; ownerId?: string },
 		trigger: "initial" | "scope" | "steering",
 	) => Promise<GovernorTaskTransitionResult>;
 	/** Release Governor-owned direct-tool routes when the next task declares none. */
-	releaseGovernorTaskCapabilityRoutes?: () => Promise<void>;
+	releaseGovernorTaskCapabilityRoutes?: (ownerId?: string) => Promise<void>;
 	/** Wait until the active provider turn and its deferred tool mutations settle. */
 	waitForIdle?: () => Promise<void>;
 	/** Replace cached todo phases for this session. */
