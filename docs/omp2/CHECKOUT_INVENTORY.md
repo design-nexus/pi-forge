@@ -576,3 +576,9 @@ Verification: all 34 focused task-spawn tests passed; repository `bun check` and
 Per-item capability requirements are aggregated into the task transition before any batch worker starts. A batch whose items require different capabilities routes the combined set and proceeds only after each route is active.
 
 Verification: all 35 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The regression declares browser on one item and debugger on another, checks both reach Governor facts, and confirms both workers run after active route results.
+
+## Direct capability routing respects the context budget
+
+Governor task transitions continue to leave a required capability discoverable when its individual activation cost exceeds the selected context budget. The route result explains the budget rejection and the tool stays inactive.
+
+Verification: all 15 focused Prompt Engine tests passed; repository `bun check` and `git diff --check` passed. The session regression selects a zero-token band budget and confirms the debugger route is rejected without activation.
