@@ -441,6 +441,12 @@ Each effort band now has a configurable verification floor and ceiling from V0 t
 
 Verification: 22 Governor decision and session tests passed, covering defaults, risk escalation, repeated failures, ceiling clamping, configuration validation, and session persistence. Expanded verification below also includes legacy snapshot reading.
 
+## Governor verification policy reaches workers
+
+Governor-selected verification strategy and V0–V4 floor/ceiling now reach both ordinary task batches and eval workpool assignments. Task workers receive the policy through shared task context across synchronous, background, and mixed execution; workpool items retain their own policy through queueing and batch assignment. Workers are instructed to choose repository-appropriate checks within the configured bounds and report commands and outcomes. The host still does not schedule checks or validate worker reports, so Phase 7 calibration remains open.
+
+Verification: Task spawn, task batch, workpool, and Governor decision suites passed 113 tests; `bun check` passed.
+
 ## Structured graph failure diagnostics
 
 When a structured Governor task graph cannot be topologically scheduled, the error now names every task left in the blocked chain. Duplicate dependency references continue to count as one graph edge and one prerequisite.

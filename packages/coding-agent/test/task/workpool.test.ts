@@ -332,6 +332,27 @@ describe("WorkPool dispatch", () => {
 		expect(receivedEffort).toBe("hi");
 	});
 
+	it("passes Governor verification bounds into workpool worker instructions", async () => {
+		const session = makeSession();
+		session.routeGovernorTaskPlan = () => ({
+			workerCount: 1,
+			verification: { strategy: "integration_checks", floor: "V3", ceiling: "V4" },
+		});
+		let assignment = "";
+		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			assignment = request.assignment;
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "governor-verification");
+		workpool.push(["Run the integration update."]);
+		await finishPool(session, workpool);
+		expect(assignment).toContain("integration_checks");
+		expect(assignment).toContain("floor `V3` and ceiling `V4`");
+		expect(assignment).toContain("At completion, report the commands run and their outcomes");
+	});
+
 	it("routes explicitly declared workpool capabilities through task facts", async () => {
 		const session = makeSession();
 		let routedFacts: unknown;

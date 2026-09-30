@@ -2,6 +2,7 @@ import { logger, prompt } from "@oh-my-pi/pi-utils";
 import type { CustomTool } from "../extensibility/custom-tools/types";
 import workpoolBatchTemplate from "../prompts/tools/workpool-batch.md" with { type: "text" };
 import workpoolTurnResultTemplate from "../prompts/tools/workpool-turn-result.md" with { type: "text" };
+import taskGovernorVerificationTemplate from "../prompts/tools/task-governor-verification.md" with { type: "text" };
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import type { CustomMessage } from "../session/messages";
@@ -22,6 +23,7 @@ import { cfgEvalWorkpoolFreshAgents } from "../eval/settings";
 import { cfgTaskMaxConcurrency, cfgTaskMaxRuntimeMs } from "./settings";
 import { sessionTaskSemaphore } from "./parallel";
 import type { GovernorTaskFacts } from "../governor/task-facts";
+import type { GovernorVerificationPolicy } from "../governor/task-batch";
 import type { GovernorTaskTransitionResult } from "../governor/transition";
 import type { TaskCapabilityId } from "../prompt-engine/capability-catalog";
 
@@ -31,6 +33,7 @@ export interface WorkPoolItem {
 	seq: number;
 	text: string;
 	governorEffort?: TaskEffort;
+	governorVerification?: GovernorVerificationPolicy;
 	agentId?: string;
 	batchId?: string;
 	status: "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -210,11 +213,13 @@ export class WorkPool {
 			this.items.filter(item => item.status === "queued" || item.status === "running").length + texts.length;
 		const pendingHighRisk = this.#highRisk || highRisk;
 		let governorEffort: TaskEffort | undefined;
+		let governorVerification: GovernorVerificationPolicy | undefined;
 		try {
 			if (this.session.routeGovernorTaskPlan) {
 				const plan = this.session.routeGovernorTaskPlan(pendingCount, pendingHighRisk);
 				this.#governorLimit = plan?.workerCount;
 				governorEffort = plan?.effort;
+				governorVerification = plan?.verification;
 			} else {
 				this.#governorLimit = this.session.routeGovernorTaskBatch?.(pendingCount, pendingHighRisk);
 			}
@@ -234,6 +239,7 @@ export class WorkPool {
 				text,
 				status: "queued",
 				...(governorEffort ? { governorEffort } : {}),
+				...(governorVerification ? { governorVerification } : {}),
 			};
 			this.items.push(item);
 			queued.push(item);
@@ -481,7 +487,20 @@ export class WorkPool {
 		return prompt.render(workpoolBatchTemplate, {
 			pool: this.name,
 			batch: batch.id,
-			items: batch.items.map((item, index) => ({ id: item.id, index: index + 1, text: item.text })),
+			items: batch.items.map((item, index) => ({
+				id: item.id,
+				index: index + 1,
+				text: item.text,
+				verificationGuidance: item.governorVerification
+					? prompt
+							.render(taskGovernorVerificationTemplate, {
+								strategy: item.governorVerification.strategy,
+								floor: item.governorVerification.floor,
+								ceiling: item.governorVerification.ceiling,
+							})
+							.trim()
+					: undefined,
+			})),
 		});
 	}
 

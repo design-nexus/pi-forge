@@ -299,6 +299,34 @@ describe("task spawn routing", () => {
 		expect(releaseRoutes).toHaveBeenCalledWith("task:tc-item-capabilities");
 	});
 
+	it("passes the Governor verification strategy and bounds to every batch worker", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const observedContexts: string[] = [];
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			observedContexts.push(options.context ?? "");
+			return makeResult(options.id ?? "?");
+		});
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
+		session.routeGovernorTaskPlan = () => ({
+			workerCount: 2,
+			verification: { strategy: "targeted_checks", floor: "V2", ceiling: "V3" },
+		});
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-verification-policy", {
+			context: "Update the public API and its tests.",
+			tasks: [
+				{ name: "Implementation", task: "Update the API implementation." },
+				{ name: "Tests", task: "Update API behavior tests." },
+			],
+		} as TaskParams);
+		expect(observedContexts).toHaveLength(2);
+		for (const context of observedContexts) {
+			expect(context).toContain("targeted_checks");
+			expect(context).toContain("floor `V2` and ceiling `V3`");
+			expect(context).toContain("At completion, report the commands run and their outcomes");
+		}
+	});
+
 	it("holds a task capability lease until its background worker settles", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
 		const gate = deferred();

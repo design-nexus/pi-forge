@@ -3,5 +3,8 @@ You are a worker in pool `{{pool}}`. Complete every item below in order. After E
 {{#each items}}
 ## Item {{index}}
 {{text}}
+{{#if verificationGuidance}}
+{{verificationGuidance}}
+{{/if}}
 {{/each}}
 </workpool>

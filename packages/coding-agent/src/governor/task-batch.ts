@@ -5,10 +5,18 @@ import { cfgTaskMaxConcurrency } from "../task/settings";
 import { recordGovernorDecision } from "./ledger";
 import { recentGovernorToolSignals } from "./runtime-signals";
 import { cfgAdaptiveMode } from "./settings";
+import type { GovernorDecision, VerificationLevel } from "./decision";
+
+export interface GovernorVerificationPolicy {
+	strategy: GovernorDecision["verification"];
+	floor: VerificationLevel;
+	ceiling: VerificationLevel;
+}
 
 export interface GovernorTaskPlan {
 	workerCount?: number;
 	effort?: TaskEffort;
+	verification?: GovernorVerificationPolicy;
 }
 
 /** Bind one concrete independent task batch to a Governor decision. */
@@ -43,6 +51,15 @@ export function routeGovernorTaskPlan(
 			? { workerCount: workers }
 			: {}),
 		...(effort ? { effort } : {}),
+		...(snapshot
+			? {
+					verification: {
+						strategy: snapshot.decision.verification,
+						floor: snapshot.decision.verificationFloor,
+						ceiling: snapshot.decision.verificationCeiling,
+					},
+				}
+			: {}),
 	};
 }
 
