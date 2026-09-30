@@ -578,6 +578,22 @@ describe("WorkPool dispatch", () => {
 		expect(spawn).toHaveBeenCalledTimes(1);
 	});
 
+	it("close cancels a workpool dispatch waiting for session idle", async () => {
+		const session = makeSession();
+		const idle = Promise.withResolvers<void>();
+		session.routeGovernorTaskTransition = async () => ({ snapshot: undefined, route: undefined, deferred: true });
+		session.waitForIdle = async () => idle.promise;
+		const spawn = vi.spyOn(structured, "runStructuredSubagent");
+		const workpool = pool(session, "cancel-idle-route");
+		workpool.push(["inspect the page"], ["browser"]);
+		await Bun.sleep(0);
+		const closed = workpool.close();
+		await finishPool(session, workpool);
+		expect(closed.dropped).toHaveLength(1);
+		expect(workpool.status().items).toMatchObject({ cancelled: 1, queued: 0, running: 0 });
+		expect(spawn).not.toHaveBeenCalled();
+	});
+
 	it("does not start a workpool worker when a required capability is unavailable", async () => {
 		const session = makeSession();
 		session.routeGovernorTaskTransition = async () => ({

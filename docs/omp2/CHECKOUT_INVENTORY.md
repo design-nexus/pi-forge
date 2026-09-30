@@ -546,3 +546,9 @@ Verification: 32 focused task-spawn tests passed; repository `bun check` and `gi
 The workpool now replaces its deferred flag with each serialized transition result. A later successful route for the accumulated requirements clears an earlier deferred state, avoiding an unnecessary idle wait and duplicate Governor decision.
 
 Verification: all 27 focused workpool tests passed; repository `bun check` and `git diff --check` passed. A deferred first push followed by a successful second transition starts both workers without calling `waitForIdle`.
+
+## Workpool close interrupts deferred idle waits
+
+When deferred capability routing makes dispatch wait for session idle, closing the pool now interrupts that wait. Queued work is reported as cancelled and the worker is not started even if the provider session remains busy.
+
+Verification: all 28 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The regression leaves `waitForIdle` unresolved, closes the pool, and verifies the aggregate settles with the item cancelled.
