@@ -774,7 +774,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				}
 				if (declaredCapabilities.length > 0) {
 					const routes = routing?.capabilityRoutes ?? [];
-					const failedRoutes = routes.filter(route => !route.selected || route.state !== "active");
+					const failedRoutes = routes.filter(route => route.state !== "active");
 					if (failedRoutes.length > 0) {
 						return createTaskModeError(
 							`Task capability routing failed: ${failedRoutes.map(route => `${route.toolName}: ${route.reason}`).join("; ")}`,
