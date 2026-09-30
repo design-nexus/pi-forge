@@ -12,11 +12,57 @@ import { THINKING_EFFORTS } from "@oh-my-pi/pi-catalog/effort";
 import { logger, setWorktreesDir } from "@oh-my-pi/pi-utils";
 import { setFeedModelBadgeEnabled } from "@oh-my-pi/pi-tui/render/render-utils";
 import { getThinkingLevelMetadata } from "@oh-my-pi/pi-tui/thinking";
+import { DEFAULT_REPAIR_BUDGET, type RepairBudgetLimits } from "./integration-gate";
 
 const EMPTY_AGENT_SERVICE_TIER_OVERRIDES: Record<string, ServiceTierInheritSettingValue> = {};
 const EMPTY_AGENT_COMPACTION_THRESHOLD_OVERRIDES: Record<string, AgentCompactionThresholdOverride> = {};
 
 const DEFAULT_AGENT_MODEL_OVERRIDES: Record<string, string | string[]> = {};
+
+function validateRepairBudget(value: unknown): void {
+	if (value === undefined) return;
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("task.repairBudget must be an object");
+	}
+	const budget = value as Record<string, unknown>;
+	const allowed = ["maxAttempts", "maxTokens", "maxCostUsd", "maxWallTimeMs", "stagnationLimit"] as const;
+	if (Object.keys(budget).some(key => !allowed.includes(key as (typeof allowed)[number]))) {
+		throw new Error("task.repairBudget contains an unknown field");
+	}
+	const resolved = { ...DEFAULT_REPAIR_BUDGET, ...budget };
+	if (
+		!Number.isInteger(resolved.maxAttempts) ||
+		resolved.maxAttempts < 1 ||
+		resolved.maxAttempts > 5 ||
+		!Number.isSafeInteger(resolved.maxTokens) ||
+		resolved.maxTokens < 1 ||
+		typeof resolved.maxCostUsd !== "number" ||
+		!Number.isFinite(resolved.maxCostUsd) ||
+		resolved.maxCostUsd <= 0 ||
+		!Number.isSafeInteger(resolved.maxWallTimeMs) ||
+		resolved.maxWallTimeMs < 1 ||
+		!Number.isInteger(resolved.stagnationLimit) ||
+		resolved.stagnationLimit < 1 ||
+		resolved.stagnationLimit > resolved.maxAttempts
+	) {
+		throw new Error(
+			"task.repairBudget requires 1–5 attempts, positive token/cost/time limits, and a stagnation limit within maxAttempts",
+		);
+	}
+}
+
+export const cfgTaskRepairBudget = register({
+	id: "task.repairBudget",
+	type: "record",
+	default: {} as Partial<RepairBudgetLimits>,
+	validate: validateRepairBudget,
+	ui: {
+		tab: "tasks",
+		group: "Subagents",
+		label: "Task Repair Budget",
+		description: "Bound integration repair attempts, tokens, cost, wall time, and repeated failures",
+	},
+});
 
 // Delegation. Task and isolation settings declare `protocolDefault`: protocol hosts get neutral
 // defaults instead of the local user's interactive preferences.

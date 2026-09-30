@@ -19,7 +19,7 @@ import { taskSubprocessRenderer } from "@oh-my-pi/pi-tui/tools/subprocess";
 import path from "node:path";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
 import type { Usage } from "@oh-my-pi/pi-ai";
-import { $env, logger, prompt } from "@oh-my-pi/pi-utils";
+import { $env, isRecord, logger, prompt } from "@oh-my-pi/pi-utils";
 import type { ToolSession } from "..";
 import { resolveCapabilityPolicies, resolvePromptPolicies } from "../prompt-engine/profiles";
 import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "../prompt-engine/settings";
@@ -48,7 +48,14 @@ import { isIrcEnabled } from "../irc/messaging";
 import { isReadOnlyAgent } from "./read-only-policy";
 import { formatTaskResultSummary } from "./result-summary";
 import { isScoutSpawnable, resolveSpawnPolicy } from "./spawn-policy";
-import { IntegrationGate, integrationGateFailure, integrationOrder } from "./integration-gate";
+import {
+	DEFAULT_REPAIR_BUDGET,
+	IntegrationGate,
+	IntegrationRepairBudget,
+	integrationGateFailure,
+	integrationOrder,
+	type RepairBudgetLimits,
+} from "./integration-gate";
 import { type AgentDefinition, canSpawnAtDepth, getTaskSchema, type TaskToolSchemaInstance } from "./types";
 import {
 	type AgentProgress,
@@ -72,6 +79,7 @@ import {
 	runStructuredSubagent,
 	StructuredSubagentError,
 	type EffectiveSubagentPolicy,
+	type StructuredSubagentResult,
 } from "./structured-subagent";
 import { formatModelRoleAlias } from "../config/model-roles";
 
@@ -86,6 +94,7 @@ import {
 	cfgTaskMaxConcurrency,
 	cfgTaskMaxRecursionDepth,
 	cfgTaskMaxRuntimeMs,
+	cfgTaskRepairBudget,
 } from "./settings";
 
 function renderSubagentUserPrompt(assignment: string): string {
@@ -429,11 +438,13 @@ interface TaskExecutionParams extends TaskParams {
 	integrationGateContext?: string;
 	integrationGateAssignments?: string;
 	integrationGateVerification?: GovernorVerificationPolicy;
+	integrationGateRepairLimits?: RepairBudgetLimits;
 }
 
 interface IntegrationGateTaskMetadata {
 	context: string;
 	assignments: string;
+	repairLimits: RepairBudgetLimits;
 }
 
 const integrationGateTaskMetadata = new WeakMap<TaskItem, IntegrationGateTaskMetadata>();
@@ -460,7 +471,7 @@ const integrationGateOutputSchema = {
 			},
 		},
 		files: { type: "array", items: { type: "string" } },
-		repairAttempts: { type: "integer", minimum: 0, maximum: 1 },
+		repairAttempts: { type: "integer", minimum: 0, maximum: 5 },
 	},
 	required: ["status", "summary", "verificationLevel", "checks", "files", "repairAttempts"],
 } as const;
@@ -495,6 +506,7 @@ function spawnParamsFor(
 		spawn.integrationGateTask = true;
 		spawn.integrationGateContext = integrationMetadata.context;
 		spawn.integrationGateAssignments = integrationMetadata.assignments;
+		spawn.integrationGateRepairLimits = integrationMetadata.repairLimits;
 		if (governorPlan?.verification) spawn.integrationGateVerification = governorPlan.verification;
 	}
 	if (!isGovernorReviewTaskItem(item) && governorPlan?.modelRole) {
@@ -943,6 +955,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const requestedIsolatedWorkers = spawnItems.filter(
 			item => item.isolated === true || (params.isolated === true && item.isolated === undefined),
 		).length;
+		const repairBudgetSettings = cfgTaskRepairBudget.get(this.session.settings);
+		const repairLimits = { ...DEFAULT_REPAIR_BUDGET, ...repairBudgetSettings };
 		const integrationGateRequired =
 			implementationCount > 1 &&
 			requestedIsolatedWorkers > 1 &&
@@ -973,11 +987,18 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					strategy: "targeted_checks",
 					floor: "V1",
 					ceiling: "V2",
+					maxAttempts: repairLimits.maxAttempts,
+					maxTokens: repairLimits.maxTokens,
+					maxCostUsd: repairLimits.maxCostUsd,
+					maxWallTimeMs: repairLimits.maxWallTimeMs,
+					stagnationLimit: repairLimits.stagnationLimit,
+					repairHistory: "No previous attempts.",
 				}),
 			};
 			integrationGateTaskMetadata.set(gateTask, {
 				context: truncateForPrompt(params.context?.trim() ?? "", 8_000),
 				assignments,
+				repairLimits,
 			});
 			spawnItems.push(gateTask);
 		}
@@ -985,7 +1006,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		if (integrationGateRequired) {
 			dependencies[implementationCount] = Array.from({ length: implementationCount }, (_, index) => index);
 		}
-		const integrationGate = spawnItems.length > 1 ? new IntegrationGate(integrationOrder(dependencies)) : undefined;
+		const integrationGate =
+			spawnItems.length > 1
+				? new IntegrationGate(integrationOrder(dependencies), repairLimits.maxAttempts)
+				: undefined;
 		const requestedTaskItems = spawnItems.slice(0, implementationCount);
 		const dependencyIds = taskDependencyIds(spawnItems);
 		const dependencyGates = spawnItems.map(() => Promise.withResolvers<boolean>());
@@ -2154,99 +2178,166 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	): Promise<AgentToolResult<TaskToolDetails>> {
 		const startTime = Date.now();
 		let assignment = (params.task ?? "").trim();
+		const repairBudget = params.integrationGateTask
+			? new IntegrationRepairBudget(params.integrationGateRepairLimits ?? DEFAULT_REPAIR_BUDGET)
+			: undefined;
+		let gateWorkerResults = "";
 		if (params.integrationGateTask) {
-			if (!params.integrationGate?.reserveReconciliationAttempt()) {
-				throw new StructuredSubagentError(
-					"execution",
-					"Integration repair budget exhausted before reconciliation started.",
-				);
-			}
-			const results = params.integrationGate
-				.workerResults()
-				.filter(({ result }) => result.index < spawnIndex)
-				.map(({ result, mergeSummary, changesApplied }) => {
-					const status = result.error ?? (result.aborted ? "aborted" : `exit code ${result.exitCode}`);
-					const integration =
-						changesApplied === false ? `\nIntegration apply failed: ${mergeSummary ?? "no details"}` : "";
-					const artifacts = [
-						result.outputPath ? `output: ${result.outputPath}` : undefined,
-						result.patchPath ? `patch: ${result.patchPath}` : undefined,
-						result.branchName ? `branch: ${result.branchName}` : undefined,
-					]
-						.filter(Boolean)
-						.join("; ");
-					const output = truncateForPrompt(result.output || result.stderr, 2_000);
-					return `${result.task} (${status})${artifacts ? `; ${artifacts}` : ""}${integration}\n${output}`;
-				})
-				.join("\n\n");
+			gateWorkerResults =
+				params.integrationGate
+					?.workerResults()
+					.filter(({ result }) => result.index < spawnIndex)
+					.map(({ result, mergeSummary, changesApplied }) => {
+						const status = result.error ?? (result.aborted ? "aborted" : `exit code ${result.exitCode}`);
+						const integration =
+							changesApplied === false ? `\nIntegration apply failed: ${mergeSummary ?? "no details"}` : "";
+						const artifacts = [
+							result.outputPath ? `output: ${result.outputPath}` : undefined,
+							result.patchPath ? `patch: ${result.patchPath}` : undefined,
+							result.branchName ? `branch: ${result.branchName}` : undefined,
+						]
+							.filter(Boolean)
+							.join("; ");
+						const output = truncateForPrompt(result.output || result.stderr, 2_000);
+						return `${result.task} (${status})${artifacts ? `; ${artifacts}` : ""}${integration}\n${output}`;
+					})
+					.join("\n\n") ?? "";
 			assignment = prompt.render(taskIntegrationGateTemplate, {
 				context: truncateForPrompt(params.integrationGateContext ?? "", 8_000),
 				assignments: truncateForPrompt(params.integrationGateAssignments ?? "", 8_000),
-				results: truncateForPrompt(results || "No implementation results were reported.", 12_000),
+				results: truncateForPrompt(gateWorkerResults || "No implementation results were reported.", 12_000),
 				strategy: params.integrationGateVerification?.strategy ?? "targeted_checks",
 				floor: params.integrationGateVerification?.floor ?? "V1",
 				ceiling: params.integrationGateVerification?.ceiling ?? "V2",
+				maxAttempts: repairBudget?.limits.maxAttempts ?? DEFAULT_REPAIR_BUDGET.maxAttempts,
+				maxTokens: repairBudget?.limits.maxTokens ?? DEFAULT_REPAIR_BUDGET.maxTokens,
+				maxCostUsd: repairBudget?.limits.maxCostUsd ?? DEFAULT_REPAIR_BUDGET.maxCostUsd,
+				maxWallTimeMs: repairBudget?.limits.maxWallTimeMs ?? DEFAULT_REPAIR_BUDGET.maxWallTimeMs,
+				stagnationLimit: repairBudget?.limits.stagnationLimit ?? DEFAULT_REPAIR_BUDGET.stagnationLimit,
+				repairHistory: "No previous attempts.",
 			});
 		}
 		const context = this.#isBatchEnabled() ? params.context?.trim() || undefined : undefined;
 		let latestProgress: AgentProgress | undefined;
 		try {
-			const execution = await runStructuredSubagent({
-				session: this.session,
-				invocationKind: "task",
-				assignment,
-				context,
-				agent: params.agent,
-				...(params.governorModelRole ? { model: formatModelRoleAlias(params.governorModelRole) } : {}),
-				...(Object.hasOwn(params, "outputSchema") ? { outputSchema: params.outputSchema } : {}),
-				...(Object.hasOwn(params, "schemaMode") ? { schemaMode: params.schemaMode } : {}),
-				...(params.effort !== undefined ? { effort: params.effort } : {}),
-				...(params.tools?.length
-					? {
-							customTools: createEvalCustomTools(
-								this.session,
-								await describeEvalTools(this.session, params.tools, signal),
-							),
-						}
-					: {}),
-				// `name` is the spawn handle: keep it for id allocation when this
-				// path did not pre-reserve one. Do not treat it as a HUD description.
-				identity: { id: preAllocatedId, label: params.name },
-				index: spawnIndex,
-				integrationGate: params.integrationGate,
-				parentToolCallId: toolCallId,
-				detached,
-				// Detached (async) spawns advertise `agent://<id>` handles in the
-				// eventual async-result delivery, which can land well after this
-				// call returns. Without this, a temporary (in-memory session)
-				// artifacts directory is deleted immediately on completion and the
-				// advertised URL 404s by the time delivery happens.
-				retainArtifacts: detached,
-				...(onArtifactsRetained ? { onArtifactsRetained } : {}),
-				invokedAt: launchTiming?.invokedAt,
-				acquiredAt: launchTiming?.acquiredAt,
-				...("isolated" in params ? { isolation: { requested: params.isolated } } : {}),
-				blockedAgent: this.#blockedAgent,
-				enableLsp: (this.session.enableLsp ?? true) && cfgTaskEnableLsp.get(this.session.settings),
-				enableIrc: isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0),
-				maxRuntimeMs: cfgTaskMaxRuntimeMs.get(this.session.settings),
-				signal,
-				onProgress: progress => {
-					latestProgress = { ...progress, recentTools: progress.recentTools.slice() };
-					onUpdate?.({
-						content: [{ type: "text", text: `Running agent ${progress.id}...` }],
-						details: {
-							projectAgentsDir: null,
-							results: [],
-							totalDurationMs: Date.now() - startTime,
-							progress: [latestProgress],
-						},
-					});
-				},
-			});
-			if (params.integrationGateTask) {
+			const runAttempt = async (): Promise<StructuredSubagentResult> =>
+				runStructuredSubagent({
+					session: this.session,
+					invocationKind: "task",
+					assignment,
+					context,
+					agent: params.agent,
+					...(params.governorModelRole ? { model: formatModelRoleAlias(params.governorModelRole) } : {}),
+					...(Object.hasOwn(params, "outputSchema") ? { outputSchema: params.outputSchema } : {}),
+					...(Object.hasOwn(params, "schemaMode") ? { schemaMode: params.schemaMode } : {}),
+					...(params.effort !== undefined ? { effort: params.effort } : {}),
+					...(params.tools?.length
+						? {
+								customTools: createEvalCustomTools(
+									this.session,
+									await describeEvalTools(this.session, params.tools, signal),
+								),
+							}
+						: {}),
+					// `name` is the spawn handle: keep it for id allocation when this
+					// path did not pre-reserve one. Do not treat it as a HUD description.
+					identity: { id: preAllocatedId, label: params.name },
+					index: spawnIndex,
+					integrationGate: params.integrationGate,
+					parentToolCallId: toolCallId,
+					detached,
+					// Detached (async) spawns advertise `agent://<id>` handles in the
+					// eventual async-result delivery, which can land well after this
+					// call returns. Without this, a temporary (in-memory session)
+					// artifacts directory is deleted immediately on completion and the
+					// advertised URL 404s by the time delivery happens.
+					retainArtifacts: detached,
+					...(onArtifactsRetained ? { onArtifactsRetained } : {}),
+					invokedAt: launchTiming?.invokedAt,
+					acquiredAt: launchTiming?.acquiredAt,
+					...("isolated" in params ? { isolation: { requested: params.isolated } } : {}),
+					blockedAgent: this.#blockedAgent,
+					enableLsp: (this.session.enableLsp ?? true) && cfgTaskEnableLsp.get(this.session.settings),
+					enableIrc: isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0),
+					maxRuntimeMs: repairBudget
+						? Math.min(
+								cfgTaskMaxRuntimeMs.get(this.session.settings) || Number.POSITIVE_INFINITY,
+								repairBudget.remainingWallTimeMs,
+							)
+						: cfgTaskMaxRuntimeMs.get(this.session.settings),
+					signal,
+					onProgress: progress => {
+						latestProgress = { ...progress, recentTools: progress.recentTools.slice() };
+						onUpdate?.({
+							content: [{ type: "text", text: `Running agent ${progress.id}...` }],
+							details: {
+								projectAgentsDir: null,
+								results: [],
+								totalDurationMs: Date.now() - startTime,
+								progress: [latestProgress],
+							},
+						});
+					},
+				});
+			let execution: StructuredSubagentResult;
+			while (true) {
+				if (params.integrationGateTask && !params.integrationGate?.reserveReconciliationAttempt()) {
+					throw new StructuredSubagentError("execution", "Automatic repair attempt budget exhausted.");
+				}
+				execution = await runAttempt();
+				if (!params.integrationGateTask || !repairBudget) break;
 				const failure = integrationGateFailure(execution.result, params.integrationGateVerification);
-				if (failure) execution.result.error = failure;
+				repairBudget.record(execution.result, failure);
+				const totals = repairBudget.totals;
+				execution.result.tokens = totals.tokens;
+				execution.result.durationMs = totals.wallTimeMs;
+				if (!failure) {
+					if (repairBudget.attempts.length > 1 && isRecord(execution.result.structuredOutput?.data)) {
+						const data = execution.result.structuredOutput.data;
+						execution.result.structuredOutput.data = {
+							...data,
+							status: "reconciled",
+							repairAttempts: Math.max(repairBudget.attempts.length - 1, Number(data.repairAttempts) || 0),
+							summary: `${String(data.summary)} Repair history: ${repairBudget.summary()}`,
+						};
+					}
+					break;
+				}
+				const stopReason = repairBudget.stopReason();
+				if (stopReason) {
+					execution.result.error = `Automatic repair budget exhausted (${stopReason}). ${failure}\n${repairBudget.summary()}`;
+					if (isRecord(execution.result.structuredOutput?.data)) {
+						const data = execution.result.structuredOutput.data;
+						execution.result.structuredOutput.data = {
+							...data,
+							status: "unresolved",
+							repairAttempts: Math.max(repairBudget.attempts.length - 1, Number(data.repairAttempts) || 0),
+							summary: `${failure} Automatic repair budget exhausted (${stopReason}).`,
+						};
+					}
+					break;
+				}
+				assignment = prompt.render(taskIntegrationGateTemplate, {
+					context: truncateForPrompt(params.integrationGateContext ?? "", 8_000),
+					assignments: truncateForPrompt(params.integrationGateAssignments ?? "", 8_000),
+					results: truncateForPrompt(gateWorkerResults || "No implementation results were reported.", 12_000),
+					strategy: params.integrationGateVerification?.strategy ?? "targeted_checks",
+					floor: params.integrationGateVerification?.floor ?? "V1",
+					ceiling: params.integrationGateVerification?.ceiling ?? "V2",
+					maxAttempts: repairBudget.limits.maxAttempts,
+					maxTokens: repairBudget.limits.maxTokens,
+					maxCostUsd: repairBudget.limits.maxCostUsd,
+					maxWallTimeMs: repairBudget.limits.maxWallTimeMs,
+					stagnationLimit: repairBudget.limits.stagnationLimit,
+					repairHistory: repairBudget.summary(),
+				});
+			}
+			if (
+				params.integrationGateTask &&
+				execution.result.error &&
+				!isRecord(execution.result.structuredOutput?.data)
+			) {
+				execution.result.error = `Integration verification unresolved: ${execution.result.error}`;
 			}
 			if (!params.integrationGateTask) {
 				params.integrationGate?.recordWorkerResult(spawnIndex, {
