@@ -188,7 +188,7 @@ export class WorkPool {
 					const routeTransition = this.session.routeGovernorTaskTransition;
 					if (!routeTransition) throw new ToolError("workpool Governor preflight is unavailable for this session");
 					const routing = await routeTransition.call(this.session, { facts }, "scope");
-					this.#capabilityTransitionDeferred ||= routing?.deferred === true;
+					this.#capabilityTransitionDeferred = routing?.deferred === true;
 					this.#capabilityRouteError = this.#capabilityRoutingError(routing);
 				})
 				.catch(error => {

@@ -540,3 +540,9 @@ Verification: 57 focused task-spawn and workpool tests passed; repository `bun c
 Multi-item task calls with declared risk or capability facts now fail before worker startup when the session cannot provide either the full Governor plan or the legacy worker-count plan. A missing plan can no longer silently fall back to default batch execution for a declared Governor scope.
 
 Verification: 32 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The high-risk batch regression removes both planner hooks and confirms no subprocess starts.
+
+## Workpool deferral state follows the latest transition
+
+The workpool now replaces its deferred flag with each serialized transition result. A later successful route for the accumulated requirements clears an earlier deferred state, avoiding an unnecessary idle wait and duplicate Governor decision.
+
+Verification: all 27 focused workpool tests passed; repository `bun check` and `git diff --check` passed. A deferred first push followed by a successful second transition starts both workers without calling `waitForIdle`.
