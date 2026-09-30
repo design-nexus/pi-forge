@@ -349,7 +349,11 @@ export class WorkPool {
 		if (this.closed || item.status !== "queued") return;
 		while (true) {
 			const pending = this.#capabilityRouting;
-			await pending;
+			const routingCompleted = await Promise.race([
+				pending.then(() => true),
+				this.#closedSignal.promise.then(() => false),
+			]);
+			if (!routingCompleted) return;
 			if (pending !== this.#capabilityRouting) continue;
 			if (!this.#capabilityTransitionDeferred) break;
 			if (!this.session.waitForIdle) {

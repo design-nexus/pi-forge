@@ -552,3 +552,9 @@ Verification: all 27 focused workpool tests passed; repository `bun check` and `
 When deferred capability routing makes dispatch wait for session idle, closing the pool now interrupts that wait. Queued work is reported as cancelled and the worker is not started even if the provider session remains busy.
 
 Verification: all 28 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The regression leaves `waitForIdle` unresolved, closes the pool, and verifies the aggregate settles with the item cancelled.
+
+## Workpool close interrupts capability routing waits
+
+Pool dispatch now races its pending capability-routing promise against the pool close signal. Closing a pool can settle queued work even if the session's route transition has not returned; late routing completion cannot start the cancelled item.
+
+Verification: all 29 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The regression leaves the transition unresolved, closes the pool, and verifies the aggregate settles without starting a worker.
