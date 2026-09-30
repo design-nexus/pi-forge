@@ -22,6 +22,11 @@ import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry
 import { TaskTool } from "@oh-my-pi/pi-coding-agent/task";
 import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
 import * as executorModule from "@oh-my-pi/pi-coding-agent/task/executor";
+import * as structuredModule from "@oh-my-pi/pi-coding-agent/task/structured-subagent";
+import type {
+	EffectiveSubagentPolicy,
+	StructuredSubagentResult,
+} from "@oh-my-pi/pi-coding-agent/task/structured-subagent";
 import type { AgentDefinition } from "@oh-my-pi/pi-coding-agent/task/types";
 import type { SingleResult, TaskParams } from "@oh-my-pi/pi-tui/tools/task";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
@@ -399,6 +404,86 @@ describe("task.batch spawning", () => {
 		}
 		AgentLifecycleManager.resetGlobalForTests();
 		AgentRegistry.resetGlobalForTests();
+	});
+
+	it("runs one structured integration gate after isolated batch workers and supplies their outcomes", async () => {
+		mockDiscovery();
+		const seen: Array<{ id: string; assignment: string; outputSchema?: unknown }> = [];
+		vi.spyOn(structuredModule, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? request.identity?.label ?? "missing";
+			seen.push({ id, assignment: request.assignment, outputSchema: request.outputSchema });
+			const integrationGate = id === "Integration gate";
+			const result = makeResult(id, {
+				index: request.index ?? 0,
+				task: request.assignment,
+				assignment: request.assignment,
+				output: `Output from ${id}`,
+				structuredOutput: integrationGate
+					? {
+							source: "caller",
+							mode: "strict",
+							status: "valid",
+							data: {
+								status: "verified",
+								summary: "Combined checks passed",
+								checks: [{ command: "bun test", status: "passed", result: "18 tests passed" }],
+								files: [],
+								repairAttempts: 0,
+							},
+						}
+					: undefined,
+			});
+			const policy = {
+				discovery: { agents: [taskAgent], projectAgentsDir: null },
+				agentName: taskAgent.name,
+				agent: taskAgent,
+				effectiveAgent: taskAgent,
+				schema: {
+					schema: request.outputSchema,
+					source: request.outputSchema ? "caller" : "none",
+					mode: "strict",
+					outputSchemaOverridesAgent: false,
+				},
+				planMode: false,
+				isIsolated: request.isolation?.requested === true,
+				mergeMode: "patch",
+				applyChanges: true,
+				enableLsp: false,
+				enableIrc: false,
+			} satisfies EffectiveSubagentPolicy;
+			return {
+				result,
+				policy,
+				mergeSummary: policy.isIsolated ? "Applied patches: yes" : "",
+				changesApplied: policy.isIsolated ? true : null,
+				artifactsDir: "/tmp",
+				temporaryArtifacts: false,
+			} satisfies StructuredSubagentResult;
+		});
+
+		const tool = await TaskTool.create(
+			createSession({
+				settings: {
+					"async.enabled": false,
+					"task.batch": true,
+					"task.isolation.enabled": true,
+				},
+			}),
+		);
+		const result = await tool.execute("tc-integration-gate", {
+			context: "Shared contract for A and B.",
+			tasks: [
+				{ name: "Alpha", task: "Implement A.", isolated: true },
+				{ name: "Beta", task: "Implement B.", isolated: true },
+			],
+		} as TaskParams);
+
+		expect(seen.map(item => item.id)).toEqual(["Alpha", "Beta", "Integration gate"]);
+		expect(seen[2]?.assignment).toContain("Output from Alpha");
+		expect(seen[2]?.assignment).toContain("Output from Beta");
+		expect(seen[2]?.outputSchema).toBeDefined();
+		expect(result.details?.results.at(-1)?.structuredOutput?.status).toBe("valid");
+		expect(getFirstText(result)).toContain("Integration gate");
 	});
 
 	it("spawns one background job per task item and forwards independent models and schemas with shared context", async () => {
