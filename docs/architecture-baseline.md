@@ -26,11 +26,12 @@ The earlier authenticated single-turn comparison in [the Phase 1 report](omp2/PH
 
 | Phase | Status | Evidence and next dependency |
 | --- | --- | --- |
-| 0: inventory and baseline | **COMPLETED (2026-09-30)** | Architecture inventory, initial benchmark fixtures, and paired upstream/Pi Forge first-turn input baseline are recorded. Coding-outcome evaluation remains in Phase 9. |
-| 1: Prompt Engine | **COMPLETED (2026-09-30)** | Profiles, overrides, commands, inspection, live prompt measurements, and a matched coding-task smoke test are recorded. Broader task-quality measurement remains in Phase 9. |
+| 0: inventory and baseline | **COMPLETED (2026-09-30)** | Architecture inventory, initial benchmark fixtures, paired upstream/Pi Forge first-turn input baseline, and initial tiny-edit outcome baseline are recorded. |
+| 1: Prompt Engine | **COMPLETED (2026-09-30)** | Profiles, overrides, commands, inspection, live prompt measurements, and matched tiny-edit task outcomes are recorded. Broader task-quality measurement remains follow-up evaluation. |
 | 2: Capability Router | **IN PROGRESS** | Direct tool catalog and opt-in delegation routing exist. Browser/MCP runtime gates, automatic task signals, and lifecycle telemetry remain open. |
 | 3: Adaptive Effort Governor | **IN PROGRESS** | Opt-in decisions, session snapshots, revision triggers, and bounded worker/context policy exist. Model-role selection is inspectable but not dispatched. Verification floors are provisional labels. |
-| 3B–9 | **PLANNED / UPSTREAM REUSE** | The primitives above can be reused; adaptive feedback, working set, orchestration, integration, verification, repair, and matched evaluation remain to be connected. |
+| 3B–8 | **SEE PLAN** | Current individual statuses and phase records are in [PLAN.md](../PLAN.md). |
+| 9: Evaluation and Optimization | **COMPLETED (initial harness)** | One frozen tiny-edit packet has three matched task-outcome pairs. The runner and scoped results are recorded in [the Phase 9 evaluation](phase9-evaluation.md); broader task categories remain follow-up evaluation. |
 
 ## Evaluation contract to establish next
 
