@@ -528,3 +528,9 @@ Verification: all 24 focused workpool tests passed; repository `bun check` and `
 A thrown Governor task transition now blocks high-risk-only eval workpools as well as pools with capability requirements. The prior catch path treated errors as fatal only when a capability was declared, which could otherwise drop the risk signal and launch work.
 
 Verification: all 25 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The high-risk-only regression makes task-fact routing throw and verifies no worker starts.
+
+## Structured Governor facts require a transition hook
+
+Task calls and eval workpools that declare high risk or required capabilities now fail before execution if their session does not provide Governor task-transition routing. This closes the optional-hook path where high-risk-only work could otherwise proceed without recording or applying the declared policy.
+
+Verification: 57 focused task-spawn and workpool tests passed; repository `bun check` and `git diff --check` passed. High-risk-only task and workpool cases both verify that no executor or worker starts when the hook is absent.

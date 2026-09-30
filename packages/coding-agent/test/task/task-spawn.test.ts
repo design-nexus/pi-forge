@@ -301,6 +301,23 @@ describe("task spawn routing", () => {
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
+	it("does not start a high-risk task when the session lacks Governor preflight", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "async.enabled": false } });
+		session.routeGovernorTaskTransition = undefined;
+		const tool = await TaskTool.create(session);
+		const result = await tool.execute("tc-no-governor", {
+			agent: "task",
+			task: "Audit credential handling.",
+			highRisk: true,
+		} as TaskParams);
+		expect(getFirstText(result)).toContain("preflight is unavailable");
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
 	it("does not start a declared task batch when Governor planning throws", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
 		const runSpy = vi
