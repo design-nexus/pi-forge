@@ -646,3 +646,32 @@ The 20 contracts closed in this slice batch are:
 20. Results retain the caller's original task ordering even when dependencies change execution order.
 
 Verification: task batch, task schema, and task spawn suites passed (70 tests, 302 assertions); repository `bun check` passed. The focused regression checks invalid graph forms, synchronous failure blocking, background wait ordering, and Governor fact edges.
+
+## Context relevance follows structured task dependencies
+
+Notebook relevance now reads the latest valid structured task batch from the active transcript. When current request or todo terms match one of its assignments, the relevance query expands through the task's connected prerequisite/dependent chain. Findings still need lexical support from their text or cited successful evidence, and existing age decay, current-turn, file, and todo priorities remain in effect. Malformed, oversized, stale, or cyclic task graphs do not influence ranking.
+
+The 20 contracts closed in this slice batch are:
+
+1. Only assistant `task` tool calls can provide a structured task graph.
+2. Only batch calls with a `tasks` array contribute graph nodes.
+3. The graph is read from the active transcript after its latest reset or compaction boundary.
+4. The latest task batch is preferred over older task batches.
+5. Task batches above the 64 item parsing limit are ignored.
+6. Individual task assignments above the 4,096 character limit are ignored.
+7. Every node requires a non-empty task name and assignment.
+8. Task names must be unique without regard to case.
+9. Prerequisite lists must contain no more than 64 names.
+10. Empty or non-string prerequisite names invalidate the graph.
+11. Duplicate prerequisite names invalidate the graph.
+12. Prerequisite matching is case-insensitive.
+13. Unknown prerequisites invalidate the graph.
+14. Self-dependencies invalidate the graph.
+15. Cyclic task graphs are ignored rather than partially applied.
+16. A task node must share useful terms with current request or todo evidence to seed relevance expansion.
+17. Expansion follows prerequisite edges from a matched node.
+18. Expansion also follows dependent edges from a matched node.
+19. Related assignments extend query terms while preserving the original current-turn terms.
+20. Findings still need lexical evidence to gain relevance; an unrelated or invalid graph leaves stable source ordering intact.
+
+Verification: all 22 focused context-notes tests passed (72 assertions); repository `bun check` and `git diff --check` passed. A regression confirms a schema task can surface relevant evidence from its dependent migration task, while replacing that history with a cyclic graph restores the non-boosted ordering.

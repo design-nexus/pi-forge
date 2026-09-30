@@ -16,6 +16,8 @@ export const MAX_CONTEXT_NOTES_CONTEXT_TOKENS = 4_096;
 export const CONTEXT_NOTES_CONTEXT_WINDOW_SHARE = 0.1;
 export const MIN_CONTEXT_NOTES_CONTEXT_TOKENS = 512;
 const MAX_CONTEXT_NOTE_SOURCE_MATCH_CHARS = 16_384;
+const MAX_CONTEXT_NOTE_TASKS = 64;
+const MAX_CONTEXT_NOTE_TASK_CHARS = 4_096;
 const CONTEXT_NOTES_SOURCE_ID_RE = /^[A-Za-z0-9_-]+$/;
 const CONTEXT_NOTE_QUERY_STOP_WORDS = new Set([
 	"about",
@@ -230,6 +232,123 @@ function contextTerms(text: string): Set<string> {
 	);
 }
 
+interface ContextTaskNode {
+	name: string;
+	task: string;
+	dependsOn: string[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Read only a bounded, valid structured task batch from the active transcript. */
+function latestContextTaskGraph(entries: readonly SessionEntry[]): ContextTaskNode[] {
+	const boundary = Math.max(
+		entries.findLastIndex(entry => entry.type === "reset_boundary"),
+		entries.findLastIndex(entry => entry.type === "compaction"),
+	);
+	for (let index = entries.length - 1; index > boundary; index--) {
+		const entry = entries[index];
+		if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+		for (const part of [...entry.message.content].reverse()) {
+			if (part.type !== "toolCall" || part.name !== "task" || !isRecord(part.arguments)) continue;
+			const rawTasks = part.arguments.tasks;
+			if (!Array.isArray(rawTasks) || rawTasks.length === 0 || rawTasks.length > MAX_CONTEXT_NOTE_TASKS) return [];
+			const nodes: ContextTaskNode[] = [];
+			const indexes = new Map<string, number>();
+			for (const [taskIndex, rawTask] of rawTasks.entries()) {
+				if (
+					!isRecord(rawTask) ||
+					typeof rawTask.name !== "string" ||
+					typeof rawTask.task !== "string" ||
+					rawTask.task.trim() === "" ||
+					rawTask.task.length > MAX_CONTEXT_NOTE_TASK_CHARS ||
+					(rawTask.dependsOn !== undefined &&
+						(!Array.isArray(rawTask.dependsOn) ||
+							rawTask.dependsOn.length > MAX_CONTEXT_NOTE_TASKS ||
+							rawTask.dependsOn.some(name => typeof name !== "string" || name.trim() === "")))
+				) {
+					return [];
+				}
+				const name = rawTask.name.trim();
+				const key = name.toLowerCase();
+				if (!name || indexes.has(key)) return [];
+				const dependencies =
+					(rawTask.dependsOn as string[] | undefined)?.map(dependency => dependency.trim()) ?? [];
+				if (new Set(dependencies.map(dependency => dependency.toLowerCase())).size !== dependencies.length)
+					return [];
+				indexes.set(key, taskIndex);
+				nodes.push({
+					name,
+					task: rawTask.task,
+					dependsOn: dependencies,
+				});
+			}
+			const remaining = nodes.map(node => node.dependsOn.length);
+			const children = new Map<number, number[]>();
+			for (const [taskIndex, node] of nodes.entries()) {
+				for (const dependency of node.dependsOn) {
+					const dependencyIndex = indexes.get(dependency.toLowerCase());
+					if (dependencyIndex === undefined || dependencyIndex === taskIndex) return [];
+					const dependents = children.get(dependencyIndex);
+					if (dependents) dependents.push(taskIndex);
+					else children.set(dependencyIndex, [taskIndex]);
+				}
+			}
+			let ready = remaining.flatMap((count, taskIndex) => (count === 0 ? [taskIndex] : []));
+			let visited = 0;
+			while (ready.length > 0) {
+				const next: number[] = [];
+				for (const taskIndex of ready) {
+					visited++;
+					for (const child of children.get(taskIndex) ?? []) {
+						remaining[child] -= 1;
+						if (remaining[child] === 0) next.push(child);
+					}
+				}
+				ready = next;
+			}
+			return visited === nodes.length ? nodes : [];
+		}
+	}
+	return [];
+}
+
+/** Extend current-turn terms only across graph nodes that match current task evidence. */
+function dependencyAwareTaskTerms(entries: readonly SessionEntry[], taskTerms: Set<string>): Set<string> {
+	if (taskTerms.size === 0) return taskTerms;
+	const graph = latestContextTaskGraph(entries);
+	if (graph.length === 0) return taskTerms;
+	const indexes = new Map(graph.map((node, index) => [node.name.toLowerCase(), index]));
+	const adjacent = graph.map(() => new Set<number>());
+	for (const [index, node] of graph.entries()) {
+		for (const dependency of node.dependsOn) {
+			const dependencyIndex = indexes.get(dependency.toLowerCase());
+			if (dependencyIndex === undefined) continue;
+			adjacent[index]!.add(dependencyIndex);
+			adjacent[dependencyIndex]!.add(index);
+		}
+	}
+	const related = new Set<number>();
+	for (const [index, node] of graph.entries()) {
+		const nodeTerms = contextTerms(node.task);
+		if ([...nodeTerms].some(term => taskTerms.has(term))) related.add(index);
+	}
+	const queue = [...related];
+	while (queue.length > 0) {
+		const index = queue.shift()!;
+		for (const neighbor of adjacent[index]!) {
+			if (related.has(neighbor)) continue;
+			related.add(neighbor);
+			queue.push(neighbor);
+		}
+	}
+	const expanded = new Set(taskTerms);
+	for (const index of related) for (const term of contextTerms(graph[index]!.task)) expanded.add(term);
+	return expanded;
+}
+
 /**
  * Renders the context injection for the latest visible non-empty notebook revision.
  * An absent or explicitly cleared notebook returns an empty string so callers add no context.
@@ -289,8 +408,9 @@ export function renderContextNotes(entries: readonly SessionEntry[]): string {
 		const resetBoundary = entries.findLastIndex(entry => entry.type === "reset_boundary");
 		const activeTodo = nextActionableTask(getLatestTodoPhasesFromEntries(entries.slice(resetBoundary + 1)));
 		const todoPaths = matchingSourcePaths(activeTodo ? extractFileMentions(activeTodo.content) : [], allSourcePaths);
-		const taskTerms = contextTerms(
-			`${withoutFileMentions(currentRequest)} ${withoutFileMentions(activeTodo?.content ?? "")}`,
+		const taskTerms = dependencyAwareTaskTerms(
+			entries,
+			contextTerms(`${withoutFileMentions(currentRequest)} ${withoutFileMentions(activeTodo?.content ?? "")}`),
 		);
 		const score = (finding: ContextNotesFinding): number => {
 			if (finding.sourceEntryIds.some(id => currentTurnIds.has(id))) return 4;
