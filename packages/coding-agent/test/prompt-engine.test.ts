@@ -469,6 +469,98 @@ it("routes a discovered task tool on structured delegation intent without overri
 	}
 });
 
+it("routes declared task capabilities and releases Governor-owned tools when requirements change", async () => {
+	using dir = TempDir.createSync("@omp-task-capability-route-");
+	const cwd = dir.join("project");
+	const settings = Settings.isolated();
+	cfgPromptProfile.set(settings, "minimal");
+	const authStorage = await AuthStorage.create(":memory:");
+	const modelRegistry = new ModelRegistry(authStorage, dir.join("models.yml"));
+	const { session } = await createAgentSession({
+		cwd,
+		agentDir: dir.join("agent"),
+		authStorage,
+		modelRegistry,
+		settings,
+		sessionManager: SessionManager.inMemory(cwd),
+		model: getBundledModel("openai", "gpt-4o-mini"),
+		disableExtensionDiscovery: true,
+		skills: [],
+		contextFiles: [],
+		promptTemplates: [],
+		slashCommands: [],
+		enableMCP: false,
+		enableLsp: false,
+		skipPythonPreflight: true,
+	});
+	try {
+		cfgAdaptiveMode.set(settings, "auto");
+		await session.setPromptSettingsOverride({ capabilities: { debugger: "automatic" } });
+		const available = new Set([...session.getEnabledToolNames(), "debug"]);
+		const mounted = new Set([...session.getMountedXdevToolNames(), "debug"]);
+		await session.setActiveToolPresentation([...available], [...mounted]);
+		const facts = {
+			files: [],
+			tasks: [{ id: "inspect", dependsOn: [], requiredCapabilities: ["debugger"] as const }],
+			highRisk: false,
+			confidence: 0.9,
+		};
+		const activated = await session.routeGovernorTaskTransition({ facts }, "initial");
+		expect(activated.capabilityRoutes).toMatchObject([{ id: "debugger", selected: true, state: "active" }]);
+		expect(session.getActiveToolNames()).toContain("debug");
+		const released = await session.routeGovernorTaskTransition(
+			{ facts: { ...facts, tasks: [{ id: "inspect", dependsOn: [] }] } },
+			"scope",
+		);
+		expect(released.capabilityRoutes).toBeUndefined();
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		expect(session.getMountedXdevToolNames()).toContain("debug");
+		await session.routeGovernorTaskTransition({ facts }, "scope");
+		expect(session.getActiveToolNames()).toContain("debug");
+		await session.routeToolCapability({ id: "debugger", signal: "explicit" });
+		await session.routeGovernorTaskTransition(
+			{ facts: { ...facts, tasks: [{ id: "inspect", dependsOn: [] }] } },
+			"scope",
+		);
+		expect(session.getActiveToolNames()).toContain("debug");
+		await session.releaseToolCapability({ id: "debugger", signal: "explicit" });
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		const browserAvailable = session.promptComposition?.capabilities.browser.available === true;
+		const browserRoute = await session.routeGovernorTaskTransition(
+			{
+				facts: {
+					...facts,
+					tasks: [{ id: "inspect-browser", dependsOn: [], requiredCapabilities: ["browser"] }],
+				},
+			},
+			"scope",
+		);
+		expect(browserRoute.capabilityRoutes).toMatchObject([
+			{
+				id: "browser",
+				state: browserAvailable ? "active" : "unavailable",
+				selected: browserAvailable,
+				...(browserAvailable ? {} : { reason: "browser runtime is unavailable" }),
+			},
+		]);
+		const missingMcp = await session.routeGovernorTaskTransition(
+			{
+				facts: {
+					...facts,
+					tasks: [{ id: "inspect-mcp", dependsOn: [], requiredCapabilities: ["mcp__server__tool"] }],
+				},
+			},
+			"scope",
+		);
+		expect(missingMcp.capabilityRoutes).toMatchObject([
+			{ id: "mcp", toolName: "mcp__server__tool", state: "unavailable", selected: false },
+		]);
+	} finally {
+		await session.dispose();
+		authStorage.close();
+	}
+});
+
 it("separates provider-reported request usage from estimated module text", async () => {
 	using dir = TempDir.createSync("@omp-prompt-usage-");
 	const cwd = dir.join("project");

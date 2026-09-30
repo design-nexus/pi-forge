@@ -25,7 +25,7 @@ import { resolveCapabilityPolicies, resolvePromptPolicies } from "../prompt-engi
 import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "../prompt-engine/settings";
 import { cfgAdaptiveMode } from "../governor/settings";
 import type { GovernorTaskFacts } from "../governor/task-facts";
-import { TASK_TOOL_CAPABILITY_IDS } from "../prompt-engine/capability-catalog";
+import { isTaskCapabilityId, type TaskCapabilityId } from "../prompt-engine/capability-catalog";
 import type { EffectiveExtensionRoots } from "../capability/types";
 import type { Theme } from "@oh-my-pi/pi-tui/theme";
 import subagentUserPromptTemplate from "../prompts/system/subagent-user-prompt.md" with { type: "text" };
@@ -219,8 +219,8 @@ function validateShapeParams(batchEnabled: boolean, params: TaskParams): string 
 	return undefined;
 }
 
-function isTaskToolCapabilityId(value: string): value is (typeof TASK_TOOL_CAPABILITY_IDS)[number] {
-	return TASK_TOOL_CAPABILITY_IDS.some(id => id === value);
+function isTaskToolCapabilityId(value: unknown): value is TaskCapabilityId {
+	return isTaskCapabilityId(value);
 }
 
 /**

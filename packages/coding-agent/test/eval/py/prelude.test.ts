@@ -36,6 +36,46 @@ async function runPrelude(
 }
 
 describe("python prelude", () => {
+	it("forwards workpool capability declarations through the Python wrapper", async () => {
+		const requests: unknown[] = [];
+		const server = Bun.serve({
+			hostname: "127.0.0.1",
+			port: 0,
+			fetch: async request => {
+				requests.push(await request.json());
+				return Response.json({ ok: true, value: { ids: ["pool#1"] } });
+			},
+		});
+		try {
+			const result = await runPrelude(
+				[
+					'pool = WorkPool("pool", "scout", 2)',
+					'print(pool.push("inspect", capabilities=["browser", "mcp__server__tool"]))',
+				].join("\n"),
+				{
+					PI_TOOL_BRIDGE_URL: server.url.toString(),
+					PI_TOOL_BRIDGE_TOKEN: "test-token",
+					PI_TOOL_BRIDGE_SESSION: "test-session",
+				},
+			);
+			expect(result).toMatchObject({ stdout: "['pool#1']\n", stderr: "", exitCode: 0 });
+			expect(requests).toMatchObject([
+				{
+					session: "test-session",
+					name: "__workpool__",
+					args: {
+						op: "push",
+						name: "pool",
+						items: ["inspect"],
+						capabilities: ["browser", "mcp__server__tool"],
+					},
+				},
+			]);
+		} finally {
+			server.stop(true);
+		}
+	});
+
 	it("infers eval tool schemas and replaces definitions by name", async () => {
 		const result = await runPrelude(
 			[

@@ -6,6 +6,8 @@ import {
 	type ToolCapabilityRouteDecision,
 } from "../prompt-engine/capability-router";
 import type { AgentSession } from "../session/agent-session";
+import { isMCPToolName } from "../tools/builtin-names";
+import type { TaskCapabilityId } from "../prompt-engine/capability-catalog";
 import { recordGovernorDecision } from "./ledger";
 import { recentGovernorToolSignals } from "./runtime-signals";
 import type { GovernorRevisionTrigger, GovernorSnapshot } from "./revision";
@@ -22,6 +24,10 @@ export interface GovernorTaskTransitionResult {
 	snapshot: GovernorSnapshot | undefined;
 	route: DelegationRouteDecision | undefined;
 	capabilityRoutes?: ToolCapabilityRouteDecision[];
+}
+
+function isTaskMcpCapability(value: TaskCapabilityId): value is `mcp__${string}` {
+	return isMCPToolName(value);
 }
 
 /** Apply a structured task transition through the existing task-tool router. */
@@ -49,13 +55,15 @@ export async function routeGovernorTaskTransition(
 				...(request.facts.requiredCapabilities ?? []),
 				...request.facts.tasks.flatMap(task => task.requiredCapabilities ?? []),
 			]),
-		].filter(id => id !== "subagents");
-		await releaseStaleTaskCapabilityRoutes(session, new Set(requiredCapabilities));
+		];
+		const retainedRouteKeys = requiredCapabilities.map(id => (isTaskMcpCapability(id) ? `mcp:${id}` : id));
+		await releaseStaleTaskCapabilityRoutes(session, new Set(retainedRouteKeys));
 		const capabilityRoutes: ToolCapabilityRouteDecision[] = [];
 		for (const id of requiredCapabilities) {
 			capabilityRoutes.push(
 				await routeToolCapability(session, {
-					id,
+					id: isTaskMcpCapability(id) ? "mcp" : id,
+					...(isTaskMcpCapability(id) ? { toolName: id } : {}),
 					required: true,
 					signal: "task_transition",
 					contextBudgetTokens: snapshot.decision.contextBudgetTokens,

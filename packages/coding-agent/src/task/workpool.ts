@@ -22,7 +22,7 @@ import { cfgEvalWorkpoolFreshAgents } from "../eval/settings";
 import { cfgTaskMaxConcurrency, cfgTaskMaxRuntimeMs } from "./settings";
 import { sessionTaskSemaphore } from "./parallel";
 import type { GovernorTaskFacts } from "../governor/task-facts";
-import { TASK_TOOL_CAPABILITY_IDS } from "../prompt-engine/capability-catalog";
+import type { TaskCapabilityId } from "../prompt-engine/capability-catalog";
 
 /** One user-supplied unit tracked through a workpool batch. */
 export interface WorkPoolItem {
@@ -127,6 +127,7 @@ export class WorkPool {
 	#nextAgentIndex = 1;
 	#lastCardTs = 0;
 	#dispatchChain: Promise<void> = Promise.resolve();
+	#capabilityRouting: Promise<void> = Promise.resolve();
 	#poolJobStarted = false;
 	#governorLimit: number | undefined;
 	readonly #drainWaiters: PromiseWithResolvers<void>[] = [];
@@ -157,7 +158,7 @@ export class WorkPool {
 	}
 
 	/** Queue items and start the aggregate pool job on the first non-empty push. */
-	push(texts: string[], capabilities?: readonly (typeof TASK_TOOL_CAPABILITY_IDS)[number][]): string[] {
+	push(texts: string[], capabilities?: readonly TaskCapabilityId[]): string[] {
 		if (this.closed) throw new ToolError(`workpool ${this.name} is closed`);
 		if (texts.length === 0) return [];
 		if (capabilities !== undefined) {
@@ -171,9 +172,13 @@ export class WorkPool {
 				highRisk: false,
 				confidence: 0.9,
 			};
-			void this.session.routeGovernorTaskTransition?.({ facts }, "scope").catch(error => {
-				logger.warn("Adaptive workpool capability routing failed", { pool: this.name, error: String(error) });
-			});
+			this.#capabilityRouting = this.#capabilityRouting
+				.then(async () => {
+					await this.session.routeGovernorTaskTransition?.({ facts }, "scope");
+				})
+				.catch(error => {
+					logger.warn("Adaptive workpool capability routing failed", { pool: this.name, error: String(error) });
+				});
 		}
 		const pendingCount =
 			this.items.filter(item => item.status === "queued" || item.status === "running").length + texts.length;
@@ -315,6 +320,8 @@ export class WorkPool {
 	}
 
 	async #dispatch(item: WorkPoolItem): Promise<void> {
+		if (this.closed || item.status !== "queued") return;
+		await this.#capabilityRouting;
 		if (this.closed || item.status !== "queued") return;
 		if (this.freshAgents) {
 			if (this.agents.length < this.limit()) {

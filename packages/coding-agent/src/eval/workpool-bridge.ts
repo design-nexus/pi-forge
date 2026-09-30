@@ -5,7 +5,7 @@ import { type WorkPoolPeekResult, type WorkPoolStatus, WorkPoolRegistry } from "
 import type { ToolSession } from "../tools";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import type { JsStatusEvent } from "./js/shared/types";
-import { TASK_TOOL_CAPABILITY_IDS } from "../prompt-engine/capability-catalog";
+import { isTaskCapabilityId, type TaskCapabilityId } from "../prompt-engine/capability-catalog";
 
 /** Synthetic bridge name reserved for eval work pools. */
 export const EVAL_WORKPOOL_BRIDGE_NAME = "__workpool__";
@@ -56,14 +56,11 @@ function optionalTools(args: Record<string, unknown>): string[] | undefined {
 	return args.tools;
 }
 
-function optionalCapabilities(args: Record<string, unknown>): (typeof TASK_TOOL_CAPABILITY_IDS)[number][] | undefined {
+function optionalCapabilities(args: Record<string, unknown>): TaskCapabilityId[] | undefined {
 	if (args.capabilities === undefined) return undefined;
 	if (
 		!Array.isArray(args.capabilities) ||
-		!args.capabilities.every(
-			(value): value is (typeof TASK_TOOL_CAPABILITY_IDS)[number] =>
-				typeof value === "string" && TASK_TOOL_CAPABILITY_IDS.some(id => id === value),
-		)
+		!args.capabilities.every((value): value is TaskCapabilityId => isTaskCapabilityId(value))
 	) {
 		throw new ToolError("workpool capabilities must use routeable direct-tool capability names");
 	}

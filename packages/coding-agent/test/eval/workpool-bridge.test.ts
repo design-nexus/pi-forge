@@ -83,6 +83,12 @@ describe("runEvalWorkpool", () => {
 		await expect(
 			runEvalWorkpool({ op: "push", name: "scout-pool", items: ["ok"], capabilities: ["unknown"] }, { session }),
 		).rejects.toThrow("routeable direct-tool capability names");
+		expect(
+			await runEvalWorkpool(
+				{ op: "push", name: "scout-pool", items: [], capabilities: ["browser", "mcp__server__tool"] },
+				{ session },
+			),
+		).toEqual({ ids: [] });
 		expect(await runEvalWorkpool({ op: "peek", name: "scout-pool" }, { session })).toEqual({
 			batches: [],
 			pending: 0,

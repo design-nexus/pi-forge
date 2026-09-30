@@ -13,7 +13,7 @@ Shared edits need one integration owner{{#if ircEnabled}}; siblings coordinate v
 `name`: CamelCase ≤32, auto-generated if omitted; address agent by name. `outputSchema` overrides agent/session schemas.
 {{#if evalToolsEnabled}}`tools`: eval-defined, run in your kernel.
 {{/if}}{{#if effortEnabled}}`effort`: `"lo"`|`"med"`|`"hi"` by complexity.
-{{/if}}{{#if capabilityRoutingEnabled}}`capabilities`: optional direct-tool needs (`lsp`, `debugger`, `github`, `images`); set at the top level for the whole call or per task item for narrower needs. Name only capabilities required to complete the work.
+{{/if}}{{#if capabilityRoutingEnabled}}`capabilities`: optional direct-tool needs (`lsp`, `debugger`, `github`, `images`, `browser`, or one exact `mcp__server__tool` name); set at the top level for the whole call or per task item for narrower needs. Browser requires the runtime; MCP names must identify one connected tool. Name only capabilities required to complete the work.
 {{/if}}`schemaMode`: default permissive warns after retries; strict fails.
 {{#if isolationEnabled}}{{#if applyIsolatedChanges}}`isolated`: worktree; successful changes apply to parent.
 {{else}}`isolated`: worktree; changes retained, not applied.

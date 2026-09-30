@@ -1,4 +1,5 @@
 import type { PromptCapabilityId, PromptModuleId } from "./profiles";
+import { isMCPToolName } from "../tools/builtin-names";
 
 export interface ToolCapabilityDefinition {
 	toolName: string;
@@ -24,6 +25,16 @@ export type RoutableToolCapabilityId = {
 		? K
 		: never;
 }[keyof typeof TOOL_CAPABILITY_CATALOG];
+
+export type TaskCapabilityId = Exclude<RoutableToolCapabilityId, "subagents"> | "browser" | `mcp__${string}`;
+
+/** Validate the direct-tool capabilities a structured task source can request. */
+export function isTaskCapabilityId(value: unknown): value is TaskCapabilityId {
+	return (
+		typeof value === "string" &&
+		(value === "browser" || isMCPToolName(value) || TASK_TOOL_CAPABILITY_IDS.some(id => id === value))
+	);
+}
 
 export const ROUTABLE_TOOL_CAPABILITY_IDS = Object.keys(TOOL_CAPABILITY_CATALOG).filter(
 	(id): id is RoutableToolCapabilityId =>

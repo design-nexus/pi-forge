@@ -340,6 +340,27 @@ describe("WorkPool dispatch", () => {
 		});
 	});
 
+	it("routes declared capabilities before starting a workpool worker", async () => {
+		const session = makeSession();
+		const route = Promise.withResolvers<void>();
+		session.routeGovernorTaskTransition = async () => {
+			await route.promise;
+			return { snapshot: undefined, route: undefined };
+		};
+		const spawn = vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "capability-gate");
+		workpool.push(["inspect the web app"], ["browser"]);
+		await Bun.sleep(0);
+		expect(spawn).not.toHaveBeenCalled();
+		route.resolve();
+		await finishPool(session, workpool);
+		expect(spawn).toHaveBeenCalledTimes(1);
+	});
+
 	it("hands a queued batch to a follow-up turn after the first turn settles", async () => {
 		const session = makeSession([], 1);
 		const first = Promise.withResolvers<void>();
