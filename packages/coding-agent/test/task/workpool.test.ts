@@ -512,6 +512,37 @@ describe("WorkPool dispatch", () => {
 		expect(workpool.status().items).toMatchObject({ completed: 2, queued: 0, running: 0, failed: 0 });
 	});
 
+	it("clears a stale deferred flag after a later transition succeeds", async () => {
+		const session = makeSession([], 2, true);
+		let routeCount = 0;
+		session.routeGovernorTaskTransition = async request => {
+			routeCount++;
+			if (routeCount === 1) return { snapshot: undefined, route: undefined, deferred: true };
+			return {
+				snapshot: undefined,
+				route: undefined,
+				capabilityRoutes: (request.facts.requiredCapabilities ?? []).map(id =>
+					activeCapabilityRoute(id === "browser" ? "browser" : "debugger"),
+				),
+			};
+		};
+		session.waitForIdle = async () => {
+			throw new Error("a successful latest transition must not wait for idle");
+		};
+		const spawn = vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "settled-capability-transition");
+		workpool.push(["inspect the page"], ["browser"]);
+		workpool.push(["inspect debugger output"], ["debugger"]);
+		await finishPool(session, workpool);
+		expect(routeCount).toBe(2);
+		expect(spawn).toHaveBeenCalledTimes(2);
+		expect(workpool.status().items.completed).toBe(2);
+	});
+
 	it("waits for a deferred capability transition before starting a workpool worker", async () => {
 		const session = makeSession();
 		const idle = Promise.withResolvers<void>();
