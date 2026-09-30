@@ -25,6 +25,7 @@ import { resolveCapabilityPolicies, resolvePromptPolicies } from "../prompt-engi
 import { cfgPromptCapabilities, cfgPromptModules, cfgPromptProfile } from "../prompt-engine/settings";
 import { cfgAdaptiveMode } from "../governor/settings";
 import type { GovernorTaskFacts } from "../governor/task-facts";
+import type { GovernorTaskPlan } from "../governor/task-batch";
 import { isTaskCapabilityId, type TaskCapabilityId } from "../prompt-engine/capability-catalog";
 import type { EffectiveExtensionRoots } from "../capability/types";
 import type { Theme } from "@oh-my-pi/pi-tui/theme";
@@ -34,6 +35,7 @@ import taskAsyncContractTemplate from "../prompts/tools/task-async-contract.md" 
 import taskCoordinationAdvisoryTemplate from "../prompts/tools/task-coordination-advisory.md" with { type: "text" };
 import taskSpawnFeedbackTemplate from "../prompts/tools/task-spawn-feedback.md" with { type: "text" };
 import taskSpecializationAdvisoryTemplate from "../prompts/tools/task-specialization-advisory.md" with { type: "text" };
+import taskGovernorVerificationTemplate from "../prompts/tools/task-governor-verification.md" with { type: "text" };
 import taskFollowUpTemplate from "../prompts/tools/task-follow-up.md" with { type: "text" };
 import { TASK_EFFORTS, type TaskEffort } from "@oh-my-pi/pi-tui/thinking";
 import { truncateForPrompt } from "../tools/approval";
@@ -407,17 +409,27 @@ function spawnParamsFor(
 	params: TaskParams,
 	item: TaskItem,
 	defaultAgent: string,
-	governorEffort?: TaskEffort,
+	governorPlan?: GovernorTaskPlan,
 ): TaskParams {
 	const spawn: TaskParams = { agent: item.agent?.trim() || defaultAgent };
 	if (item.name !== undefined) spawn.name = item.name;
 	if (item.task !== undefined) spawn.task = item.task;
-	if (params.context !== undefined) spawn.context = params.context;
+	const governorGuidance = governorPlan?.verification
+		? prompt
+				.render(taskGovernorVerificationTemplate, {
+					strategy: governorPlan.verification.strategy,
+					floor: governorPlan.verification.floor,
+					ceiling: governorPlan.verification.ceiling,
+				})
+				.trim()
+		: undefined;
+	const contextParts = [params.context, governorGuidance].filter((part): part is string => !!part);
+	if (contextParts.length > 0) spawn.context = contextParts.join("\n\n");
 	if ("outputSchema" in item) spawn.outputSchema = item.outputSchema;
 	if ("schemaMode" in item) spawn.schemaMode = item.schemaMode;
 	if ("tools" in item) spawn.tools = item.tools;
 	if ("effort" in item) spawn.effort = item.effort;
-	else if (governorEffort !== undefined) spawn.effort = governorEffort;
+	else if (governorPlan?.effort !== undefined) spawn.effort = governorPlan.effort;
 	if (item.isolated !== undefined) {
 		spawn.isolated = item.isolated;
 	} else if ("isolated" in params) {
@@ -903,7 +915,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				logger.warn("Task capability release failed", { error: String(error) });
 			}
 		}
-		let governorPlan: { workerCount?: number; effort?: TaskEffort } | undefined;
+		let governorPlan: GovernorTaskPlan | undefined;
 		let governorPlanAvailable = false;
 		if (params.tasks && spawnItems.length > 1) {
 			try {
@@ -931,9 +943,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				return createTaskModeError("Task Governor batch planning is unavailable for this session.");
 			}
 		}
-		const normalizedSpawnParams = spawnItems.map(item =>
-			spawnParamsFor(params, item, defaultAgent, governorPlan?.effort),
-		);
+		const normalizedSpawnParams = spawnItems.map(item => spawnParamsFor(params, item, defaultAgent, governorPlan));
 		const resolvedAgents = normalizedSpawnParams.map(spawn => spawn.agent ?? defaultAgent);
 		// Resolve every item before choosing an execution path. No executor or
 		// job manager may observe a batch unless every effective policy is valid.
@@ -1014,6 +1024,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					dependencies,
 					dependencyGates.map(gate => gate.promise),
 					settleDependency,
+					governorPlan,
 				);
 			} finally {
 				await releaseGovernorOwner();
@@ -1076,6 +1087,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					dependencies,
 					dependencyGates.map(gate => gate.promise),
 					settleDependency,
+					governorPlan,
 				),
 			);
 		}
@@ -1173,7 +1185,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				const jobId = this.#registerSpawnJob({
 					manager,
 					toolCallId,
-					spawnParams: spawnParamsFor(params, spawn.item, defaultAgent),
+					spawnParams: spawnParamsFor(params, spawn.item, defaultAgent, governorPlan),
 					agentId: spawn.agentId,
 					progress: spawn.progress,
 					ircEnabled,
@@ -1295,6 +1307,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				dependencyPromises: dependencyGates.map(gate => gate.promise),
 				dependencies,
 				settleDependency,
+				governorPlan,
 				onItemProgress: onUpdate
 					? (index, progress) => {
 							const spawn = spawns.find(candidate => candidate.index === index);
@@ -1602,6 +1615,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		dependencies?: number[][],
 		dependencyPromises?: readonly Promise<boolean>[],
 		settleDependency?: (index: number, success: boolean) => void,
+		governorPlan?: GovernorTaskPlan,
 	): Promise<AgentToolResult<TaskToolDetails>> {
 		if (spawns.length === 1) {
 			const spawn = spawns[0]!;
@@ -1624,7 +1638,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				const acquiredAt = Date.now();
 				const result = await this.#executeSync(
 					toolCallId,
-					spawnParamsFor(params, spawn.item, defaultAgent),
+					spawnParamsFor(params, spawn.item, defaultAgent, governorPlan),
 					signal,
 					onUpdate,
 					spawn.preAllocatedId,
@@ -1668,6 +1682,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			dependencies,
 			dependencyPromises,
 			settleDependency,
+			governorPlan,
 			onItemProgress: onUpdate
 				? (index, progress) => {
 						latestProgress.set(index, { ...progress, index });
@@ -1707,6 +1722,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		dependencies?: number[][];
 		dependencyPromises?: readonly Promise<boolean>[];
 		settleDependency?: (index: number, success: boolean) => void;
+		governorPlan?: GovernorTaskPlan;
 		onItemProgress?: (index: number, progress: AgentProgress) => void;
 	}): Promise<(AgentToolResult<TaskToolDetails> | undefined)[]> {
 		const {
@@ -1720,6 +1736,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			dependencies = [],
 			dependencyPromises = [],
 			settleDependency,
+			governorPlan,
 		} = args;
 		const semaphore = this.#getSpawnSemaphore();
 		const { results } = await mapWithConcurrencyLimitAllSettled(
@@ -1757,7 +1774,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						: undefined;
 					const result = await this.#executeSync(
 						toolCallId,
-						spawnParamsFor(params, spawn.item, defaultAgent),
+						spawnParamsFor(params, spawn.item, defaultAgent, governorPlan),
 						workerSignal,
 						itemOnUpdate,
 						spawn.preAllocatedId,

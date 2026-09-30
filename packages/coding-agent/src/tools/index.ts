@@ -8,6 +8,7 @@ import type { EffectiveExtensionRoots } from "../capability/types";
 import type { EvalPreludeDefinition } from "../eval/preludes";
 import type { GovernorTaskFacts } from "../governor/task-facts";
 import type { GovernorTaskTransitionResult } from "../governor/transition";
+import type { GovernorTaskPlan } from "../governor/task-batch";
 import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
 import { EditTool } from "../edit";
@@ -464,10 +465,7 @@ export interface ToolSession {
 	getTodoPhases?: () => TodoPhase[];
 	/** Optional Governor cap for one concrete task batch; undefined keeps OMP's concurrency behavior. */
 	routeGovernorTaskBatch?: (taskCount: number, highRisk?: boolean) => number | undefined;
-	routeGovernorTaskPlan?: (
-		taskCount: number,
-		highRisk?: boolean,
-	) => { workerCount?: number; effort?: "lo" | "med" | "hi" } | undefined;
+	routeGovernorTaskPlan?: (taskCount: number, highRisk?: boolean) => GovernorTaskPlan | undefined;
 	/** Route explicitly declared direct-tool needs for a structured task call. */
 	routeGovernorTaskTransition?: (
 		request: { facts: GovernorTaskFacts; ownerId?: string },
