@@ -148,6 +148,7 @@ it("previews a live Governor decision from settings and session ceilings without
 		};
 		expect(session.previewGovernorDecision({ signals: facts })).toBeUndefined();
 		cfgAdaptiveMode.set(settings, "inspect");
+		expect(session.inspectRecordedGovernorDecision()).toBeUndefined();
 		cfgTaskMaxEffort.set(settings, Effort.Medium);
 		cfgTaskMaxConcurrency.set(settings, 2);
 		const beforeTools = session.getActiveToolNames();
@@ -186,6 +187,8 @@ it("previews a live Governor decision from settings and session ceilings without
 		await sessionManager.ensureOnDisk();
 		const first = session.recordGovernorDecision({ signals: facts }, "initial");
 		expect(first).toMatchObject({ revision: 1, decision: { band: "massive" } });
+		expect(session.inspectRecordedGovernorDecision()).toContain("Revision 1 · trigger: initial · source: manual");
+		expect(session.inspectRecordedGovernorDecision()).toContain("Signals: 14 files · 5 tasks · 2 dependencies");
 		expect(session.recordGovernorDecision({ signals: facts }, "scope")).toEqual(first);
 		const steered = session.recordGovernorDecision({ signals: facts, overrides: { band: "normal" } }, "scope");
 		expect(steered).toMatchObject({ revision: 2, trigger: "steering", decision: { band: "normal" } });
@@ -258,6 +261,10 @@ it("previews a live Governor decision from settings and session ceilings without
 		});
 		expect(() => cfgAdaptiveBands.set(settings, { trivial: { maxWorkers: 1 } })).toThrow();
 		expect(() => cfgAdaptiveBands.set(settings, { massive: { contextShare: 2 } })).toThrow();
+		expect(() => cfgAdaptiveBands.set(settings, { complex: { verificationFloor: "V4" } })).toThrow();
+		expect(() =>
+			cfgAdaptiveBands.set(settings, { complex: { verificationFloor: "V3", verificationCeiling: "V1" } }),
+		).toThrow();
 	} finally {
 		await session.dispose();
 		await sessionManager.close();
@@ -267,9 +274,30 @@ it("previews a live Governor decision from settings and session ceilings without
 	if (!file) throw new Error("Expected persisted session file");
 	const reopened = await SessionManager.open(file, dir.join("sessions"));
 	try {
-		expect(latestGovernorSnapshot(reopened)).toMatchObject({ revision: 12, decision: { band: "massive" } });
+		expect(latestGovernorSnapshot(reopened)).toMatchObject({
+			revision: 12,
+			decision: { band: "massive", verificationFloor: "V2", verificationCeiling: "V4" },
+		});
+		const persisted = latestGovernorSnapshot(reopened);
+		if (!persisted) throw new Error("Expected a persisted Governor decision");
+		reopened.appendCustomEntry("adaptive-governor-decision", {
+			...persisted,
+			revision: 13,
+			decision: Object.fromEntries(
+				Object.entries(persisted.decision).filter(
+					([key]) => key !== "verificationFloor" && key !== "verificationCeiling",
+				),
+			),
+		});
+		expect(latestGovernorSnapshot(reopened)?.revision).toBe(13);
+		reopened.appendCustomEntry("adaptive-governor-decision", {
+			...persisted,
+			revision: 14,
+			decision: { ...persisted.decision, verificationCeiling: undefined },
+		});
+		expect(latestGovernorSnapshot(reopened)?.revision).toBe(13);
 		reopened.appendCustomEntry("adaptive-governor-decision", { version: 1, revision: 999, decision: { version: 1 } });
-		expect(latestGovernorSnapshot(reopened)?.revision).toBe(12);
+		expect(latestGovernorSnapshot(reopened)?.revision).toBe(13);
 	} finally {
 		await reopened.close();
 	}

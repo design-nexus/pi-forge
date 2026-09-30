@@ -424,3 +424,29 @@ Verification: `bun check` passed, including coding-agent type checks, lint, and 
 A workpool turn waiting for the shared session semaphore now remains queued in both its internal job and pool item/batch status. It becomes running only after acquiring the slot. Closing the pool cancels a waiting turn and reports its item as dropped; cancelling the aggregate also settles the queued batch without starting a worker or retaining a semaphore waiter. Active turns still finish under the existing close behavior.
 
 Verification: 15 focused workpool tests passed; coding-agent type checking, targeted lint/formatting, and diff checks passed. The new regressions cover queued status, explicit close, aggregate cancellation, and subsequent slot acquisition.
+
+## Recorded Governor inspection
+
+`/prompt governor` now displays the latest persisted Governor revision, including its trigger, signal source, selected execution/verification/reviewer policy, model/effort, context allocation, scope counts, evidence, and clamps. It has both terminal and TUI output paths; a session without a recorded decision reports that state without synthesizing a preview. This makes automatic reassessment visible without mutating the session.
+
+## Context-note evidence matching and stable fallback
+
+Context-note task-term scoring now includes bounded text from cited successful tool results as well as cited user requests. Failed tool output is excluded. File mentions are removed from natural-language term matching because exact, unique path matching already handles those references; ambiguous `@file` names therefore cannot bias lexical relevance. When task terms match, newer cited evidence ranks higher; when no task, file, citation, or active-todo signal distinguishes findings, the renderer preserves authored order. Equal lexical scores also preserve authored order.
+
+Verification: `bun check` passed, and the Governor session plus context-note suites passed. The focused behavior tests cover persisted decision inspection, empty state, tool-evidence matching, stable unmatched ordering, equal lexical scores, and existing file/citation/todo priority.
+
+## Governor verification budget selection
+
+Each effort band now has a configurable verification floor and ceiling from V0 through V4. High-risk scope raises the floor by one, and recent declared check failures raise it by their count, both bounded by the selected ceiling. Invalid reversed or unknown ranges are rejected by settings validation. These fields are stored with the Governor decision and displayed by `/prompt governor`; no check scheduler or repair loop is implied. Legacy persisted snapshots without the new fields remain readable.
+
+Verification: 22 Governor decision and session tests passed, covering defaults, risk escalation, repeated failures, ceiling clamping, configuration validation, and session persistence. Expanded verification below also includes legacy snapshot reading.
+
+## Structured graph failure diagnostics
+
+When a structured Governor task graph cannot be topologically scheduled, the error now names every task left in the blocked chain. Duplicate dependency references continue to count as one graph edge and one prerequisite.
+
+Verification: the task-facts contract suite passed with cycle IDs and duplicate dependency coverage.
+
+## Expanded verification for this continuation
+
+Final focused verification passed 69 tests across context notes, file mentions, Governor decisions/revisions/session/task facts, and Prompt Engine routing. `bun check` and `git diff --check` passed. Coverage includes failed-source exclusion, matching-source age decay, keeping `@file` terms out of ambiguous lexical matches, verification floor/ceiling selection and persistence, and structured graph diagnostics.

@@ -279,6 +279,106 @@ describe("experimental context notes", () => {
 		);
 	});
 
+	it("matches task terms against cited successful tool evidence", async () => {
+		const manager = SessionManager.inMemory();
+		const settings = Settings.isolated({ "compaction.experimentalContextManagement": true });
+		const tool = ContextNotesTool.createIf(toolSession(settings, manager));
+		if (!tool) throw new Error("expected context notes tool");
+		manager.appendMessage({ role: "user", content: "Explore the repository", timestamp: 1 });
+		const cacheSource = manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "read-cache",
+			toolName: "read",
+			content: [{ type: "text", text: "The stale cache invalidates generated manifests." }],
+			isError: false,
+			timestamp: 2,
+		});
+		const apiSource = manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "read-api",
+			toolName: "read",
+			content: [{ type: "text", text: "The public API requires stable compatibility." }],
+			isError: false,
+			timestamp: 3,
+		});
+		await tool.execute("findings", {
+			findings: [
+				{ text: "Preserve this finding", retention: "pinned", sourceEntryIds: [apiSource] },
+				{ text: "Preserve this other finding", retention: "pinned", sourceEntryIds: [cacheSource] },
+			],
+		});
+		manager.appendMessage({ role: "user", content: "Fix the stale cache manifest", timestamp: 4 });
+		const rendered = renderContextNotes(manager.getBranch());
+		expect(rendered.indexOf("Preserve this other finding")).toBeLessThan(rendered.indexOf("Preserve this finding"));
+	});
+
+	it("does not use failed tool output as notebook relevance evidence", async () => {
+		const manager = SessionManager.inMemory();
+		const settings = Settings.isolated({ "compaction.experimentalContextManagement": true });
+		const tool = ContextNotesTool.createIf(toolSession(settings, manager));
+		if (!tool) throw new Error("expected context notes tool");
+		manager.appendMessage({ role: "user", content: "Inspect the project", timestamp: 1 });
+		const successfulSource = manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "read-api",
+			toolName: "read",
+			content: [{ type: "text", text: "The public API requires stable compatibility." }],
+			isError: false,
+			timestamp: 2,
+		});
+		const failedSource = manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "read-failed",
+			toolName: "read",
+			content: [{ type: "text", text: "The stale cache invalidates generated manifests." }],
+			isError: true,
+			timestamp: 3,
+		});
+		await tool.execute("findings", {
+			findings: [
+				{ text: "Preserve this finding", retention: "pinned", sourceEntryIds: [successfulSource] },
+				{ text: "Preserve this other finding", retention: "pinned", sourceEntryIds: [failedSource] },
+			],
+		});
+		manager.appendMessage({ role: "user", content: "Fix the stale cache manifest", timestamp: 4 });
+		const rendered = renderContextNotes(manager.getBranch());
+		expect(rendered.indexOf("Preserve this finding")).toBeLessThan(rendered.indexOf("Preserve this other finding"));
+	});
+
+	it("decays task-term relevance with age when both findings match", async () => {
+		const manager = SessionManager.inMemory();
+		const settings = Settings.isolated({ "compaction.experimentalContextManagement": true });
+		const tool = ContextNotesTool.createIf(toolSession(settings, manager));
+		if (!tool) throw new Error("expected context notes tool");
+		manager.appendMessage({ role: "user", content: "Investigate project behavior", timestamp: 1 });
+		const olderSource = manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "read-old",
+			toolName: "read",
+			content: [{ type: "text", text: "Cache invalidation behavior is documented here." }],
+			isError: false,
+			timestamp: 2,
+		});
+		manager.appendMessage({ role: "user", content: "Continue the investigation", timestamp: 3 });
+		const newerSource = manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "read-new",
+			toolName: "read",
+			content: [{ type: "text", text: "Cache invalidation behavior is implemented here." }],
+			isError: false,
+			timestamp: 4,
+		});
+		await tool.execute("findings", {
+			findings: [
+				{ text: "Older finding", retention: "pinned", sourceEntryIds: [olderSource] },
+				{ text: "Newer finding", retention: "pinned", sourceEntryIds: [newerSource] },
+			],
+		});
+		manager.appendMessage({ role: "user", content: "Investigate cache invalidation behavior", timestamp: 5 });
+		const rendered = renderContextNotes(manager.getBranch());
+		expect(rendered.indexOf("Newer finding")).toBeLessThan(rendered.indexOf("Older finding"));
+	});
+
 	it("prioritizes a sourced finding when the current turn edits the same file", async () => {
 		const manager = SessionManager.inMemory();
 		const settings = Settings.isolated({ "compaction.experimentalContextManagement": true });

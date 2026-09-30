@@ -2,10 +2,23 @@ import { afterEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { extractFileMentions, generateFileMentionMessages } from "@oh-my-pi/pi-coding-agent/utils/file-mentions";
+import {
+	extractFileMentions,
+	generateFileMentionMessages,
+	withoutFileMentions,
+} from "@oh-my-pi/pi-coding-agent/utils/file-mentions";
 import { removeWithRetries } from "@oh-my-pi/pi-utils";
 
 const tempDirs: string[] = [];
+
+test("removes valid file references without discarding adjacent task language", () => {
+	expect(withoutFileMentions('Fix parser behavior in @src/parser.ts and @"My Folder/schema.ts".')).toBe(
+		"Fix parser behavior in and .",
+	);
+	expect(withoutFileMentions("mail@host.example is prose, not a file reference")).toBe(
+		"mail@host.example is prose, not a file reference",
+	);
+});
 
 afterEach(async () => {
 	for (const dir of tempDirs.splice(0, tempDirs.length)) {

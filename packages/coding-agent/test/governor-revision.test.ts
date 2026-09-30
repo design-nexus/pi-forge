@@ -1,14 +1,26 @@
 import { expect, it } from "bun:test";
 import { Effort } from "@oh-my-pi/pi-catalog/effort";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { decideGovernor, type GovernorDecisionInput } from "@oh-my-pi/pi-coding-agent/governor/decision";
+import {
+	decideGovernor,
+	type GovernorDecisionInput,
+	type GovernorRuntimeSignals,
+} from "@oh-my-pi/pi-coding-agent/governor/decision";
 import { reviseGovernorDecision } from "@oh-my-pi/pi-coding-agent/governor/revision";
 
 const model = getBundledModel("openai", "gpt-4o-mini");
 if (!model) throw new Error("Expected bundled test model");
 
-function candidate(fileCount: number, taskMaxConcurrency = 4, taskCount?: number) {
-	const signals = { fileCount, taskCount, independentTasks: 1, dependencyEdges: 0, highRisk: false, confidence: 0.9 };
+function candidate(fileCount: number, taskMaxConcurrency = 4, taskCount?: number, runtime?: GovernorRuntimeSignals) {
+	const signals = {
+		fileCount,
+		taskCount,
+		independentTasks: 1,
+		dependencyEdges: 0,
+		highRisk: false,
+		confidence: 0.9,
+		...(runtime ? { runtime } : {}),
+	};
 	const input: GovernorDecisionInput = {
 		enabled: true,
 		signals,
@@ -45,5 +57,24 @@ it("revises when task count crosses a band boundary even if file count is unchan
 	expect(reviseGovernorDecision(first, expanded.decision, expanded.signals, "scope")).toMatchObject({
 		revision: 2,
 		decision: { band: "complex" },
+	});
+});
+
+it("persists a verification floor change even when the effort band stays constant", () => {
+	const initial = candidate(6);
+	const first = reviseGovernorDecision(undefined, initial.decision, initial.signals, "initial");
+	if (!first) throw new Error("Expected initial snapshot");
+	const pressured = candidate(6, 4, undefined, {
+		completedCalls: 1,
+		explorationCalls: 0,
+		failedCalls: 0,
+		verificationFailures: 1,
+	});
+	expect(pressured.decision.band).toBe("complex");
+	expect(pressured.decision.verificationFloor).toBe("V3");
+	expect(reviseGovernorDecision(first, pressured.decision, pressured.signals, "verification_failure")).toMatchObject({
+		revision: 2,
+		trigger: "verification_failure",
+		decision: { verificationFloor: "V3" },
 	});
 });

@@ -13,6 +13,7 @@ import {
 	type GovernorDecisionInput,
 } from "./decision";
 import { cfgAdaptiveBands, cfgAdaptiveMode, cfgAdaptiveThresholds } from "./settings";
+import type { GovernorSnapshot } from "./revision";
 
 export const cfgGovernorBudgetInputs = combine({
 	mode: cfgAdaptiveMode,
@@ -85,11 +86,17 @@ export function inspectGovernorDecision(decision: GovernorDecision): string {
 	const lines = [
 		`Governor decision v${decision.version}: ${decision.band} (${Math.round(decision.confidence * 100)}% confidence)`,
 		`Execution: ${decision.executionMode} · ${decision.planningDepth} plan · ${decision.workerCount} workers`,
-		`Verification: ${decision.verification} · reviewer: ${decision.reviewer}`,
+		`Verification: ${decision.verification} · floor ${decision.verificationFloor} / ceiling ${decision.verificationCeiling} · reviewer: ${decision.reviewer}`,
 		`Model: ${decision.modelRole} (${decision.model.provider}/${decision.model.id}) · effort: ${decision.effort ?? "off"}`,
 		`Context budget: ${decision.contextBudgetTokens.toLocaleString()} tokens · capabilities: ${decision.capabilityIds.join(", ") || "none"}`,
 		`Evidence: ${decision.evidence.join("; ")}`,
 	];
 	if (decision.clamps.length) lines.push(`Ceilings: ${decision.clamps.join("; ")}`);
 	return lines.join("\n");
+}
+
+/** Formats the persisted decision, including the revision that caused it to change. */
+export function inspectGovernorSnapshot(snapshot: GovernorSnapshot): string {
+	const header = `Revision ${snapshot.revision} · trigger: ${snapshot.trigger}${snapshot.signalSource ? ` · source: ${snapshot.signalSource}` : ""}`;
+	return `${header}\n${inspectGovernorDecision(snapshot.decision)}\nSignals: ${snapshot.signals.fileCount} files · ${snapshot.signals.taskCount ?? snapshot.signals.independentTasks} tasks · ${snapshot.signals.dependencyEdges} dependencies${snapshot.signals.highRisk ? " · high risk" : ""}`;
 }

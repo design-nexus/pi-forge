@@ -14,6 +14,9 @@ function isGovernorSnapshot(value: unknown): value is GovernorSnapshot {
 	if (!isRecord(value) || !isRecord(value.signals) || !isRecord(value.decision)) return false;
 	const { signals, decision } = value;
 	if (!isRecord(decision.model)) return false;
+	const verificationLevels = ["V0", "V1", "V2", "V3", "V4"];
+	const verificationFloor = decision.verificationFloor;
+	const verificationCeiling = decision.verificationCeiling;
 	return (
 		value.version === 1 &&
 		typeof value.revision === "number" &&
@@ -67,6 +70,13 @@ function isGovernorSnapshot(value: unknown): value is GovernorSnapshot {
 		typeof signals.highRisk === "boolean" &&
 		(value.overrides === undefined || isRecord(value.overrides)) &&
 		decision.version === 1 &&
+		(verificationFloor === undefined) === (verificationCeiling === undefined) &&
+		(verificationFloor === undefined || verificationLevels.includes(verificationFloor as string)) &&
+		(verificationCeiling === undefined || verificationLevels.includes(verificationCeiling as string)) &&
+		(verificationFloor === undefined ||
+			verificationCeiling === undefined ||
+			verificationLevels.indexOf(verificationFloor as string) <=
+				verificationLevels.indexOf(verificationCeiling as string)) &&
 		["trivial", "normal", "complex", "massive"].includes(decision.band as string) &&
 		typeof decision.workerCount === "number" &&
 		Number.isSafeInteger(decision.workerCount) &&

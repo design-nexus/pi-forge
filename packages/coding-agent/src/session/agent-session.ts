@@ -26,6 +26,7 @@ import { routeGovernorTaskBatch, routeGovernorTaskPlan } from "../governor/task-
 import {
 	cfgGovernorBudgetInputs,
 	inspectGovernorDecision,
+	inspectGovernorSnapshot,
 	previewGovernorDecision,
 	type GovernorPreviewRequest,
 } from "../governor/session";
@@ -5742,6 +5743,11 @@ export class AgentSession implements SettingsScope {
 	inspectGovernorDecision(request: GovernorPreviewRequest): string | undefined {
 		const decision = this.previewGovernorDecision(request);
 		return decision ? inspectGovernorDecision(decision) : undefined;
+	}
+
+	inspectRecordedGovernorDecision(): string | undefined {
+		const snapshot = this.getGovernorSnapshot();
+		return snapshot ? inspectGovernorSnapshot(snapshot) : undefined;
 	}
 
 	getGovernorSnapshot(): GovernorSnapshot | undefined {

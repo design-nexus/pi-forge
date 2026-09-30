@@ -52,7 +52,10 @@ export function signalsFromTaskFacts(facts: GovernorTaskFacts): GovernorDecision
 		}
 		ready = next;
 	}
-	if (visited !== tasks.size) throw new Error("Governor task dependencies contain a cycle");
+	if (visited !== tasks.size) {
+		const blocked = [...remaining].filter(([, count]) => count > 0).map(([id]) => id);
+		throw new Error(`Governor task dependencies contain a cycle or blocked chain: ${blocked.join(", ")}`);
+	}
 	return {
 		fileCount: files.size,
 		taskCount: tasks.size,

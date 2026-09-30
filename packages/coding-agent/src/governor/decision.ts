@@ -5,6 +5,7 @@ import type { RoutableToolCapabilityId } from "../prompt-engine/capability-catal
 
 export type TaskBand = "trivial" | "normal" | "complex" | "massive";
 export type ExecutionMode = "direct" | "planned" | "parallel";
+export type VerificationLevel = "V0" | "V1" | "V2" | "V3" | "V4";
 
 export interface GovernorThresholds {
 	trivialMaxFiles: number;
@@ -21,6 +22,8 @@ export interface GovernorThresholds {
 export interface GovernorBandBudget {
 	maxWorkers: number;
 	contextShare: number;
+	verificationFloor: VerificationLevel;
+	verificationCeiling: VerificationLevel;
 }
 
 export interface GovernorRuntimeSignals {
@@ -37,10 +40,10 @@ export interface GovernorRuntimeSignals {
 }
 
 export const DEFAULT_GOVERNOR_BAND_BUDGETS: Record<TaskBand, GovernorBandBudget> = {
-	trivial: { maxWorkers: 0, contextShare: 0.1 },
-	normal: { maxWorkers: 0, contextShare: 0.2 },
-	complex: { maxWorkers: 2, contextShare: 0.35 },
-	massive: { maxWorkers: 4, contextShare: 0.5 },
+	trivial: { maxWorkers: 0, contextShare: 0.1, verificationFloor: "V0", verificationCeiling: "V1" },
+	normal: { maxWorkers: 0, contextShare: 0.2, verificationFloor: "V1", verificationCeiling: "V2" },
+	complex: { maxWorkers: 2, contextShare: 0.35, verificationFloor: "V2", verificationCeiling: "V3" },
+	massive: { maxWorkers: 4, contextShare: 0.5, verificationFloor: "V2", verificationCeiling: "V4" },
 };
 
 export const DEFAULT_GOVERNOR_THRESHOLDS: GovernorThresholds = {
@@ -101,6 +104,8 @@ export interface GovernorDecision {
 	executionMode: ExecutionMode;
 	planningDepth: "none" | "brief" | "milestones" | "dependency_graph";
 	verification: "relevant_check" | "targeted_checks" | "integration_checks";
+	verificationFloor: VerificationLevel;
+	verificationCeiling: VerificationLevel;
 	reviewer: "none" | "risk_based" | "independent";
 	workerCount: number;
 	modelRole: string;
@@ -294,6 +299,15 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 	const policy = BAND_POLICY[band];
 	const defaultBudget = DEFAULT_GOVERNOR_BAND_BUDGETS[band];
 	const budget = input.bandBudgets?.[band];
+	const verificationOrder: readonly VerificationLevel[] = ["V0", "V1", "V2", "V3", "V4"];
+	const configuredFloor = budget?.verificationFloor ?? defaultBudget.verificationFloor;
+	const configuredCeiling = budget?.verificationCeiling ?? defaultBudget.verificationCeiling;
+	const floorIndex = verificationOrder.indexOf(configuredFloor);
+	const ceilingIndex = verificationOrder.indexOf(configuredCeiling);
+	const failurePressure = Math.min(ceilingIndex - floorIndex, nonNegative(runtime?.verificationFailures ?? 0));
+	const riskPressure = highRisk && floorIndex < ceilingIndex ? 1 : 0;
+	const verificationFloor =
+		verificationOrder[Math.min(ceilingIndex, floorIndex + failurePressure + riskPressure)] ?? configuredFloor;
 	const maxWorkers = Math.min(defaultBudget.maxWorkers, nonNegative(budget?.maxWorkers ?? defaultBudget.maxWorkers));
 	const requestedContextShare = budget?.contextShare ?? defaultBudget.contextShare;
 	const contextShare = Number.isFinite(requestedContextShare)
@@ -350,6 +364,8 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 		executionMode,
 		planningDepth: policy.planningDepth,
 		verification: policy.verification,
+		verificationFloor,
+		verificationCeiling: configuredCeiling,
 		reviewer: policy.reviewer,
 		workerCount,
 		modelRole,
