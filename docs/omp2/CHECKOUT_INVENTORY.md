@@ -510,3 +510,9 @@ Verification: 66 focused Prompt Engine, task-spawn, and workpool tests passed; r
 Before dispatching a queued item, the workpool now waits until the most recently queued capability transition settles. If another push adds requirements while an earlier transition is in flight, workers stay queued until the accumulated requirement set has been routed.
 
 Verification: all 23 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The regression gates two overlapping capability pushes independently and verifies neither worker starts until the second transition resolves.
+
+## Task Governor planning fails closed
+
+When a task call declares Governor facts and batch plan selection throws, the task tool now returns a planning error instead of starting the batch with default execution settings. Calls without declared Governor facts retain the previous fallback behavior.
+
+Verification: 30 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. A high-risk two-item batch with a failing Governor planner returns the error and never invokes the worker executor.

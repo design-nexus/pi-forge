@@ -812,6 +812,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				}
 			} catch (error) {
 				logger.warn("Adaptive task batch routing failed", { error: String(error) });
+				if (governorFactsDeclared) {
+					return createTaskModeError(
+						`Task Governor batch planning failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
 			}
 		}
 		const normalizedSpawnParams = spawnItems.map(item =>

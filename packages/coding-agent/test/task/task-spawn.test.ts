@@ -301,6 +301,25 @@ describe("task spawn routing", () => {
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
+	it("does not start a declared task batch when Governor planning throws", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
+		session.routeGovernorTaskTransition = async () => ({ snapshot: undefined, route: undefined });
+		session.routeGovernorTaskPlan = () => {
+			throw new Error("Governor limits are unavailable");
+		};
+		const tool = await TaskTool.create(session);
+		const result = await tool.execute("tc-plan-error", {
+			context: "Update authentication safely.",
+			tasks: [{ task: "Change token validation.", highRisk: true }, { task: "Update token tests." }],
+		} as TaskParams);
+		expect(getFirstText(result)).toContain("Governor limits are unavailable");
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
 	for (const { label, runnerOverrides, expectRetained } of [
 		{
 			label: "tells the parent an isolated agent cannot be messaged instead of calling it idle",
