@@ -12,6 +12,9 @@ export interface GovernorTaskFacts {
 	confidence: number;
 	/** Capabilities required by this structured task source; never inferred from prompt text. */
 	requiredCapabilities?: readonly TaskCapabilityId[];
+	/** High-confidence capabilities inferred from task descriptions. */
+	inferredCapabilities?: readonly TaskCapabilityId[];
+	capabilityConfidence?: number;
 }
 
 /** Count distinct files, dependency edges, and the widest runnable task wave. */

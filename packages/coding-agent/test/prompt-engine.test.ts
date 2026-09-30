@@ -14,6 +14,7 @@ import {
 	cfgPromptProfile,
 } from "@oh-my-pi/pi-coding-agent/prompt-engine/settings";
 import { promptCompare, promptInspect, promptStats } from "@oh-my-pi/pi-coding-agent/prompt-engine/inspection";
+import { classifyTaskCapabilities } from "@oh-my-pi/pi-coding-agent/prompt-engine/task-capability-classifier";
 import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
@@ -36,6 +37,20 @@ function promptOptions(cwd: string, overrides: Partial<BuildSystemPromptOptions>
 }
 
 describe("prompt composition", () => {
+	it("infers only clear direct-tool intent and reports its confidence", () => {
+		expect(classifyTaskCapabilities(["Use the debugger to inspect the stack trace"])).toEqual({
+			capabilities: ["debugger"],
+			confidence: 0.94,
+		});
+		expect(classifyTaskCapabilities(["Update the settings parser and add coverage"])).toEqual({
+			capabilities: [],
+			confidence: 0,
+		});
+		expect(
+			classifyTaskCapabilities(["Review the pull request and open the website in a browser"]).capabilities,
+		).toEqual(["github", "browser"]);
+	});
+
 	it("keeps Full provider blocks byte-identical to rendering the original bundled template", async () => {
 		using dir = TempDir.createSync("@omp-prompt-full-");
 		const cwd = dir.join("project");
@@ -575,6 +590,42 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 		expect(session.getActiveToolNames()).toContain("debug");
 		await session.releaseGovernorTaskCapabilityRoutes("scope-c");
 		expect(session.getActiveToolNames()).not.toContain("debug");
+		const inferredFacts = {
+			files: [],
+			tasks: [{ id: "debug-task", dependsOn: [] }],
+			highRisk: false,
+			confidence: 0.9,
+			inferredCapabilities: ["debugger"] as const,
+			capabilityConfidence: 0.94,
+		};
+		const inferredRoute = await session.routeGovernorTaskTransition(
+			{ facts: inferredFacts, ownerId: "inferred-debug" },
+			"scope",
+		);
+		expect(inferredRoute.capabilityRoutes).toMatchObject([
+			{ id: "debugger", selected: true, state: "active", reason: "inferred from task text (94% confidence)" },
+		]);
+		await session.releaseGovernorTaskCapabilityRoutes("inferred-debug");
+		await session.setPromptSettingsOverride({ capabilities: { debugger: "disabled" } });
+		const disabledInferred = await session.routeGovernorTaskTransition(
+			{ facts: inferredFacts, ownerId: "inferred-disabled" },
+			"scope",
+		);
+		expect(disabledInferred.capabilityRoutes).toMatchObject([{ id: "debugger", state: "disabled", selected: false }]);
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		await session.setPromptSettingsOverride({ capabilities: { debugger: "automatic", browser: "automatic" } });
+		const userPromptRoute = await session.routePromptCapabilities("Use the debugger to inspect the stack trace");
+		expect(userPromptRoute).toMatchObject([
+			{ id: "debugger", selected: true, state: "active", reason: "inferred from task text (94% confidence)" },
+		]);
+		expect(session.getActiveToolNames()).toContain("debug");
+		await session.routePromptCapabilities("Fix a typo in the settings parser");
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		await session.setPromptSettingsOverride({ capabilities: { debugger: "disabled" } });
+		const userOverrideRoute = await session.routePromptCapabilities("Use the debugger to inspect the stack trace");
+		expect(userOverrideRoute).toMatchObject([{ id: "debugger", selected: false, state: "disabled" }]);
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		await session.setPromptSettingsOverride({ capabilities: { debugger: "automatic", browser: "automatic" } });
 		const browserAvailable = session.promptComposition?.capabilities.browser.available === true;
 		const browserRoute = await session.routeGovernorTaskTransition(
 			{

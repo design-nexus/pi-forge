@@ -27,6 +27,7 @@ import { cfgAdaptiveMode } from "../governor/settings";
 import type { GovernorTaskFacts } from "../governor/task-facts";
 import type { GovernorTaskPlan } from "../governor/task-batch";
 import { isTaskCapabilityId, type TaskCapabilityId } from "../prompt-engine/capability-catalog";
+import { classifyTaskCapabilities } from "../prompt-engine/task-capability-classifier";
 import type { EffectiveExtensionRoots } from "../capability/types";
 import type { Theme } from "@oh-my-pi/pi-tui/theme";
 import subagentUserPromptTemplate from "../prompts/system/subagent-user-prompt.md" with { type: "text" };
@@ -848,8 +849,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const declaredCapabilities = [
 			...new Set([...(params.capabilities ?? []), ...spawnItems.flatMap(item => item.capabilities ?? [])]),
 		].filter(isTaskToolCapabilityId);
+		const classification = classifyTaskCapabilities([params.task ?? "", ...spawnItems.map(item => item.task ?? "")]);
 		const highRisk = params.highRisk === true || spawnItems.some(item => item.highRisk === true);
-		const governorFactsDeclared = declaredCapabilities.length > 0 || highRisk;
+		const governorFactsDeclared =
+			declaredCapabilities.length > 0 || classification.capabilities.length > 0 || highRisk;
 		const governorOwnerId = `task:${toolCallId}`;
 		const releaseGovernorOwner = async (): Promise<void> => {
 			if (!governorFactsDeclared) return;
@@ -870,6 +873,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				highRisk,
 				confidence: 0.9,
 				requiredCapabilities: declaredCapabilities,
+				inferredCapabilities: classification.capabilities,
+				capabilityConfidence: classification.confidence,
 			};
 			const routeTransition = this.session.routeGovernorTaskTransition;
 			if (!routeTransition) {

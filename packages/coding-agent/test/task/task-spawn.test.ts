@@ -299,6 +299,26 @@ describe("task spawn routing", () => {
 		expect(releaseRoutes).toHaveBeenCalledWith("task:tc-item-capabilities");
 	});
 
+	it("infers direct-tool capabilities from task assignments with confidence", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
+		let observedFacts: unknown;
+		session.routeGovernorTaskTransition = async request => {
+			observedFacts = request.facts;
+			return { snapshot: undefined, route: undefined, capabilityRoutes: [] };
+		};
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-inferred-capabilities", {
+			context: "Review the parser implementation.",
+			tasks: [{ task: "Use the debugger to inspect the stack trace." }],
+		} as TaskParams);
+		expect(observedFacts).toMatchObject({
+			inferredCapabilities: ["debugger"],
+			capabilityConfidence: 0.94,
+		});
+	});
+
 	it("passes the Governor verification strategy and bounds to every batch worker", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
 		const observedContexts: string[] = [];

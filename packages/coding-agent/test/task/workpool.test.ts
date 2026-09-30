@@ -381,6 +381,28 @@ describe("WorkPool dispatch", () => {
 		});
 	});
 
+	it("infers direct-tool capabilities from workpool assignments", async () => {
+		const session = makeSession();
+		let routedFacts: unknown;
+		session.routeGovernorTaskTransition = async request => {
+			routedFacts = request.facts;
+			return { snapshot: undefined, route: undefined, capabilityRoutes: [activeCapabilityRoute("debugger")] };
+		};
+		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "inferred-governor-capability");
+		workpool.push(["Use the debugger to inspect the stack trace."]);
+		workpool.push(["Update the settings parser."]);
+		await finishPool(session, workpool);
+		expect(routedFacts).toMatchObject({
+			inferredCapabilities: ["debugger"],
+			capabilityConfidence: 0.94,
+		});
+	});
+
 	it("releases the workpool's capability lease when the pool closes", async () => {
 		const session = makeSession();
 		const release = vi.fn(async () => {});
