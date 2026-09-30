@@ -63,6 +63,7 @@ describe("task integration gate", () => {
 				result("valid", {
 					status: "unresolved",
 					summary: "typecheck still fails",
+					verificationLevel: "V1",
 					checks: [{ command: "bun check", status: "failed", result: "type error" }],
 					files: ["src/a.ts"],
 					repairAttempts: 1,
@@ -78,6 +79,7 @@ describe("task integration gate", () => {
 				result("valid", {
 					status: "verified",
 					summary: "checks pass",
+					verificationLevel: "V1",
 					checks: [{ command: "bun test", status: "passed", result: "18 tests passed" }],
 					files: [],
 					repairAttempts: 0,
@@ -89,10 +91,41 @@ describe("task integration gate", () => {
 				result("valid", {
 					status: "reconciled",
 					summary: "compatibility fixed",
+					verificationLevel: "V2",
 					checks: [{ command: "bun check", status: "passed", result: "checks passed" }],
 					files: ["src/a.ts"],
 					repairAttempts: 1,
 				}),
+			),
+		).toBeUndefined();
+	});
+
+	it("rejects a reported level outside the Governor-selected operator range", () => {
+		const policy = { strategy: "targeted_checks", floor: "V2", ceiling: "V3" } as const;
+		expect(
+			integrationGateFailure(
+				result("valid", {
+					status: "verified",
+					summary: "focused test passed",
+					verificationLevel: "V1",
+					checks: [{ command: "bun test focused.test.ts", status: "passed", result: "passed" }],
+					files: [],
+					repairAttempts: 0,
+				}),
+				policy,
+			),
+		).toContain("outside the selected V2–V3 range");
+		expect(
+			integrationGateFailure(
+				result("valid", {
+					status: "verified",
+					summary: "package tests passed",
+					verificationLevel: "V2",
+					checks: [{ command: "bun test", status: "passed", result: "passed" }],
+					files: [],
+					repairAttempts: 0,
+				}),
+				policy,
 			),
 		).toBeUndefined();
 	});
