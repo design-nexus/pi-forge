@@ -137,6 +137,7 @@ export class WorkPool {
 	#highRisk = false;
 	#poolJobStarted = false;
 	#governorLimit: number | undefined;
+	readonly #closedSignal = Promise.withResolvers<void>();
 	readonly #drainWaiters: PromiseWithResolvers<void>[] = [];
 	readonly #freshQueue: WorkPoolItem[] = [];
 
@@ -354,7 +355,11 @@ export class WorkPool {
 			if (!this.session.waitForIdle) {
 				throw new ToolError("workpool capability routing was deferred, but the session cannot wait for idle");
 			}
-			await this.session.waitForIdle();
+			const idleReached = await Promise.race([
+				this.session.waitForIdle().then(() => true),
+				this.#closedSignal.promise.then(() => false),
+			]);
+			if (!idleReached) return;
 			if (this.closed || item.status !== "queued") return;
 			const facts = this.#capabilityFacts;
 			if (!facts) break;
@@ -708,6 +713,7 @@ export class WorkPool {
 	/** Stop accepting work and cancel items whose turn has not started. */
 	close(): { dropped: string[] } {
 		this.closed = true;
+		this.#closedSignal.resolve();
 		const manager = this.session.asyncJobManager;
 		for (const batch of this.batches) {
 			if (batch.status === "queued") manager?.cancel(batch.jobId, { ownerId: this.ownerId });
