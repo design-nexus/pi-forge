@@ -5805,21 +5805,6 @@ export class AgentSession implements SettingsScope {
 		trigger: "initial" | "scope" | "steering",
 	): Promise<GovernorTaskTransitionResult> {
 		if (this.isStreaming) {
-			this.#schedulePostPromptTask(async signal => {
-				if (signal.aborted || this.#isDisposed) return;
-				try {
-					const result = await routeGovernorTaskTransition(this, request, trigger);
-					logger.debug("Deferred Governor task transition applied", {
-						trigger,
-						capabilityRoutes: result.capabilityRoutes?.map(route => ({
-							id: route.id,
-							state: route.state,
-						})),
-					});
-				} catch (error) {
-					logger.warn("Deferred Governor task transition failed", { error: String(error) });
-				}
-			});
 			return Promise.resolve({
 				snapshot: latestGovernorSnapshot(this.sessionManager),
 				route: undefined,
