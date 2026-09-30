@@ -772,7 +772,7 @@ export async function runStructuredSubagent(request: StructuredSubagentRequest):
 				}
 			};
 			if (request.integrationGate && request.index !== undefined) {
-				await request.integrationGate.apply(request.index, integrate);
+				await request.integrationGate.apply(request.index, integrate, request.signal);
 			} else {
 				await integrate();
 			}

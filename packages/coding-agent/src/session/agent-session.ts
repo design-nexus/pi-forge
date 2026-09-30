@@ -948,6 +948,9 @@ export class AgentSession implements SettingsScope {
 
 	readonly #streamingEditGuard: StreamingEditGuard;
 	readonly #loopGuards: LoopGuards;
+	#continuationPromptPolicy:
+		| { sessionId: string; model: Model | undefined; base: string[]; prompt: string[] }
+		| undefined;
 	#promptInFlightCount = 0;
 	#abortInProgress = false;
 	/** Submissions accepted by prompt()/promptCustomMessage()/sendCustomMessage() that have not
@@ -5658,6 +5661,13 @@ export class AgentSession implements SettingsScope {
 		return this.agent.state.isStreaming || this.#promptInFlightCount > 0;
 	}
 
+	/** Tool presentation can change between provider responses, including inside a task call. */
+	get canRoutePromptTools(): boolean {
+		return (
+			!this.isStreaming || (this.agent.state.pendingToolCalls.size > 0 && this.agent.state.streamMessage === null)
+		);
+	}
+
 	get isAborting(): boolean {
 		return this.agent.isAborting;
 	}
@@ -5805,7 +5815,7 @@ export class AgentSession implements SettingsScope {
 		request: GovernorTaskTransitionRequest,
 		trigger: "initial" | "scope" | "steering",
 	): Promise<GovernorTaskTransitionResult> {
-		if (this.isStreaming) {
+		if (!this.canRoutePromptTools) {
 			return Promise.resolve({
 				snapshot: latestGovernorSnapshot(this.sessionManager),
 				route: undefined,
@@ -5816,7 +5826,7 @@ export class AgentSession implements SettingsScope {
 	}
 
 	releaseGovernorTaskCapabilityRoutes(ownerId = "default"): Promise<void> {
-		if (this.isStreaming) {
+		if (!this.canRoutePromptTools) {
 			this.#schedulePostPromptTask(async signal => {
 				if (signal.aborted || this.#isDisposed) return;
 				await releaseStaleTaskCapabilityRoutes(this, new Set(), ownerId);
@@ -5896,7 +5906,7 @@ export class AgentSession implements SettingsScope {
 			return false;
 		}
 		if (
-			this.isStreaming ||
+			!this.canRoutePromptTools ||
 			(this.model?.thinking?.prefixBinding && this.messages.some(message => message.role === "assistant"))
 		) {
 			return false;
@@ -7038,9 +7048,12 @@ export class AgentSession implements SettingsScope {
 		const imageDescriptionNotice = normalizedImages?.length
 			? await this.#buildImageDescriptionNotice(normalizedImages)
 			: undefined;
+		if (!options?.synthetic) {
+			await this.routePromptCapabilities(expandedText);
+		}
 
 		// A concurrent prompt() can start a turn during the awaits above: image
-		// normalization and the vision-description call suspend after the
+		// normalization, vision description, and capability routing suspend after the
 		// isStreaming check at the top, so two callers — the CLI initial message
 		// and a freshly typed submission — can both observe an idle session.
 		// Re-check before dispatch so the loser queues exactly like the early
@@ -7066,10 +7079,6 @@ export class AgentSession implements SettingsScope {
 			});
 			outcome.sessionClaimed = true;
 			return true;
-		}
-
-		if (!options?.synthetic) {
-			await this.routePromptCapabilities(expandedText);
 		}
 
 		if (externalThinkingToolChoice) {
@@ -7271,7 +7280,27 @@ export class AgentSession implements SettingsScope {
 			message => isUserQueuedMessage(message) && !("attribution" in message && message.attribution === "agent"),
 		);
 		const first = userMessages[0];
-		if (!first) return undefined;
+		if (!first) {
+			const policy = this.#continuationPromptPolicy;
+			if (!policy || policy.sessionId !== this.sessionId) return undefined;
+			const generation = this.#promptGeneration;
+			return Promise.resolve({
+				commit: () => {
+					if (signal.aborted || generation !== this.#promptGeneration || policy.sessionId !== this.sessionId)
+						return undefined;
+					const base = this.#tools.baseSystemPrompt;
+					// A model/tool-policy rebuild invalidates the prior request's opaque override.
+					if (
+						this.model !== policy.model ||
+						base.length !== policy.base.length ||
+						base.some((part, index) => part !== policy.base[index])
+					)
+						return [];
+					this.#tools.setTurnSystemPromptOverride(policy.prompt);
+					return [];
+				},
+			});
+		}
 		const text: string[] = [];
 		const images: ImageContent[] = [];
 		for (const message of userMessages) {
@@ -7378,6 +7407,12 @@ export class AgentSession implements SettingsScope {
 						this.#tools.clearTurnSystemPromptOverride();
 						this.agent.setSystemPrompt(this.#tools.baseSystemPrompt);
 					}
+					this.#continuationPromptPolicy = {
+						sessionId: this.sessionId,
+						model: this.model,
+						base: [...this.#tools.baseSystemPrompt],
+						prompt: [...this.agent.state.systemPrompt],
+					};
 					return messages;
 				},
 			};

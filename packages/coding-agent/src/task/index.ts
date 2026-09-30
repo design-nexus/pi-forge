@@ -1552,6 +1552,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				dependencies,
 				settleDependency,
 				governorPlan,
+				integrationGate,
 				onItemProgress: onUpdate
 					? (index, progress) => {
 							const spawn = spawns.find(candidate => candidate.index === index);
@@ -1686,12 +1687,17 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					}
 				};
 				try {
-					if (batchSemaphore) {
-						await batchSemaphore.acquire(runSignal);
-						batchHeld = true;
-					}
-					await semaphore.acquire(runSignal);
-					semaphoreHeld = true;
+					const acquire = async () => {
+						if (batchSemaphore) {
+							await batchSemaphore.acquire(runSignal);
+							batchHeld = true;
+						}
+						await semaphore.acquire(runSignal);
+						semaphoreHeld = true;
+					};
+					if (spawnParams.integrationGate)
+						await spawnParams.integrationGate.start(progress.index, acquire, runSignal);
+					else await acquire();
 				} catch {
 					// Fall through so an acquire-time abort goes through the same
 					// path as the post-acquire race below: progress + onSettled
@@ -1880,12 +1886,16 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					signal,
 					!canRunAfterFailedDependency(spawn.item),
 				);
-				if (batchSemaphore) {
-					await batchSemaphore.acquire(signal);
-					batchHeld = true;
-				}
-				await semaphore.acquire(signal);
-				semaphoreHeld = true;
+				const acquire = async () => {
+					if (batchSemaphore) {
+						await batchSemaphore.acquire(signal);
+						batchHeld = true;
+					}
+					await semaphore.acquire(signal);
+					semaphoreHeld = true;
+				};
+				if (integrationGate) await integrationGate.start(spawn.index, acquire, signal);
+				else await acquire();
 				const acquiredAt = Date.now();
 				const result = await this.#executeSync(
 					toolCallId,
@@ -2008,12 +2018,16 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						workerSignal,
 						!canRunAfterFailedDependency(spawn.item),
 					);
-					if (batchSemaphore) {
-						await batchSemaphore.acquire(workerSignal);
-						batchHeld = true;
-					}
-					await semaphore.acquire(workerSignal);
-					semaphoreHeld = true;
+					const acquire = async () => {
+						if (batchSemaphore) {
+							await batchSemaphore.acquire(workerSignal);
+							batchHeld = true;
+						}
+						await semaphore.acquire(workerSignal);
+						semaphoreHeld = true;
+					};
+					if (integrationGate) await integrationGate.start(spawn.index, acquire, workerSignal);
+					else await acquire();
 				} catch (error) {
 					if (batchHeld) batchSemaphore?.release();
 					integrationGate?.settle(spawn.index);
@@ -2279,6 +2293,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						});
 					},
 				});
+			const repairUsage = createUsageTotals();
+			let hasRepairUsage = false;
+			let repairRequests = 0;
 			let execution: StructuredSubagentResult;
 			while (true) {
 				if (params.integrationGateTask && !params.integrationGate?.reserveReconciliationAttempt()) {
@@ -2288,6 +2305,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				if (!params.integrationGateTask || !repairBudget) break;
 				const failure = integrationGateFailure(execution.result, params.integrationGateVerification);
 				repairBudget.record(execution.result, failure);
+				repairRequests += execution.result.requests;
+				if (execution.result.usage) {
+					addUsageTotals(repairUsage, execution.result.usage);
+					hasRepairUsage = true;
+				}
+				execution.result.requests = repairRequests;
+				if (hasRepairUsage) execution.result.usage = structuredClone(repairUsage);
 				const totals = repairBudget.totals;
 				execution.result.tokens = totals.tokens;
 				execution.result.durationMs = totals.wallTimeMs;

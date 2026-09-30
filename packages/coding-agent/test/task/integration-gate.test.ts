@@ -63,6 +63,44 @@ describe("task integration gate", () => {
 		expect(gate.reserveReconciliationAttempt()).toBe(false);
 	});
 
+	it("cancels a queued start without acquiring a slot or blocking later work", async () => {
+		const gate = new IntegrationGate([0, 1, 2]);
+		const controller = new AbortController();
+		const acquired: number[] = [];
+		const waiting = gate.start(
+			1,
+			async () => {
+				acquired.push(1);
+			},
+			controller.signal,
+		);
+		controller.abort();
+		await expect(waiting).rejects.toThrow();
+		gate.settle(0);
+		await gate.start(2, async () => {
+			acquired.push(2);
+		});
+		expect(acquired).toEqual([2]);
+	});
+
+	it("cancels integration while waiting for a predecessor without applying its patch", async () => {
+		const gate = new IntegrationGate([0, 1]);
+		const controller = new AbortController();
+		const applied: number[] = [];
+		const waiting = gate.apply(
+			1,
+			async () => {
+				applied.push(1);
+			},
+			controller.signal,
+		);
+		controller.abort();
+		await expect(waiting).rejects.toThrow();
+		gate.settle(0);
+		await Bun.sleep(0);
+		expect(applied).toEqual([]);
+	});
+
 	it("stops repeated identical failures while allowing a converging failure set to continue", () => {
 		const budget = new IntegrationRepairBudget({
 			maxAttempts: 3,

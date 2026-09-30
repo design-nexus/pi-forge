@@ -296,10 +296,10 @@ async function probeCdpAt(port: number, signal?: AbortSignal): Promise<boolean> 
  * Resolve a distro wrapper script to its exec target (e.g.
  * /opt/google/chrome/google-chrome is bash ending in
  * `exec -a "$0" "$HERE/chrome" "$@"` with $HERE = dirname of the wrapper).
- * Scans line-by-line for the final `exec ... $HERE/...` command so helper
- * invocations are never mistaken for the application. Returns null for
- * binaries and wrappers without an exec command. Size-guarded so real
- * binaries are never read into memory.
+ * Shell wrappers resolve through their final `exec ... $HERE/...` command.
+ * Small compiled Chromium launchers expose CHROME_WRAPPER and one embedded
+ * absolute browser executable path. Resolve that target too, while refusing
+ * ambiguous candidates. The size guard excludes the full browser binary.
  */
 async function resolveWrapperTarget(wrapperPath: string): Promise<string | null> {
 	if (process.platform !== "linux") return null;
@@ -308,7 +308,24 @@ async function resolveWrapperTarget(wrapperPath: string): Promise<string | null>
 	const content = await Bun.file(wrapperPath)
 		.text()
 		.catch(() => null);
-	if (!content || content.charCodeAt(0) === 0x7f) return null;
+	if (!content) return null;
+	if (content.startsWith("\x7fELF")) {
+		if (!content.includes("\0CHROME_WRAPPER\0")) return null;
+		const candidates = new Set<string>();
+		for (const match of content.matchAll(/(?:^|\0)(\/[^\0]+)(?=\0)/g)) {
+			const candidate = match[1]!;
+			if (!CHROMIUM_BROWSER_BASENAME.test(path.basename(candidate))) continue;
+			const realPath = await fs.realpath(candidate).catch(() => null);
+			if (!realPath || realPath === wrapperPath) continue;
+			try {
+				await fs.access(realPath, fs.constants.X_OK);
+				if ((await fs.stat(realPath)).isFile()) candidates.add(realPath);
+			} catch {
+				// An embedded path need not exist on this host.
+			}
+		}
+		return candidates.size === 1 ? candidates.values().next().value! : null;
+	}
 	let target: string | null = null;
 	const execRegex = /^\s*exec\s+(?:-a\s+(?:"[^"]*"|'[^']*'|\S+)\s+)?["']?\$(?:HERE|\{HERE\})\/([^\s"'`;}]+)/;
 	for (const line of content.split("\n")) {

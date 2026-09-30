@@ -568,8 +568,32 @@ describe("update-cli package manager commands", () => {
 		if (!miseBinary) throw new Error("mise binary unavailable");
 		const root = await makeTempDir();
 		const releases = [
-			{ tag_name: "v2.0.0", draft: false, prerelease: false, created_at: "2026-09-09T00:00:00Z", assets: [] },
-			{ tag_name: "v1.0.0", draft: false, prerelease: false, created_at: "2020-01-01T00:00:00Z", assets: [] },
+			{
+				tag_name: "v2.0.0",
+				draft: false,
+				prerelease: false,
+				created_at: "2026-09-09T00:00:00Z",
+				assets: [
+					{
+						name: "omp-linux-x64",
+						url: "https://example.invalid/api/asset",
+						browser_download_url: "https://example.invalid/v2/omp-linux-x64",
+					},
+				],
+			},
+			{
+				tag_name: "v1.0.0",
+				draft: false,
+				prerelease: false,
+				created_at: "2020-01-01T00:00:00Z",
+				assets: [
+					{
+						name: "omp-linux-x64",
+						url: "https://example.invalid/api/asset",
+						browser_download_url: "https://example.invalid/v1/omp-linux-x64",
+					},
+				],
+			},
 		];
 		const server = Bun.serve({
 			hostname: "127.0.0.1",
@@ -615,6 +639,10 @@ describe("update-cli package manager commands", () => {
 				if (exitCode !== 0) throw new Error(`mise upgrade failed: ${stdout}${stderr}`);
 				return stdout + stderr;
 			};
+			// Recent mise releases require explicit trust for configs that set
+			// tool options such as minimum_release_age. This config is generated
+			// inside the isolated test root, so trust only that fixture.
+			await run(["trust", "mise.toml", "--yes"]);
 
 			const blocked = await run(["upgrade", "github:can1357/oh-my-pi", "--bump", "--dry-run"]);
 			expect(blocked).not.toContain("Would install github:can1357/oh-my-pi@2.0.0");

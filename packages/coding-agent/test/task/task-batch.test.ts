@@ -406,6 +406,70 @@ describe("task.batch spawning", () => {
 		AgentRegistry.resetGlobalForTests();
 	});
 
+	it("completes mixed foreground and isolated background work with a single execution slot", async () => {
+		mockDiscovery([taskAgent, { ...taskAgent, name: "foreground", blocking: true }]);
+		const started: string[] = [];
+		const applied: string[] = [];
+		vi.spyOn(structuredModule, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			started.push(id);
+			const isolated = request.isolation?.requested === true;
+			if (isolated) {
+				await request.integrationGate!.apply(
+					request.index!,
+					async () => {
+						applied.push(id);
+					},
+					request.signal,
+				);
+			}
+			return {
+				result: makeResult(id, { index: request.index }),
+				policy: {
+					discovery: { agents: [taskAgent], projectAgentsDir: null },
+					agentName: taskAgent.name,
+					agent: taskAgent,
+					effectiveAgent: taskAgent,
+					schema: { schema: undefined, source: "none", mode: "strict", outputSchemaOverridesAgent: false },
+					planMode: false,
+					isIsolated: isolated,
+					mergeMode: "patch",
+					applyChanges: true,
+					enableLsp: false,
+					enableIrc: false,
+				},
+				mergeSummary: isolated ? "Applied patches: yes" : "",
+				changesApplied: isolated ? true : null,
+				artifactsDir: "/tmp",
+				temporaryArtifacts: false,
+			} satisfies StructuredSubagentResult;
+		});
+		const manager = createManager();
+		const tool = await TaskTool.create(
+			createSession({
+				manager,
+				settings: {
+					"async.enabled": true,
+					"task.batch": true,
+					"task.isolation.enabled": true,
+					"task.maxConcurrency": 1,
+				},
+			}),
+		);
+		const result = await tool.execute("mixed-integration", {
+			context: "Shared work",
+			tasks: [
+				{ name: "Alpha", agent: "foreground", task: "Foreground work" },
+				{ name: "Beta", agent: "task", task: "Background work", isolated: true },
+			],
+		} as TaskParams);
+		await manager.getJob("Beta")!.promise;
+		expect(result.details?.results.find(item => item.id === "Alpha")?.exitCode).toBe(0);
+		expect(manager.getJob("Beta")!.status).toBe("completed");
+		expect(started).toEqual(["Alpha", "Beta"]);
+		expect(applied).toEqual(["Beta"]);
+	});
+
 	it("retries integration verification after a failed check and reports reconciled outcome", async () => {
 		mockDiscovery();
 		const seen: Array<{ id: string; assignment: string; outputSchema?: unknown }> = [];
@@ -419,6 +483,15 @@ describe("task.batch spawning", () => {
 				task: request.assignment,
 				assignment: request.assignment,
 				output: `Output from ${id}`,
+				usage: {
+					input: retryingGate ? 20 : 10,
+					output: 5,
+					cacheRead: 2,
+					cacheWrite: 1,
+					totalTokens: retryingGate ? 28 : 18,
+					cost: { input: 0.01, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.02 },
+				},
+				requests: retryingGate ? 2 : 1,
 				structuredOutput: integrationGate
 					? {
 							source: "caller",
@@ -500,6 +573,10 @@ describe("task.batch spawning", () => {
 		expect(result.details?.results.at(-1)?.structuredOutput?.data).toMatchObject({
 			status: "reconciled",
 			repairAttempts: 1,
+		});
+		expect(result.details?.results.at(-1)).toMatchObject({
+			requests: 3,
+			usage: { input: 30, output: 10, cacheRead: 4, cacheWrite: 2, totalTokens: 46, cost: { total: 0.04 } },
 		});
 		expect(getFirstText(result)).toContain("Integration gate");
 	});
