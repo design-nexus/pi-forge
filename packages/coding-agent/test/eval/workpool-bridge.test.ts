@@ -83,6 +83,9 @@ describe("runEvalWorkpool", () => {
 		await expect(
 			runEvalWorkpool({ op: "push", name: "scout-pool", items: ["ok"], capabilities: ["unknown"] }, { session }),
 		).rejects.toThrow("routeable direct-tool capability names");
+		await expect(
+			runEvalWorkpool({ op: "push", name: "scout-pool", items: ["ok"], highRisk: "yes" }, { session }),
+		).rejects.toThrow("highRisk must be a boolean");
 		expect(
 			await runEvalWorkpool(
 				{ op: "push", name: "scout-pool", items: [], capabilities: ["browser", "mcp__server__tool"] },

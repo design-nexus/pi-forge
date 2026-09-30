@@ -128,6 +128,8 @@ export class WorkPool {
 	#lastCardTs = 0;
 	#dispatchChain: Promise<void> = Promise.resolve();
 	#capabilityRouting: Promise<void> = Promise.resolve();
+	#requiredCapabilities = new Set<TaskCapabilityId>();
+	#highRisk = false;
 	#poolJobStarted = false;
 	#governorLimit: number | undefined;
 	readonly #drainWaiters: PromiseWithResolvers<void>[] = [];
@@ -158,19 +160,22 @@ export class WorkPool {
 	}
 
 	/** Queue items and start the aggregate pool job on the first non-empty push. */
-	push(texts: string[], capabilities?: readonly TaskCapabilityId[]): string[] {
+	push(texts: string[], capabilities?: readonly TaskCapabilityId[], highRisk = false): string[] {
 		if (this.closed) throw new ToolError(`workpool ${this.name} is closed`);
 		if (texts.length === 0) return [];
-		if (capabilities !== undefined) {
+		for (const capability of capabilities ?? []) this.#requiredCapabilities.add(capability);
+		this.#highRisk ||= highRisk;
+		if (capabilities !== undefined || highRisk) {
 			const facts: GovernorTaskFacts = {
 				files: [],
 				tasks: texts.map((_, index) => ({
 					id: `pool-${this.name}-${this.#nextSeq + index}`,
 					dependsOn: [],
-					requiredCapabilities: capabilities,
+					requiredCapabilities: [...this.#requiredCapabilities],
 				})),
-				highRisk: false,
+				highRisk: this.#highRisk,
 				confidence: 0.9,
+				requiredCapabilities: [...this.#requiredCapabilities],
 			};
 			this.#capabilityRouting = this.#capabilityRouting
 				.then(async () => {
@@ -182,14 +187,15 @@ export class WorkPool {
 		}
 		const pendingCount =
 			this.items.filter(item => item.status === "queued" || item.status === "running").length + texts.length;
+		const pendingHighRisk = this.#highRisk || highRisk;
 		let governorEffort: TaskEffort | undefined;
 		try {
 			if (this.session.routeGovernorTaskPlan) {
-				const plan = this.session.routeGovernorTaskPlan(pendingCount);
+				const plan = this.session.routeGovernorTaskPlan(pendingCount, pendingHighRisk);
 				this.#governorLimit = plan?.workerCount;
 				governorEffort = plan?.effort;
 			} else {
-				this.#governorLimit = this.session.routeGovernorTaskBatch?.(pendingCount);
+				this.#governorLimit = this.session.routeGovernorTaskBatch?.(pendingCount, pendingHighRisk);
 			}
 		} catch (error) {
 			logger.warn("Adaptive workpool routing failed", { error: String(error) });

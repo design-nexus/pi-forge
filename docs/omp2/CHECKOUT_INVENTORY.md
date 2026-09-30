@@ -468,3 +468,9 @@ Verification: Prompt Engine and Governor session suites passed 20/20 for mode-ch
 When the Governor is enabled, the task tool accepts `highRisk: true` for a whole call or an individual batch item. A call-level or item-level declaration marks the structured task facts high risk, raising the selected verification floor within the configured band ceiling. The same risk flag reaches the batch execution decision, so worker planning does not replace it with a lower-risk snapshot. The flag is omitted from the task schema when adaptive mode is off; non-boolean internal/stale calls are rejected. This makes the existing risk policy usable from real task calls without inferring risk from task prose.
 
 Verification: 39 focused task schema/spawn and Governor session tests passed; coding-agent type checking and `git diff --check` passed. The task-spawn regression confirms an item-level declaration reaches both task facts and batch planning, the schema checks both scopes and disabled-mode stripping, and Governor session coverage confirms the resulting floor is ceiling-bounded. No verification commands are scheduled automatically.
+
+## High-risk eval workpool declarations
+
+Python `WorkPool.push(..., high_risk=True)` and JavaScript `.push(..., { highRisk: true })` can mark an eval pool high risk alongside its direct-tool requirements. Capability requirements accumulate across later pushes, and once any push marks the pool high risk, subsequent worker planning keeps that risk signal. The bridge rejects non-boolean values. This matches the pool's live queue lifetime without treating a later low-risk push as permission to lower verification for earlier work.
+
+Verification: 34 focused workpool, bridge, and Python/JavaScript prelude tests passed; repository `bun check` and `git diff --check` passed. Coverage checks cumulative pool facts and plan inputs, wrapper serialization, and bridge validation.

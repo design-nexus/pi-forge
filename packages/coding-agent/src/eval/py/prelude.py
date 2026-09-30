@@ -1035,7 +1035,7 @@ if "__omp_prelude_loaded__" not in globals():
             self.agent = agent
             self.limit = limit
 
-        def push(self, *items, capabilities=None):
+        def push(self, *items, capabilities=None, high_risk=False):
             if not all(isinstance(item, str) for item in items):
                 raise TypeError("WorkPool.push() expects string items")
             if capabilities is not None and (
@@ -1046,6 +1046,10 @@ if "__omp_prelude_loaded__" not in globals():
             args = {"op": "push", "name": self.name, "items": list(items)}
             if capabilities is not None:
                 args["capabilities"] = list(capabilities)
+            if not isinstance(high_risk, bool):
+                raise TypeError("WorkPool.push() high_risk must be a boolean")
+            if high_risk:
+                args["highRisk"] = True
             result = _bridge_call(
                 "__workpool__",
                 args,
