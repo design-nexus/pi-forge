@@ -413,6 +413,26 @@ describe("WorkPool dispatch", () => {
 		expect(spawn).toHaveBeenCalledTimes(1);
 	});
 
+	it("starts a workpool worker when its declared capability is already active", async () => {
+		const session = makeSession();
+		session.routeGovernorTaskTransition = async () => ({
+			snapshot: undefined,
+			route: undefined,
+			capabilityRoutes: [
+				{ ...activeCapabilityRoute("browser"), selected: false, reason: "eval tool is already active" },
+			],
+		});
+		const spawn = vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "already-active-capability");
+		workpool.push(["inspect the page"], ["browser"]);
+		await finishPool(session, workpool);
+		expect(spawn).toHaveBeenCalledTimes(1);
+	});
+
 	it("waits for a deferred capability transition before starting a workpool worker", async () => {
 		const session = makeSession();
 		const idle = Promise.withResolvers<void>();

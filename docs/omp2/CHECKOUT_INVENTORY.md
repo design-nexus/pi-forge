@@ -492,3 +492,9 @@ Verification: 15 focused Prompt Engine tests and 63 Prompt Engine, task-spawn, a
 If applying structured task facts throws, the task tool now returns a preflight error instead of logging the failure and continuing without the declared capability or risk policy. Calls without Governor facts retain their existing path.
 
 Verification: 28 focused task-spawn tests passed; repository `bun check` and `git diff --check` passed. The regression makes the transition fail after a task declares `debugger` and verifies the worker executor is never called.
+
+## Already-active capabilities satisfy task requirements
+
+Task and workpool preflight now treat `state: "active"` as the success condition even when the router reports `selected: false` because the capability was already active. Unavailable, disabled, or merely discoverable routes still block worker startup.
+
+Verification: 51 focused task-spawn and workpool tests passed; repository `bun check` and `git diff --check` passed. Both task tool and eval workpool regressions confirm that an already-active declared capability allows execution.

@@ -392,7 +392,7 @@ export class WorkPool {
 	#capabilityRoutingError(routing: GovernorTaskTransitionResult | undefined): string | undefined {
 		if (this.#requiredCapabilities.size === 0) return undefined;
 		const routes = routing?.capabilityRoutes ?? [];
-		const failed = routes.filter(route => !route.selected || route.state !== "active");
+		const failed = routes.filter(route => route.state !== "active");
 		if (failed.length > 0) return failed.map(route => `${route.toolName}: ${route.reason}`).join("; ");
 		if (routes.length !== this.#requiredCapabilities.size) {
 			return "declared capabilities require adaptive.mode=auto and an available direct-tool route";

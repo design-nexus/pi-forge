@@ -250,6 +250,38 @@ describe("task spawn routing", () => {
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
+	it("starts a task when its declared capability is already active", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "async.enabled": false } });
+		session.routeGovernorTaskTransition = async () => ({
+			snapshot: undefined,
+			route: undefined,
+			capabilityRoutes: [
+				{
+					id: "debugger",
+					toolName: "debug",
+					state: "active",
+					selected: false,
+					source: "built-in",
+					estimatedGuidanceTokens: 0,
+					estimatedToolSchemaTokens: 0,
+					estimatedActivationTokens: 0,
+					reason: "debug tool is already active",
+				},
+			],
+		});
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-active-capability", {
+			agent: "task",
+			task: "Inspect the debugger output.",
+			capabilities: ["debugger"],
+		} as TaskParams);
+		expect(runSpy).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not start a task when Governor preflight throws", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
 		const runSpy = vi
