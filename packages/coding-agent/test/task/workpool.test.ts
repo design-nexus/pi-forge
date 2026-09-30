@@ -402,6 +402,19 @@ describe("WorkPool dispatch", () => {
 		expect(workpool.status().items).toMatchObject({ failed: 1, queued: 0, running: 0 });
 	});
 
+	it("does not start a high-risk workpool item when Governor transition throws", async () => {
+		const session = makeSession();
+		session.routeGovernorTaskTransition = async () => {
+			throw new Error("risk ledger is unavailable");
+		};
+		const spawn = vi.spyOn(structured, "runStructuredSubagent");
+		const workpool = pool(session, "governor-transition-error");
+		workpool.push(["audit authentication changes"], undefined, true);
+		await finishPool(session, workpool);
+		expect(spawn).not.toHaveBeenCalled();
+		expect(workpool.status().items).toMatchObject({ failed: 1, queued: 0, running: 0 });
+	});
+
 	it("routes declared capabilities before starting a workpool worker", async () => {
 		const session = makeSession();
 		const route = Promise.withResolvers<void>();

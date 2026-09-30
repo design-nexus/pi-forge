@@ -191,7 +191,7 @@ export class WorkPool {
 				})
 				.catch(error => {
 					this.#capabilityRouteError =
-						this.#requiredCapabilities.size > 0
+						this.#highRisk || this.#requiredCapabilities.size > 0
 							? error instanceof Error
 								? error.message
 								: String(error)

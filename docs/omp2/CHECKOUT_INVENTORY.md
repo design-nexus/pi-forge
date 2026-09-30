@@ -522,3 +522,9 @@ Verification: 30 focused task-spawn tests passed; repository `bun check` and `gi
 When a workpool has accumulated a high-risk declaration or required capabilities, a thrown Governor plan is retained as a pool error. Queued items fail before worker startup rather than dispatching with an unbounded default plan. Undeclared pools keep the fallback behavior.
 
 Verification: all 24 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The high-risk pool regression confirms the worker is not started and the queued item settles as failed.
+
+## High-risk workpool transitions fail closed
+
+A thrown Governor task transition now blocks high-risk-only eval workpools as well as pools with capability requirements. The prior catch path treated errors as fatal only when a capability was declared, which could otherwise drop the risk signal and launch work.
+
+Verification: all 25 focused workpool tests passed; repository `bun check` and `git diff --check` passed. The high-risk-only regression makes task-fact routing throw and verifies no worker starts.
