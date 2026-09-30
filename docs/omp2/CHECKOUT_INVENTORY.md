@@ -477,6 +477,12 @@ Verification: 34 focused workpool, bridge, and Python/JavaScript prelude tests p
 
 ## Deferred capability transition handling
 
-Task calls now stop before spawning when a required capability transition is queued until the active provider turn settles, and return a retry-after-turn response. Workpool dispatch retains that deferred state, waits for session idle, retries the transition, and starts workers only after all required capability routes are active. Missing routes fail the task or batch before worker execution.
+Task calls now stop before spawning when a required capability transition is deferred until the active provider turn settles, and return a retry-after-turn response. Workpool dispatch retains that deferred state, waits for session idle, retries the transition, and starts workers only after all required capability routes are active. Missing routes fail the task or batch before worker execution. The session does not apply a queued copy of a deferred transition behind the caller, so a task rejected for retry cannot leave tool routes activated as a side effect.
 
 Verification: 63 focused Prompt Engine, task-spawn, and workpool tests passed; repository `bun check` and `git diff --check` passed. Regression coverage confirms no task or workpool worker starts while routing is deferred or unavailable.
+
+## Deferred task transitions have no abandoned side effects
+
+When task facts arrive during an active provider turn, `routeGovernorTaskTransition` now reports the deferred state without scheduling an automatic post-turn mutation. Direct task calls return a retry response for any deferred Governor transition, including risk-only declarations. Workpool dispatch waits for idle and retries from its retained task facts before launching workers. This prevents a rejected direct call from activating tools later without a corresponding task execution.
+
+Verification: 63 focused Prompt Engine, task-spawn, and workpool tests passed; repository `bun check` and `git diff --check` passed. The task-spawn regression covers a deferred high-risk-only transition, and the workpool suite covers idle wait/retry and route-before-worker behavior.

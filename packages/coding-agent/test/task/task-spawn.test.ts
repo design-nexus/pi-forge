@@ -212,7 +212,7 @@ describe("task spawn routing", () => {
 		expect(plannedRisk).toBe(true);
 	});
 
-	it("does not start a task whose required capability transition is deferred", async () => {
+	it("does not start a task whose Governor transition is deferred", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
 		const runSpy = vi
 			.spyOn(executorModule, "runSubprocess")
@@ -227,7 +227,7 @@ describe("task spawn routing", () => {
 		const result = await tool.execute("tc-deferred", {
 			agent: "task",
 			task: "Use the debugger to inspect the failing route.",
-			capabilities: ["debugger"],
+			highRisk: true,
 		} as TaskParams);
 		expect(getFirstText(result)).toContain("Retry this task call after the turn settles");
 		expect(runSpy).not.toHaveBeenCalled();

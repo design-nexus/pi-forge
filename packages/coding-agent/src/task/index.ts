@@ -767,9 +767,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			};
 			try {
 				const routing = await this.session.routeGovernorTaskTransition?.({ facts }, "initial");
-				if (routing?.deferred && declaredCapabilities.length > 0) {
+				if (routing?.deferred) {
 					return createTaskModeError(
-						"Task capability routing is waiting for the current provider turn to finish. Retry this task call after the turn settles.",
+						"Task routing is waiting for the current provider turn to finish. Retry this task call after the turn settles.",
 					);
 				}
 				if (declaredCapabilities.length > 0) {
