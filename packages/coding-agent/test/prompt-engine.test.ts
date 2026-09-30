@@ -505,6 +505,26 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 			highRisk: false,
 			confidence: 0.9,
 		};
+		const unavailableSet = await session.routeGovernorTaskTransition(
+			{
+				facts: {
+					...facts,
+					tasks: [
+						{
+							id: "inspect",
+							dependsOn: [],
+							requiredCapabilities: ["debugger", "mcp__server__tool"],
+						},
+					],
+				},
+			},
+			"initial",
+		);
+		expect(unavailableSet.capabilityRoutes).toMatchObject([
+			{ id: "debugger", state: "discoverable", selected: true },
+			{ id: "mcp", state: "unavailable", selected: false },
+		]);
+		expect(session.getActiveToolNames()).not.toContain("debug");
 		session.agent.state.isStreaming = true;
 		const deferred = await session.routeGovernorTaskTransition({ facts }, "initial");
 		expect(deferred.deferred).toBe(true);

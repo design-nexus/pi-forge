@@ -2,6 +2,7 @@ import {
 	routeDelegationCapability,
 	routeToolCapability,
 	releaseStaleTaskCapabilityRoutes,
+	selectToolCapability,
 	type DelegationRouteDecision,
 	type ToolCapabilityRouteDecision,
 } from "../prompt-engine/capability-router";
@@ -59,17 +60,20 @@ export async function routeGovernorTaskTransition(
 		];
 		const retainedRouteKeys = requiredCapabilities.map(id => (isTaskMcpCapability(id) ? `mcp:${id}` : id));
 		await releaseStaleTaskCapabilityRoutes(session, new Set(retainedRouteKeys));
-		const capabilityRoutes: ToolCapabilityRouteDecision[] = [];
-		for (const id of requiredCapabilities) {
-			capabilityRoutes.push(
-				await routeToolCapability(session, {
-					id: isTaskMcpCapability(id) ? "mcp" : id,
-					...(isTaskMcpCapability(id) ? { toolName: id } : {}),
-					required: true,
-					signal: "task_transition",
-					contextBudgetTokens: snapshot.decision.contextBudgetTokens,
-				}),
-			);
+		const capabilityRequests = requiredCapabilities.map(id => ({
+			id: isTaskMcpCapability(id) ? ("mcp" as const) : id,
+			...(isTaskMcpCapability(id) ? { toolName: id } : {}),
+			required: true,
+			signal: "task_transition" as const,
+			contextBudgetTokens: snapshot.decision.contextBudgetTokens,
+		}));
+		const capabilityPreflight = capabilityRequests.map(request => selectToolCapability(session, request));
+		const canActivateAll = capabilityPreflight.every(decision => decision.state === "active" || decision.selected);
+		const capabilityRoutes: ToolCapabilityRouteDecision[] = canActivateAll ? [] : capabilityPreflight;
+		if (canActivateAll) {
+			for (const request of capabilityRequests) {
+				capabilityRoutes.push(await routeToolCapability(session, request));
+			}
 		}
 		if (snapshot?.decision.executionMode !== "parallel") {
 			await session.releaseGovernorTaskPromotion();
