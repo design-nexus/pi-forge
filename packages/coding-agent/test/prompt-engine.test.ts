@@ -505,6 +505,18 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 			highRisk: false,
 			confidence: 0.9,
 		};
+		cfgAdaptiveBands.set(settings, { trivial: { contextShare: 0 } });
+		const overBudget = await session.routeGovernorTaskTransition({ facts }, "initial");
+		expect(overBudget.capabilityRoutes).toMatchObject([
+			{
+				id: "debugger",
+				state: "discoverable",
+				selected: false,
+				reason: "activation exceeds context budget",
+			},
+		]);
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		cfgAdaptiveBands.set(settings, {});
 		const unavailableSet = await session.routeGovernorTaskTransition(
 			{
 				facts: {
