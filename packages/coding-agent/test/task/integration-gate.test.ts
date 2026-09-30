@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { IntegrationGate, integrationGateFailure, integrationOrder } from "../../src/task/integration-gate";
+import {
+	IntegrationGate,
+	IntegrationRepairBudget,
+	integrationGateFailure,
+	integrationOrder,
+} from "../../src/task/integration-gate";
 import type { SingleResult } from "@oh-my-pi/pi-tui/tools/task";
 
 function result(status: "valid" | "invalid", data?: unknown): SingleResult {
@@ -51,10 +56,76 @@ describe("task integration gate", () => {
 		expect(applied).toEqual(["remaining worker"]);
 	});
 
-	it("admits exactly one bounded reconciliation attempt", () => {
-		const gate = new IntegrationGate([0, 1]);
+	it("admits only the configured number of repair attempts", () => {
+		const gate = new IntegrationGate([0, 1], 2);
+		expect(gate.reserveReconciliationAttempt()).toBe(true);
 		expect(gate.reserveReconciliationAttempt()).toBe(true);
 		expect(gate.reserveReconciliationAttempt()).toBe(false);
+	});
+
+	it("stops repeated identical failures while allowing a converging failure set to continue", () => {
+		const budget = new IntegrationRepairBudget({
+			maxAttempts: 3,
+			maxTokens: 50_000,
+			maxCostUsd: 1,
+			maxWallTimeMs: 60_000,
+			stagnationLimit: 2,
+		});
+		const repeatedFailure = result("valid", {
+			status: "unresolved",
+			summary: "type check failed",
+			verificationLevel: "V1",
+			checks: [{ command: "bun check", status: "failed", result: "type mismatch at src/a.ts:12" }],
+			files: [],
+			repairAttempts: 0,
+		});
+		budget.record(repeatedFailure, "type check failed");
+		expect(budget.stopReason()).toBeUndefined();
+		budget.record(repeatedFailure, "type check failed");
+		expect(budget.stopReason()).toBe("repeated identical failure");
+
+		const converging = new IntegrationRepairBudget({
+			maxAttempts: 3,
+			maxTokens: 50_000,
+			maxCostUsd: 1,
+			maxWallTimeMs: 60_000,
+			stagnationLimit: 2,
+		});
+		const first = result("valid", {
+			status: "unresolved",
+			summary: "two checks failed",
+			verificationLevel: "V1",
+			checks: [
+				{ command: "bun check", status: "failed", result: "type mismatch" },
+				{ command: "bun test", status: "failed", result: "assertion mismatch" },
+			],
+			files: [],
+			repairAttempts: 0,
+		});
+		const second = result("valid", {
+			status: "unresolved",
+			summary: "one check failed",
+			verificationLevel: "V1",
+			checks: [{ command: "bun test", status: "failed", result: "assertion mismatch" }],
+			files: [],
+			repairAttempts: 0,
+		});
+		converging.record(first, "two checks failed");
+		expect(converging.record(second, "one check failed").progress).toBe("improved");
+		expect(converging.stopReason()).toBeUndefined();
+	});
+
+	it("stops before another attempt when cumulative token use reaches its budget", () => {
+		const budget = new IntegrationRepairBudget({
+			maxAttempts: 3,
+			maxTokens: 10,
+			maxCostUsd: 1,
+			maxWallTimeMs: 60_000,
+			stagnationLimit: 3,
+		});
+		budget.record({ ...result("valid"), tokens: 10 }, "check failed");
+		expect(budget.stopReason()).toBe("token budget exhausted");
+		expect(budget.totals).toMatchObject({ attempts: 1, tokens: 10 });
 	});
 
 	it("reports unresolved or malformed verification as a task failure", () => {

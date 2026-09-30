@@ -406,13 +406,14 @@ describe("task.batch spawning", () => {
 		AgentRegistry.resetGlobalForTests();
 	});
 
-	it("runs one structured integration gate after isolated batch workers and supplies their outcomes", async () => {
+	it("retries integration verification after a failed check and reports reconciled outcome", async () => {
 		mockDiscovery();
 		const seen: Array<{ id: string; assignment: string; outputSchema?: unknown }> = [];
 		vi.spyOn(structuredModule, "runStructuredSubagent").mockImplementation(async request => {
 			const id = request.identity?.id ?? request.identity?.label ?? "missing";
 			seen.push({ id, assignment: request.assignment, outputSchema: request.outputSchema });
 			const integrationGate = id === "Integration gate";
+			const retryingGate = integrationGate && seen.filter(item => item.id === id).length > 1;
 			const result = makeResult(id, {
 				index: request.index ?? 0,
 				task: request.assignment,
@@ -424,11 +425,16 @@ describe("task.batch spawning", () => {
 							mode: "strict",
 							status: "valid",
 							data: {
-								status: "verified",
-								summary: "Combined checks passed",
-								checks: [{ command: "bun test", status: "passed", result: "18 tests passed" }],
+								status: retryingGate ? "verified" : "unresolved",
+								summary: retryingGate ? "Combined checks passed" : "type check failed before repair",
+								verificationLevel: "V2",
+								checks: [
+									retryingGate
+										? { command: "bun test", status: "passed", result: "18 tests passed" }
+										: { command: "bun check", status: "failed", result: "one type error remains" },
+								],
 								files: [],
-								repairAttempts: 0,
+								repairAttempts: retryingGate ? 0 : 1,
 							},
 						}
 					: undefined,
@@ -467,6 +473,13 @@ describe("task.batch spawning", () => {
 					"async.enabled": false,
 					"task.batch": true,
 					"task.isolation.enabled": true,
+					"task.repairBudget": {
+						maxAttempts: 2,
+						maxTokens: 5_000,
+						maxCostUsd: 0.5,
+						maxWallTimeMs: 60_000,
+						stagnationLimit: 2,
+					},
 				},
 			}),
 		);
@@ -478,11 +491,16 @@ describe("task.batch spawning", () => {
 			],
 		} as TaskParams);
 
-		expect(seen.map(item => item.id)).toEqual(["Alpha", "Beta", "Integration gate"]);
+		expect(seen.map(item => item.id)).toEqual(["Alpha", "Beta", "Integration gate", "Integration gate"]);
 		expect(seen[2]?.assignment).toContain("Output from Alpha");
 		expect(seen[2]?.assignment).toContain("Output from Beta");
 		expect(seen[2]?.outputSchema).toBeDefined();
+		expect(seen[3]?.assignment).toContain("Attempt 1");
 		expect(result.details?.results.at(-1)?.structuredOutput?.status).toBe("valid");
+		expect(result.details?.results.at(-1)?.structuredOutput?.data).toMatchObject({
+			status: "reconciled",
+			repairAttempts: 1,
+		});
 		expect(getFirstText(result)).toContain("Integration gate");
 	});
 
