@@ -101,6 +101,44 @@ describe("task schema (single-spawn)", () => {
 		expect(disabledParsed instanceof type.errors).toBe(false);
 		expect(Reflect.has(disabledParsed as object, "capabilities")).toBe(false);
 	});
+
+	it("accepts a Governor high-risk flag at call and task-item scope", () => {
+		const schema = getTaskSchema({
+			isolationEnabled: false,
+			batchEnabled: true,
+			defaultAgent: "task",
+			governorEnabled: true,
+		});
+		const parsed = schema({
+			context: "Update the authentication flow",
+			highRisk: true,
+			tasks: [{ task: "Change token validation", highRisk: true }],
+		});
+		expect(parsed instanceof type.errors).toBe(false);
+		if (!(parsed instanceof type.errors)) {
+			expect(parsed).toMatchObject({ highRisk: true, tasks: [{ highRisk: true }] });
+		}
+		expect(
+			schema({
+				context: "Bad risk input",
+				highRisk: "high",
+				tasks: [{ task: "Change token validation" }],
+			}) instanceof type.errors,
+		).toBe(true);
+		const disabled = getTaskSchema({ isolationEnabled: false, batchEnabled: true, defaultAgent: "task" });
+		const disabledParsed = disabled({
+			context: "Ignored metadata",
+			highRisk: true,
+			tasks: [{ task: "Change token validation", highRisk: true }],
+		});
+		expect(disabledParsed instanceof type.errors).toBe(false);
+		if (!(disabledParsed instanceof type.errors)) {
+			expect(Reflect.has(disabledParsed as object, "highRisk")).toBe(false);
+			const parsedTasks = Reflect.get(disabledParsed as object, "tasks") as unknown[];
+			expect(parsedTasks).toHaveLength(1);
+			expect(Reflect.has(parsedTasks[0] as object, "highRisk")).toBe(false);
+		}
+	});
 });
 
 describe("task spawn validation", () => {

@@ -5836,12 +5836,12 @@ export class AgentSession implements SettingsScope {
 		return releaseStaleTaskCapabilityRoutes(this, new Set());
 	}
 
-	routeGovernorTaskBatch(taskCount: number): number | undefined {
-		return routeGovernorTaskBatch(this, taskCount);
+	routeGovernorTaskBatch(taskCount: number, highRisk = false): number | undefined {
+		return routeGovernorTaskBatch(this, taskCount, highRisk);
 	}
 
-	routeGovernorTaskPlan(taskCount: number) {
-		return routeGovernorTaskPlan(this, taskCount);
+	routeGovernorTaskPlan(taskCount: number, highRisk = false) {
+		return routeGovernorTaskPlan(this, taskCount, highRisk);
 	}
 
 	selectToolCapability(request: ToolCapabilityRouteRequest): ToolCapabilityRouteDecision {

@@ -185,6 +185,33 @@ describe("task spawn routing", () => {
 		expect(runSpy.mock.calls[0]?.[0].modelRoute).toBe("pool 1");
 	});
 
+	it("sends an item-level high-risk declaration into Governor task facts", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => makeResult(options.id ?? "?"));
+		const manager = createManager();
+		let observedRisk = false;
+		let plannedRisk = false;
+		const session = createSession({
+			manager,
+			settings: { "task.batch": true, "async.enabled": false },
+		});
+		session.routeGovernorTaskTransition = async request => {
+			observedRisk = request.facts.highRisk;
+			return { snapshot: undefined, route: undefined };
+		};
+		session.routeGovernorTaskPlan = (_count, highRisk) => {
+			plannedRisk = highRisk === true;
+			return undefined;
+		};
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-risk", {
+			context: "Update authentication behavior.",
+			tasks: [{ task: "Change token validation.", highRisk: true }, { task: "Update the token tests." }],
+		} as TaskParams);
+		expect(observedRisk).toBe(true);
+		expect(plannedRisk).toBe(true);
+	});
+
 	for (const { label, runnerOverrides, expectRetained } of [
 		{
 			label: "tells the parent an isolated agent cannot be messaged instead of calling it idle",

@@ -12,7 +12,11 @@ export interface GovernorTaskPlan {
 }
 
 /** Bind one concrete independent task batch to a Governor decision. */
-export function routeGovernorTaskPlan(session: AgentSession, taskCount: number): GovernorTaskPlan | undefined {
+export function routeGovernorTaskPlan(
+	session: AgentSession,
+	taskCount: number,
+	highRisk = false,
+): GovernorTaskPlan | undefined {
 	if (cfgAdaptiveMode.get(session.settings) !== "auto" || taskCount < 2) return undefined;
 	const snapshot = recordGovernorDecision(
 		session,
@@ -22,7 +26,7 @@ export function routeGovernorTaskPlan(session: AgentSession, taskCount: number):
 				taskCount,
 				independentTasks: taskCount,
 				dependencyEdges: 0,
-				highRisk: false,
+				highRisk,
 				confidence: 0.9,
 				runtime: recentGovernorToolSignals(session.sessionManager),
 			},
@@ -42,6 +46,6 @@ export function routeGovernorTaskPlan(session: AgentSession, taskCount: number):
 	};
 }
 
-export function routeGovernorTaskBatch(session: AgentSession, taskCount: number): number | undefined {
-	return routeGovernorTaskPlan(session, taskCount)?.workerCount;
+export function routeGovernorTaskBatch(session: AgentSession, taskCount: number, highRisk = false): number | undefined {
+	return routeGovernorTaskPlan(session, taskCount, highRisk)?.workerCount;
 }
