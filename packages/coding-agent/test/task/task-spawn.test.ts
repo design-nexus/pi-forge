@@ -243,10 +243,12 @@ describe("task spawn routing", () => {
 			.mockImplementation(async options => makeResult(options.id ?? "?"));
 		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
 		let routedCapabilities: readonly string[] = [];
+		let routedDependencies: readonly string[] | undefined;
 		const releaseRoutes = vi.fn(async () => {});
 		session.releaseGovernorTaskCapabilityRoutes = releaseRoutes;
 		session.routeGovernorTaskTransition = async request => {
 			routedCapabilities = request.facts.requiredCapabilities ?? [];
+			routedDependencies = request.facts.tasks?.[1]?.dependsOn;
 			expect(request.ownerId).toBe("task:tc-item-capabilities");
 			return {
 				snapshot: undefined,
@@ -282,11 +284,17 @@ describe("task spawn routing", () => {
 		await tool.execute("tc-item-capabilities", {
 			context: "Inspect browser behavior and the debugger output.",
 			tasks: [
-				{ task: "Inspect the browser trace.", capabilities: ["browser"] },
-				{ task: "Inspect the debugger output.", capabilities: ["debugger"] },
+				{ name: "BrowserTrace", task: "Inspect the browser trace.", capabilities: ["browser"] },
+				{
+					name: "DebuggerReview",
+					task: "Inspect the debugger output.",
+					capabilities: ["debugger"],
+					dependsOn: ["BrowserTrace"],
+				},
 			],
 		} as TaskParams);
 		expect(routedCapabilities).toEqual(["browser", "debugger"]);
+		expect(routedDependencies).toEqual(["BrowserTrace"]);
 		expect(runSpy).toHaveBeenCalledTimes(2);
 		expect(releaseRoutes).toHaveBeenCalledWith("task:tc-item-capabilities");
 	});
