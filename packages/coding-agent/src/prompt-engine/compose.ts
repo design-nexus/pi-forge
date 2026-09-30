@@ -145,17 +145,26 @@ export function composePrompt(
 			const active =
 				policy !== "disabled" &&
 				available &&
-				(policy === "always" || direct || (tool !== undefined && activatedTools.has(tool)));
+				(policy === "always" ||
+					(id === "browser"
+						? activatedTools.has(id)
+						: direct || (tool !== undefined && activatedTools.has(tool))));
 			const reason =
 				policy === "disabled"
 					? "disabled by policy"
 					: !available
 						? "tool or runtime unavailable"
 						: active
-							? direct
-								? "direct tool active"
-								: "configured always"
-							: "discoverable through xd://";
+							? id === "browser"
+								? policy === "always"
+									? "configured always"
+									: "browser runtime activated"
+								: direct
+									? "direct tool active"
+									: "configured always"
+							: id === "browser"
+								? "browser runtime available through eval"
+								: "discoverable through xd://";
 			return [id, { policy, active, available, reason }];
 		}),
 	) as PromptComposition["capabilities"];

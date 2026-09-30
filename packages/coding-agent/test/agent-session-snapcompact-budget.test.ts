@@ -25,10 +25,12 @@ import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { encodeRpcFrame, MAX_RPC_FRAME_BYTES } from "@oh-my-pi/pi-coding-agent/modes/rpc/rpc-frame";
-import { computeNonMessageTokens } from "@oh-my-pi/pi-tui/status-line/context-usage";
+import { computeNonMessageTokens, retainedNotesOverBudget } from "@oh-my-pi/pi-tui/status-line/context-usage";
 import { AgentSession, type AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
+import { computeSessionContextBreakdown } from "@oh-my-pi/pi-coding-agent/session/context-usage-runtime";
+import { buildContextReportText } from "@oh-my-pi/pi-coding-agent/slash-commands/helpers/context-report";
 import { CONTEXT_NOTES_ENTRY_TYPE, renderContextNotes } from "@oh-my-pi/pi-coding-agent/session/context-notes";
 import { convertToLlm, createCustomMessage } from "@oh-my-pi/pi-coding-agent/session/messages";
 import * as snapcompact from "@oh-my-pi/snapcompact";
@@ -161,9 +163,9 @@ describe("AgentSession snapcompact frame-budget sizing", () => {
 
 		await session.compact(undefined, { mode: "snapcompact" });
 		expect(renderContextNotes(sessionManager.getBranch())).not.toBe("");
-		expect(session.messages.map(message => (message.role === "custom" ? message.customType : message.role))).toContain(
-			CONTEXT_NOTES_ENTRY_TYPE,
-		);
+		expect(
+			session.messages.map(message => (message.role === "custom" ? message.customType : message.role)),
+		).toContain(CONTEXT_NOTES_ENTRY_TYPE);
 		expect(session.getContextBreakdown()?.retainedNotesTokens).toBeGreaterThan(0);
 
 		expect(compactSpy).toHaveBeenCalledTimes(1);
@@ -186,7 +188,9 @@ describe("AgentSession snapcompact frame-budget sizing", () => {
 		baseTokens += session.agent.tokenizer.countMessages(preparation.recentMessages);
 		const notes = renderContextNotes(branchEntries);
 		baseTokens += session.agent.tokenizer.countMessages(
-			convertToLlm([createCustomMessage(CONTEXT_NOTES_ENTRY_TYPE, notes, false, undefined, new Date().toISOString())]),
+			convertToLlm([
+				createCustomMessage(CONTEXT_NOTES_ENTRY_TYPE, notes, false, undefined, new Date().toISOString()),
+			]),
 		);
 		const shape = snapcompact.resolveShape(model);
 		const edgeCap = snapcompact.geometry(shape).capacity;
@@ -196,6 +200,11 @@ describe("AgentSession snapcompact frame-budget sizing", () => {
 		const worstCaseEdgeTokens = Math.ceil((2 * edgeCap) / 4) + 2000;
 		const fullProjection = baseTokens + (maxFrames ?? 0) * snapcompact.FRAME_TOKEN_ESTIMATE + worstCaseEdgeTokens;
 		expect(fullProjection).toBeLessThanOrEqual(budget);
+		session.agent.setModel({ ...model, contextWindow: 8_192 });
+		expect(retainedNotesOverBudget(computeSessionContextBreakdown(session))?.tokens).toBeGreaterThan(0);
+		expect(buildContextReportText({ session } as never)).toContain(
+			"Retained notes exceed this model's notebook budget",
+		);
 	});
 
 	it("skips snapcompact when the kept history and rebuilt notebook exceed the context budget", async () => {

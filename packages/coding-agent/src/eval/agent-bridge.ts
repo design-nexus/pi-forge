@@ -2,6 +2,7 @@
  * Host-side handler for the eval `agent()` helper.
  */
 import { type } from "@oh-my-pi/omptype";
+import { logger } from "@oh-my-pi/pi-utils";
 import { MAIN_AGENT_ID } from "../registry/agent-registry";
 import { createEvalCustomTools, describeEvalTools } from "../task/eval-tools";
 import {
@@ -18,6 +19,8 @@ import type { NestedRepoPatch } from "@oh-my-pi/pi-tui/tools/task";
 import type { ToolSession } from "../tools";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import type { JsStatusEvent } from "./js/shared/types";
+import { Semaphore, sessionTaskSemaphore } from "../task/parallel";
+import { cfgTaskMaxConcurrency } from "../task/settings";
 
 /** Synthetic bridge name reserved for the `agent()` helper across both runtimes. */
 export const EVAL_AGENT_BRIDGE_NAME = "__agent__";
@@ -83,6 +86,14 @@ export interface EvalAgentResult {
 		isolationSummary?: string;
 	};
 }
+
+interface EvalAgentSlots {
+	governorSemaphore: Semaphore;
+	outstanding: number;
+	governorLimit?: number;
+}
+
+const evalAgentSlots = new WeakMap<ToolSession, EvalAgentSlots>();
 
 function parseAgentArgs(args: unknown): EvalAgentArgs {
 	const result = agentArgsSchema(args);
@@ -207,45 +218,80 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		}
 		const id = await reserveStructuredSubagentId(options.session, { label: parsed.label });
 		const ownerId = options.session.getAgentId?.() ?? MAIN_AGENT_ID;
-		manager.register(
-			"task",
-			id,
-			async ({ signal, reportProgress, markRunning }) => {
-				markRunning();
-				let latestProgress: AgentProgress | undefined;
-				try {
-					const execution = await runStructuredSubagent({
-						session: options.session,
-						invocationKind: "eval",
-						assignment: parsed.prompt,
-						...(parsed.agent !== undefined ? { agent: parsed.agent } : {}),
-						...(Object.hasOwn(parsed, "schema") ? { outputSchema: parsed.schema } : {}),
-						...(parsed.schemaMode !== undefined ? { schemaMode: parsed.schemaMode } : {}),
-						identity: { id, label: parsed.label },
-						...(isolation ? { isolation } : {}),
-						...(customTools ? { customTools } : {}),
-						retainArtifacts: true,
-						keepAlive: true,
-						shareEvalSession: false,
-						signal,
-						onProgress: progress => {
-							latestProgress = progress;
-							void reportProgress(`Running agent ${progress.id}...`, { progress: [progress] });
-						},
-					});
-					const result = await buildEvalAgentResult(execution);
-					await reportProgress(result.text, {
-						progress: latestProgress ? [latestProgress] : [],
-						evalResult: result,
-					});
-					return result.text;
-				} catch (error) {
-					if (error instanceof StructuredSubagentError) throw new ToolError(error.message);
-					throw error;
-				}
-			},
-			{ id, agentId: id, ownerId },
-		);
+		let slots = evalAgentSlots.get(options.session);
+		if (!slots) {
+			slots = { governorSemaphore: new Semaphore(0), outstanding: 0 };
+			evalAgentSlots.set(options.session, slots);
+		}
+		slots.outstanding++;
+		try {
+			slots.governorLimit = options.session.routeGovernorTaskBatch?.(slots.outstanding);
+		} catch (error) {
+			logger.warn("Adaptive eval agent routing failed", { error: String(error) });
+			slots.governorLimit = undefined;
+		}
+		slots.governorSemaphore.resize(slots.governorLimit ?? 0);
+		try {
+			manager.register(
+				"task",
+				id,
+				async ({ signal, reportProgress, markRunning }) => {
+					let governorAcquired = false;
+					let sessionAcquired = false;
+					let latestProgress: AgentProgress | undefined;
+					try {
+						await slots.governorSemaphore.acquire(signal);
+						governorAcquired = true;
+						await sessionTaskSemaphore(
+							options.session,
+							cfgTaskMaxConcurrency.get(options.session.settings),
+						).acquire(signal);
+						sessionAcquired = true;
+						markRunning();
+						const execution = await runStructuredSubagent({
+							session: options.session,
+							invocationKind: "eval",
+							assignment: parsed.prompt,
+							...(parsed.agent !== undefined ? { agent: parsed.agent } : {}),
+							...(Object.hasOwn(parsed, "schema") ? { outputSchema: parsed.schema } : {}),
+							...(parsed.schemaMode !== undefined ? { schemaMode: parsed.schemaMode } : {}),
+							identity: { id, label: parsed.label },
+							...(isolation ? { isolation } : {}),
+							...(customTools ? { customTools } : {}),
+							retainArtifacts: true,
+							keepAlive: true,
+							shareEvalSession: false,
+							signal,
+							onProgress: progress => {
+								latestProgress = progress;
+								void reportProgress(`Running agent ${progress.id}...`, { progress: [progress] });
+							},
+						});
+						const result = await buildEvalAgentResult(execution);
+						await reportProgress(result.text, {
+							progress: latestProgress ? [latestProgress] : [],
+							evalResult: result,
+						});
+						return result.text;
+					} catch (error) {
+						if (error instanceof StructuredSubagentError) throw new ToolError(error.message);
+						throw error;
+					} finally {
+						slots.outstanding--;
+						if (sessionAcquired)
+							sessionTaskSemaphore(
+								options.session,
+								cfgTaskMaxConcurrency.get(options.session.settings),
+							).release();
+						if (governorAcquired) slots.governorSemaphore.release();
+					}
+				},
+				{ id, agentId: id, ownerId, queued: true },
+			);
+		} catch (error) {
+			slots.outstanding--;
+			throw error;
+		}
 		return { id, agent: policy.agentName };
 	} catch (error) {
 		if (error instanceof StructuredSubagentError) throw new ToolError(error.message);

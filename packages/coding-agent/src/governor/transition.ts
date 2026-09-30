@@ -1,4 +1,10 @@
-import { routeDelegationCapability, type DelegationRouteDecision } from "../prompt-engine/capability-router";
+import {
+	routeDelegationCapability,
+	routeToolCapability,
+	releaseStaleTaskCapabilityRoutes,
+	type DelegationRouteDecision,
+	type ToolCapabilityRouteDecision,
+} from "../prompt-engine/capability-router";
 import type { AgentSession } from "../session/agent-session";
 import { recordGovernorDecision } from "./ledger";
 import { recentGovernorToolSignals } from "./runtime-signals";
@@ -15,6 +21,7 @@ export interface GovernorTaskTransitionRequest {
 export interface GovernorTaskTransitionResult {
 	snapshot: GovernorSnapshot | undefined;
 	route: DelegationRouteDecision | undefined;
+	capabilityRoutes?: ToolCapabilityRouteDecision[];
 }
 
 /** Apply a structured task transition through the existing task-tool router. */
@@ -34,12 +41,34 @@ export async function routeGovernorTaskTransition(
 			trigger,
 			"task_graph",
 		);
-		if (mode !== "auto") {
+		if (mode !== "auto" || !snapshot) {
 			return { snapshot, route: undefined };
+		}
+		const requiredCapabilities = [
+			...new Set([
+				...(request.facts.requiredCapabilities ?? []),
+				...request.facts.tasks.flatMap(task => task.requiredCapabilities ?? []),
+			]),
+		].filter(id => id !== "subagents");
+		await releaseStaleTaskCapabilityRoutes(session, new Set(requiredCapabilities));
+		const capabilityRoutes: ToolCapabilityRouteDecision[] = [];
+		for (const id of requiredCapabilities) {
+			capabilityRoutes.push(
+				await routeToolCapability(session, {
+					id,
+					required: true,
+					signal: "task_transition",
+					contextBudgetTokens: snapshot.decision.contextBudgetTokens,
+				}),
+			);
 		}
 		if (snapshot?.decision.executionMode !== "parallel") {
 			await session.releaseGovernorTaskPromotion();
-			return { snapshot, route: undefined };
+			return {
+				snapshot,
+				route: undefined,
+				...(capabilityRoutes.length > 0 ? { capabilityRoutes } : {}),
+			};
 		}
 		const wasMounted = session.getMountedXdevToolNames().includes("task");
 		const route = await routeDelegationCapability(session, {
@@ -48,6 +77,10 @@ export async function routeGovernorTaskTransition(
 			contextBudgetTokens: snapshot.decision.contextBudgetTokens,
 		});
 		if (route.selected && route.state === "active") session.markGovernorTaskPromotion(wasMounted);
-		return { snapshot, route };
+		return {
+			snapshot,
+			route,
+			...(capabilityRoutes.length > 0 ? { capabilityRoutes } : {}),
+		};
 	});
 }

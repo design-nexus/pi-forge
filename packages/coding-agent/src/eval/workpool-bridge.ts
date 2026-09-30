@@ -5,6 +5,7 @@ import { type WorkPoolPeekResult, type WorkPoolStatus, WorkPoolRegistry } from "
 import type { ToolSession } from "../tools";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import type { JsStatusEvent } from "./js/shared/types";
+import { TASK_TOOL_CAPABILITY_IDS } from "../prompt-engine/capability-catalog";
 
 /** Synthetic bridge name reserved for eval work pools. */
 export const EVAL_WORKPOOL_BRIDGE_NAME = "__workpool__";
@@ -53,6 +54,20 @@ function optionalTools(args: Record<string, unknown>): string[] | undefined {
 		throw new ToolError("workpool tools must be an array of non-empty strings");
 	}
 	return args.tools;
+}
+
+function optionalCapabilities(args: Record<string, unknown>): (typeof TASK_TOOL_CAPABILITY_IDS)[number][] | undefined {
+	if (args.capabilities === undefined) return undefined;
+	if (
+		!Array.isArray(args.capabilities) ||
+		!args.capabilities.every(
+			(value): value is (typeof TASK_TOOL_CAPABILITY_IDS)[number] =>
+				typeof value === "string" && TASK_TOOL_CAPABILITY_IDS.some(id => id === value),
+		)
+	) {
+		throw new ToolError("workpool capabilities must use routeable direct-tool capability names");
+	}
+	return args.capabilities;
 }
 
 function getPool(options: EvalWorkpoolBridgeOptions, name: string) {
@@ -111,7 +126,8 @@ export async function runEvalWorkpool(args: unknown, options: EvalWorkpoolBridge
 		if (!Array.isArray(record.items) || !record.items.every(item => typeof item === "string")) {
 			throw new ToolError("workpool push requires an items string array");
 		}
-		const ids = pool.push(record.items);
+		const capabilities = optionalCapabilities(record);
+		const ids = pool.push(record.items, capabilities);
 		options.emitStatus?.({ op: "workpool", action: "push", pool: name, count: ids.length });
 		return { ids };
 	}

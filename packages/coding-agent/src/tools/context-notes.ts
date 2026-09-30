@@ -1,4 +1,5 @@
 import { type } from "@oh-my-pi/omptype";
+import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import type {
 	AgentTool,
 	AgentToolContext,
@@ -8,15 +9,22 @@ import type {
 } from "@oh-my-pi/pi-agent-core";
 import {
 	CONTEXT_NOTES_ENTRY_TYPE,
+	contextNotesTokenBudget,
 	getContextNotes,
+	isContextNotesFindings,
 	isContextNotesSourceIds,
 	MAX_CONTEXT_NOTES_BYTES,
+	renderContextFindingsContent,
 	renderContextNotes,
+	renderContextNotesContent,
 	type ContextNotesEntry,
+	type ContextNotesFinding,
+	type ContextNotesRetention,
 } from "../session/context-notes";
 import contextNotesDescription from "../prompts/tools/context-notes.md" with { type: "text" };
 import newContextDescription from "../prompts/tools/new-context.md" with { type: "text" };
 import type { ToolSession } from ".";
+import { convertToLlm, createCustomMessage } from "../session/messages";
 import { throwIfAborted } from "./tool-errors";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 
@@ -25,6 +33,16 @@ import { cfgCompactionExperimentalContextManagement } from "../session/context-s
 const contextNotesSchema = type({
 	"text?": type("string").describe("Entire replacement notebook text. Omit to read; use an empty string to clear."),
 	"sourceEntryIds?": type("string").array().describe("Active-branch entry IDs supporting this replacement notebook."),
+	"retention?": type("'pinned' | 'window'").describe(
+		"Pinned notes survive compaction; window notes expire at the next compaction.",
+	),
+	"findings?": type({
+		text: "string>0",
+		retention: "'pinned' | 'window'",
+		"sourceEntryIds?": type("string").array(),
+	})
+		.array()
+		.describe("Replacement findings with individual retention and optional source entries."),
 });
 
 const newContextSchema = type({});
@@ -37,6 +55,8 @@ export interface ContextNotesToolDetails {
 	text: string;
 	bytes?: number;
 	sourceEntryIds?: string[];
+	retention?: ContextNotesRetention;
+	findings?: ContextNotesFinding[];
 }
 
 export interface NewContextToolDetails {
@@ -83,18 +103,40 @@ function createIfSupported<T extends ContextNotesTool | NewContextTool>(
 export class ContextNotesTool implements AgentTool<typeof contextNotesSchema, ContextNotesToolDetails> {
 	readonly name = "context_notes";
 	readonly approval = (args: unknown): ToolApprovalDecision =>
-		args !== null && typeof args === "object" && Object.hasOwn(args, "text") ? "write" : "read";
+		args !== null && typeof args === "object" && (Object.hasOwn(args, "text") || Object.hasOwn(args, "findings"))
+			? "write"
+			: "read";
 	readonly label = "Context Notes";
 	readonly description = contextNotesDescription;
 	readonly parameters = contextNotesSchema;
 	readonly strict = true;
 	readonly loadMode = "essential" as const;
-	readonly summary = "Read or replace persistent experimental context notes";
+	readonly summary = "Read or replace experimental context notes";
 
 	constructor(private readonly session: ToolSession) {}
 
 	static createIf(session: ToolSession): ContextNotesTool | null {
 		return createIfSupported(session, ContextNotesTool);
+	}
+
+	#assertContextBudget(rendered: string): void {
+		if (rendered.length === 0) return;
+		const model = this.session.getActiveModel?.();
+		const limit = contextNotesTokenBudget(model?.contextWindow ?? 0);
+		if (!model || limit === undefined) return;
+		const message = createCustomMessage(
+			CONTEXT_NOTES_ENTRY_TYPE,
+			rendered,
+			false,
+			undefined,
+			new Date().toISOString(),
+		);
+		const tokens = new Tokenizer(model).countMessages(convertToLlm([message]));
+		if (tokens > limit) {
+			throw new ToolError(
+				`Context notes would use ${tokens} tokens on the active model; the notebook limit is ${limit} tokens. Shorten the notebook and use history://current/entry/<id> to recover details.`,
+			);
+		}
 	}
 
 	async execute(
@@ -109,17 +151,22 @@ export class ContextNotesTool implements AgentTool<typeof contextNotesSchema, Co
 		if (params.text !== undefined && typeof params.text !== "string") {
 			throw new ToolError("context_notes text must be a string.");
 		}
-		if (params.text === undefined) {
+		if (params.retention !== undefined && params.retention !== "pinned" && params.retention !== "window") {
+			throw new ToolError("context_notes retention must be pinned or window.");
+		}
+		if (params.text === undefined && params.findings === undefined) {
 			if (params.sourceEntryIds !== undefined) throw new ToolError("sourceEntryIds requires replacement text.");
+			if (params.retention !== undefined) throw new ToolError("retention requires replacement text.");
 			const branch = manager.getBranch();
 			const notes = getContextNotes(branch);
 			return {
 				content: [
 					{
 						type: "text",
-						text: notes?.sourceEntryIds
-							? renderContextNotes(branch)
-							: (notes?.text ?? "No context notes are stored for this session branch."),
+						text:
+							notes?.sourceEntryIds || notes?.findings
+								? renderContextNotes(branch)
+								: (notes?.text ?? "No context notes are stored for this session branch."),
 					},
 				],
 				details: notes
@@ -127,28 +174,62 @@ export class ContextNotesTool implements AgentTool<typeof contextNotesSchema, Co
 							entryId: notes.entryId,
 							text: notes.text,
 							...(notes.sourceEntryIds ? { sourceEntryIds: notes.sourceEntryIds } : {}),
+							...(notes.retention ? { retention: notes.retention } : {}),
+							...(notes.findings ? { findings: notes.findings } : {}),
 						}
 					: { entryId: undefined, text: "" },
 			};
 		}
+		if (params.text !== undefined && params.findings !== undefined)
+			throw new ToolError("Supply either text or findings, not both.");
+		if (params.findings !== undefined && (params.sourceEntryIds !== undefined || params.retention !== undefined))
+			throw new ToolError("Use each finding's retention and sourceEntryIds when supplying findings.");
+		if (params.findings !== undefined && !Array.isArray(params.findings))
+			throw new ToolError("Context findings must be an array.");
+		const findings = params.findings?.map(finding => {
+			if (
+				finding === null ||
+				typeof finding !== "object" ||
+				Array.isArray(finding) ||
+				(finding.sourceEntryIds !== undefined && !isContextNotesSourceIds(finding.sourceEntryIds))
+			)
+				throw new ToolError("Each context finding needs valid source entry IDs.");
+			return {
+				text: finding.text,
+				retention: finding.retention,
+				sourceEntryIds: [...(finding.sourceEntryIds ?? [])],
+			};
+		});
+		if (findings !== undefined && !isContextNotesFindings(findings))
+			throw new ToolError(
+				"Context findings must contain 1–32 nonempty items within the 16 KiB text and 16 source-reference limits.",
+			);
 		const sourceEntryIds = params.sourceEntryIds;
+		const retention = params.retention ?? "pinned";
 		if (sourceEntryIds !== undefined && !isContextNotesSourceIds(sourceEntryIds))
 			throw new ToolError("Context note sources must be distinct active-branch entry IDs within the source limit.");
 		if (params.text === "" && sourceEntryIds && sourceEntryIds.length > 0)
 			throw new ToolError("Clearing context notes cannot retain source entry IDs.");
 
-		const bytes = Buffer.byteLength(params.text, "utf8");
+		const bytes = findings
+			? findings.reduce((total, finding) => total + Buffer.byteLength(finding.text, "utf8"), 0)
+			: Buffer.byteLength(params.text ?? "", "utf8");
 		if (bytes > MAX_CONTEXT_NOTES_BYTES) {
 			throw new ToolError(
 				`Context notes are ${bytes} bytes; the limit is ${MAX_CONTEXT_NOTES_BYTES} UTF-8 bytes. Shorten the notebook and use history://current/full to recover raw detail.`,
 			);
 		}
+		const rendered = findings
+			? renderContextFindingsContent(findings)
+			: renderContextNotesContent(params.text ?? "", sourceEntryIds, retention);
+		this.#assertContextBudget(rendered);
 
 		const ownerId = this.session.getSessionId?.();
 		const branch = manager.getBranch();
 		const branchLeafId = branch.at(-1)?.id;
 		const branchIds = new Set(branch.map(entry => entry.id));
-		if (sourceEntryIds?.some(id => !branchIds.has(id))) {
+		const allSourceIds = findings ? findings.flatMap(finding => finding.sourceEntryIds) : (sourceEntryIds ?? []);
+		if (allSourceIds.some(id => !branchIds.has(id))) {
 			throw new ToolError("Context note source entry is not on the active session branch.");
 		}
 		await manager.ensureOnDisk();
@@ -164,20 +245,31 @@ export class ContextNotesTool implements AgentTool<typeof contextNotesSchema, Co
 		) {
 			throw new ToolError("Experimental context notes were not saved because the session branch changed.");
 		}
+		this.#assertContextBudget(rendered);
 
-		const data: ContextNotesEntry =
-			sourceEntryIds && sourceEntryIds.length > 0
-				? { version: 2, text: params.text, sourceEntryIds: [...sourceEntryIds] }
-				: { version: 1, text: params.text };
+		const data: ContextNotesEntry = findings
+			? { version: 4, findings }
+			: params.text !== "" && retention === "window"
+				? { version: 3, text: params.text ?? "", sourceEntryIds: [...(sourceEntryIds ?? [])], retention }
+				: sourceEntryIds && sourceEntryIds.length > 0
+					? { version: 2, text: params.text ?? "", sourceEntryIds: [...sourceEntryIds] }
+					: { version: 1, text: params.text ?? "" };
 		const entryId = manager.appendCustomEntry(CONTEXT_NOTES_ENTRY_TYPE, data);
 		await manager.flush();
 		return {
 			content: [{ type: "text", text: "Context notes saved." }],
 			details: {
 				entryId,
-				text: params.text,
+				text: params.text ?? findings?.map(finding => finding.text).join("\n") ?? "",
 				bytes,
 				...(data.version === 2 ? { sourceEntryIds: data.sourceEntryIds } : {}),
+				...(data.version === 3
+					? {
+							retention: data.retention,
+							...(data.sourceEntryIds.length > 0 ? { sourceEntryIds: data.sourceEntryIds } : {}),
+						}
+					: {}),
+				...(data.version === 4 ? { findings: data.findings } : {}),
 			},
 		};
 	}

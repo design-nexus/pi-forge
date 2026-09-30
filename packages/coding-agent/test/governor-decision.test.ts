@@ -137,6 +137,31 @@ it("raises prolonged exploration once and de-escalates when the progress signal 
 	).toBe("trivial");
 });
 
+it("raises a subsequent decision after a completed task exceeds the duration threshold", () => {
+	const signals = decisionInput().signals;
+	const normal = decideGovernor(
+		decisionInput({
+			signals: {
+				...signals,
+				fileCount: 2,
+				runtime: { completedCalls: 1, explorationCalls: 0, failedCalls: 0, longestTaskDurationMs: 121_000 },
+			},
+		}),
+	);
+	const complex = decideGovernor(
+		decisionInput({
+			signals: {
+				...signals,
+				fileCount: 2,
+				runtime: { completedCalls: 1, explorationCalls: 0, failedCalls: 0, longestTaskDurationMs: 241_000 },
+			},
+		}),
+	);
+	expect(normal).toMatchObject({ band: "normal" });
+	expect(complex).toMatchObject({ band: "complex" });
+	expect(complex?.evidence).toContain("a long-running task raised the effort band");
+});
+
 it("honors explicit band and role while clamping effort and workers to OMP ceilings", () => {
 	const requestedModel = { ...model, id: "resolved-role-model" };
 	const decision = decideGovernor(

@@ -11,6 +11,7 @@ import * as executor from "../../src/task/executor";
 import type { EffectiveSubagentPolicy, StructuredSubagentResult } from "../../src/task/structured-subagent";
 import * as structured from "../../src/task/structured-subagent";
 import { cfgTaskMaxConcurrency } from "../../src/task/settings";
+import { sessionTaskSemaphore } from "../../src/task/parallel";
 import type { AgentDefinition } from "../../src/task/types";
 import type { SingleResult } from "@oh-my-pi/pi-tui/tools/task";
 import { WorkPool, WorkPoolRegistry } from "../../src/task/workpool";
@@ -45,8 +46,9 @@ function makeSession(
 	concurrency: number | null = 2,
 	freshAgents = false,
 	deliveries?: Array<{ id: string; text: string }>,
+	retentionMs = 0,
 ): ToolSession {
-	const manager = new AsyncJobManager({ retentionMs: 0 });
+	const manager = new AsyncJobManager({ retentionMs });
 	if (deliveries) {
 		manager.registerDeliverySink("Main", (id, text) => {
 			deliveries.push({ id, text });
@@ -152,6 +154,78 @@ afterEach(async () => {
 });
 
 describe("WorkPool dispatch", () => {
+	it("queues a workpool turn while another session task holds the only slot", async () => {
+		const session = makeSession([], 1);
+		const semaphore = sessionTaskSemaphore(session, 1);
+		await semaphore.acquire();
+		let started = false;
+		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			started = true;
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session);
+		workpool.push(["one"]);
+		try {
+			await until(() => workpool.batches.length === 1);
+			const batch = workpool.batches[0]!;
+			expect(session.asyncJobManager?.getJob(batch.jobId)?.queued).toBe(true);
+			expect(workpool.status().items).toMatchObject({ queued: 1, running: 0 });
+			expect(workpool.peek().batches[0]?.status).toBe("queued");
+			expect(started).toBe(false);
+		} finally {
+			semaphore.release();
+		}
+		await finishPool(session, workpool);
+		expect(started).toBe(true);
+		expect(workpool.items[0]?.status).toBe("completed");
+	});
+
+	it("close cancels a slot-waiting turn and reports its item as dropped", async () => {
+		const session = makeSession([], 1);
+		const semaphore = sessionTaskSemaphore(session, 1);
+		await semaphore.acquire();
+		const runSpy = vi.spyOn(structured, "runStructuredSubagent");
+		const workpool = pool(session, "close-waiting");
+		workpool.push(["one"]);
+		try {
+			await until(() => workpool.batches.length === 1);
+			expect(workpool.close()).toEqual({ dropped: ["close-waiting#1"] });
+			await finishPool(session, workpool);
+			expect(workpool.items[0]?.status).toBe("cancelled");
+			expect(workpool.peek().batches[0]?.status).toBe("cancelled");
+			expect(runSpy).not.toHaveBeenCalled();
+		} finally {
+			semaphore.release();
+		}
+	});
+
+	it("cancels a workpool turn waiting for a session slot without starting its worker", async () => {
+		const session = makeSession([], 1);
+		const semaphore = sessionTaskSemaphore(session, 1);
+		await semaphore.acquire();
+		const runSpy = vi.spyOn(structured, "runStructuredSubagent");
+		const workpool = pool(session, "cancel-queued");
+		workpool.push(["one"]);
+		try {
+			await until(() => workpool.batches.length === 1);
+			const batch = workpool.batches[0]!;
+			const batchJob = session.asyncJobManager?.getJob(batch.jobId);
+			expect(batchJob?.queued).toBe(true);
+			expect(session.asyncJobManager?.cancel(workpool.name, { ownerId: "Main" })).toBe(true);
+			await until(() => batch.status === "cancelled");
+			await finishPool(session, workpool);
+			expect(workpool.items[0]?.status).toBe("cancelled");
+			expect(batchJob?.status).toBe("cancelled");
+			expect(runSpy).not.toHaveBeenCalled();
+		} finally {
+			semaphore.release();
+		}
+		await semaphore.acquire(AbortSignal.timeout(200));
+		semaphore.release();
+	});
+
 	it("renders the flat workpool yield contract after shared context", () => {
 		const rendered = prompt.render(subagentSystemPrompt, {
 			agent: "Worker",
@@ -225,6 +299,45 @@ describe("WorkPool dispatch", () => {
 		expect(routedCounts).toEqual([4, 5]);
 		gate.resolve();
 		await finishPool(session, workpool);
+	});
+
+	it("passes the selected Governor effort to a newly spawned worker", async () => {
+		const session = makeSession();
+		session.routeGovernorTaskPlan = () => ({ workerCount: 1, effort: "hi" });
+		let receivedEffort: string | undefined;
+		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			receivedEffort = request.effort;
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "governor-effort");
+		workpool.push(["one"]);
+		await finishPool(session, workpool);
+		expect(receivedEffort).toBe("hi");
+	});
+
+	it("routes explicitly declared workpool capabilities through task facts", async () => {
+		const session = makeSession();
+		let routedFacts: unknown;
+		session.routeGovernorTaskTransition = async request => {
+			routedFacts = request.facts;
+			return { snapshot: undefined, route: undefined };
+		};
+		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "governor-capability");
+		workpool.push(["inspect the parser", "check its callers"], ["lsp"]);
+		await finishPool(session, workpool);
+		expect(routedFacts).toMatchObject({
+			tasks: [
+				{ dependsOn: [], requiredCapabilities: ["lsp"] },
+				{ dependsOn: [], requiredCapabilities: ["lsp"] },
+			],
+		});
 	});
 
 	it("hands a queued batch to a follow-up turn after the first turn settles", async () => {
@@ -366,11 +479,12 @@ describe("WorkPool dispatch", () => {
 	});
 
 	it("reports failed batches on a drained aggregate job", async () => {
-		const session = makeSession([], 1);
+		const cards: CustomMessage[] = [];
+		const session = makeSession(cards, 1, false, undefined, 5_000);
 		const manager = session.asyncJobManager!;
-		let delivered: { status: string; failedBatches: unknown } | undefined;
-		manager.registerDeliverySink("Main", (_id, _text, job) => {
-			if (job) delivered = { status: job.status, failedBatches: job.latestDetails?.workpoolFailedBatches };
+		let delivered: { status: string; failedBatches: unknown; text: string } | undefined;
+		manager.registerDeliverySink("Main", (_id, text, job) => {
+			if (job) delivered = { status: job.status, failedBatches: job.latestDetails?.workpoolFailedBatches, text };
 		});
 		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
 			const id = request.identity?.id ?? "missing";
@@ -381,8 +495,11 @@ describe("WorkPool dispatch", () => {
 		const workpool = pool(session, "failed-pool");
 		workpool.push(["one"]);
 		await finishPool(session, workpool);
+		expect(manager.getJob(workpool.name)?.status).toBe("failed");
 		await manager.drainDeliveries({ filter: { ownerId: "Main" } });
-		expect(delivered).toEqual({ status: "completed", failedBatches: 1 });
+		expect(delivered).toMatchObject({ status: "failed", failedBatches: 1 });
+		expect(delivered?.text).toContain("drained with 1 failed item(s)");
+		expect(cards.map(cardMode)).toContain("failed");
 		expect(workpool.status().items.failed).toBe(1);
 	});
 
@@ -459,7 +576,9 @@ describe("WorkPool dispatch", () => {
 	});
 
 	it("close drops queued items but lets the in-flight turn finish", async () => {
-		const session = makeSession([], 1);
+		const cards: CustomMessage[] = [];
+		const deliveries: Array<{ id: string; text: string }> = [];
+		const session = makeSession(cards, 1, false, deliveries);
 		const first = Promise.withResolvers<void>();
 		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
 			await first.promise;
@@ -474,6 +593,9 @@ describe("WorkPool dispatch", () => {
 		expect(workpool.items[1]?.status).toBe("cancelled");
 		first.resolve();
 		await finishPool(session, workpool);
+		await session.asyncJobManager?.drainDeliveries({ filter: { ownerId: "Main" } });
 		expect(workpool.peek().pending).toBe(0);
+		expect(deliveries[0]?.text).toContain("drained with 1 cancelled item(s)");
+		expect(cards.map(cardMode)).toContain("cancelled");
 	});
 });

@@ -257,7 +257,7 @@ Verification: the focused Governor session test covers low-to-high selection and
 
 ## Workpool batch failure feedback
 
-A drained workpool can complete its aggregate background job while one or more worker batches failed. It now reports the failed-batch count in the job's settled details. The existing async-result delivery persists that typed count, and the Governor combines it with other recent task-worker failures without double-counting an aggregate job that itself failed. The count is bounded before it enters the runtime signal. The workpool's completed aggregate status and its per-item result text remain available to callers.
+A drained workpool previously completed its aggregate background job while one or more worker batches failed. It reports the failed-batch count in the job's settled details. The existing async-result delivery persists that typed count, and the Governor combines it with other recent task-worker failures without double-counting an aggregate job that itself failed. The count is bounded before it enters the runtime signal. The per-item result text remains available to callers. A later slice below changes the aggregate job status when items fail.
 
 Verification: 33 focused workpool, async-delivery, and Governor session tests passed; coding-agent type checking passed. The tests cover the actual workpool job delivery, the persisted delivery field, and escalation from a completed aggregate with two failed batches.
 
@@ -296,3 +296,131 @@ Verification: 18 focused snapcompact budget, frame-rescue, and no-reduction test
 The live context breakdown now measures notebook and todo continuity messages separately. `/context` displays each as a subset of message tokens while preserving the same used-token total, so a large retained notebook is visible without presenting it as extra provider cost. The categories use the active agent messages after context rebuild; an authored notebook revision that has not entered the current model context is not charged as active context. A live compaction regression also exposed an oversized notebook fixture that exceeded the existing 16 KiB validation limit; the fixture now uses a valid revision and proves the retained-note count is nonzero.
 
 Verification: 19 focused coding-agent budget and context-consolidation tests and 20 TUI context-usage tests passed; coding-agent and TUI type checks, targeted formatting/lint checks, and diff checks passed. No matched provider token measurement was run for these local categories.
+
+## Model-window notebook budget
+
+An experimental `context_notes` replacement now checks the complete rendered notebook message, including its source links and instructions, against the active model window before persisting it. The allowance is 10% of the window with a 512-token floor and 4,096-token ceiling, never exceeding the window itself; the existing 16 KiB UTF-8 storage bound still applies. A rejected replacement leaves the previous revision intact. The tool checks again after disk preparation so a model switch to a smaller window cannot save a now-oversized notebook. Sessions without a resolved model retain only the byte bound until a model is selected. If an existing notebook exceeds a newly selected model's allowance, the TUI and ACP `/context` reports flag the measured excess while OMP's normal model-switch and next-prompt recovery behavior stays in charge.
+
+Verification: 20 focused notebook and experimental rollover tests, 8 snapcompact budget tests, and 21 TUI context-usage tests passed; coding-agent and TUI type checking, targeted formatting/lint checks, and diff checks passed. The new cases cover rejection below the byte limit, acceptance after selecting a larger model, a smaller model selected during an in-flight write, and the context warning for a retained note after the active model window shrinks.
+
+## Workpool terminal reporting
+
+The workpool's final card and delivered result now report failed or cancelled items instead of saying the pool completed when only its queue drained. A mixed outcome prioritizes the failure state and names both counts. When an item fails, the aggregate async job also settles as failed, so `/wait` and job listings agree with the delivered result. Its failed-batch detail remains available to Governor feedback; that consumer already avoids double-counting the failed aggregate and its batches.
+
+Verification: 12 focused workpool tests passed; coding-agent type checking, targeted lint/formatting, and diff checks passed. The tests cover failed worker delivery and closing a pool with queued work.
+
+## Window-scoped context notes
+
+The experimental notebook now accepts `retention: "window"` for a temporary revision. It remains available during the current context window, then expires at the next compaction boundary; an older pinned revision cannot reappear after expiry. Existing revisions and the default `retention: "pinned"` continue across compaction. Source links and the model-window token budget apply to both modes. This is notebook-level retention, not per-finding ranking or automatic relevance scoring.
+
+Verification: 30 focused notebook, rollover, and snapcompact tests passed; coding-agent type checking and targeted formatting/lint checks passed. The new tests cover window expiry, readback, no restoration of an older pinned revision, resume, and a later pinned revision surviving another compaction.
+
+## Per-finding notebook retention
+
+`context_notes` also accepts a structured `findings` replacement. Each finding carries its own pinned or window retention and optional history citations. A mixed revision retains pinned findings across compaction while dropping only window findings; the filtered revision is what the model sees and what later reads return. Existing text-only revisions remain readable. The full rendered set shares the notebook's byte, source-reference, and model-token limits, and the new journal format survives resume. This supplies explicit per-finding retention, not automatic relevance scoring.
+
+Verification: 84 focused notebook, rollover, snapcompact, context-builder, and context-usage tests passed; coding-agent type checking and targeted formatting/lint checks passed. New checks cover mixed retention in rebuilt model context, resume, and rejection of a structured replacement above the active model's notebook budget.
+
+## Bounded eval agent handles
+
+Eval `agent()` handles now queue under the session's `task.maxConcurrency` setting. When the opt-in Governor supplies a worker cap for the current number of outstanding eval handles, the bridge narrows that queue to the smaller limit. Handles still return immediately; a job is marked running only after it acquires a slot. Cancelling a queued handle removes its wait without occupying a slot.
+
+Verification: focused eval bridge tests cover an explicit one-worker limit, a two-worker Governor cap over four handles, and cancellation followed by another handle. The existing eval bridge suites, coding-agent type check, and targeted lint/formatting checks passed.
+
+## Shared session subagent concurrency
+
+`task`, eval `agent()`, and workpool turns now acquire the same session semaphore for `task.maxConcurrency`. Each still honors its narrower batch, Governor, or pool limit. Workpool turns wait as queued jobs and release their slot when execution ends. Changing the setting resizes the shared gate in place, preserving in-flight accounting. A cross-entry-point regression holds a task while an eval handle queues; another holds a session slot while a workpool turn queues.
+
+Verification: 81 focused task, eval bridge, and workpool tests passed; coding-agent type checking, targeted lint/formatting, and diff checks passed.
+
+## Current-turn notebook evidence
+
+When structured notebook findings cite an entry from the current user turn, the context renderer moves those findings ahead of older ones. It preserves every finding, citation, and retention setting; the stored order returns on a later turn with no matching citations. This is a recency signal for explicit evidence, not semantic relevance or a reason to discard pinned findings.
+
+Verification: 15 focused notebook tests passed, including a rebuilt-context ordering regression; coding-agent type checking and targeted lint/formatting checks passed.
+
+## Notebook priority from touched files
+
+The same context renderer now also moves a finding forward when its cited successful `read`, `edit`, or `write` result names a file changed by a successful `edit` or `write` in the current turn. It compares exact persisted paths and ignores failed results. Current-turn citations take priority over path matches; neither signal removes a finding or changes the stored order. The Governor's edited-file count now uses the same central path extractor.
+
+Verification: 20 focused notebook and Governor session tests passed; coding-agent type checking and targeted lint/formatting checks passed. The notebook regression covers an earlier read, a current multi-file edit result, and a later failed edit that must not affect priority.
+
+## Explicit file-reference notebook priority
+
+The context renderer now also considers `@file` mentions in the current user request. A finding backed by a successful file tool result moves forward when its cited path is the unique exact or relative-suffix match among the notebook's sourced paths. Ambiguous basename mentions do not change priority. Current-turn citations remain stronger, and no finding is removed or rewritten. The existing mention parser was split into a lightweight module shared with auto-read.
+
+Verification: 23 focused notebook and file-mention tests passed; coding-agent type checking and targeted lint/formatting checks passed. The regression covers a unique relative mention and an ambiguous basename.
+
+## Active todo file-reference priority
+
+The notebook renderer also reads the latest canonical todo state and gives priority to findings whose cited file uniquely matches an `@file` mention in the active todo task. When that task is completed and the next task becomes active, the priority follows it. A context-reset boundary hides older todo state. This uses only explicit file references in todo text; todo items still have no stable IDs or dependency graph linking them to findings.
+
+Verification: 18 focused notebook tests passed; coding-agent type checking and targeted lint/formatting checks passed. The new case advances between two todo items and observes the finding order move with the active item.
+
+## Notebook task-term priority
+
+Notebook findings now receive a lower-priority relevance score from meaningful words shared with the current user request or active todo item and each finding's cited history text. Cited text is bounded before tokenization. When no task-term match exists, source recency provides a weaker tie-breaker. This is deterministic local matching with a small stop-word filter; it makes no embedding/model call, does not alter stored finding order, and never removes findings. Explicit current-turn citations, user file mentions, active-todo file references, and files touched in the turn retain higher priority. Dependency-aware relevance remains open because todo items do not carry stable IDs or dependency edges, and Governor graph snapshots intentionally retain only aggregate counts.
+
+Verification: Not run in this continuation.
+
+## Browser capability runtime gate
+
+Prompt capability status no longer treats the general `eval` tool as proof that browser is active. Browser availability comes from the dedicated runtime check. An explicit browser route now promotes the shared `eval` surface and enables browser policy as a session override; disabled policy and unavailable browser runtime still block activation. Automatic task routing remains unavailable because ordinary turns do not supply an authoritative browser task signal.
+
+Verification: Not run in this continuation.
+
+## Targeted MCP capability routing
+
+The capability router now accepts an explicit MCP route only when the caller names one exact registered MCP tool. It promotes that tool from its mounted `xd://` presentation to the direct tool surface, leaving other connected MCP tools untouched. Capability policy still gates routing, and automatic MCP selection remains off until a task source can identify the needed server/tool reliably.
+
+Verification: Not run in this continuation.
+
+## Structured task capability requirements
+
+Structured Governor task facts may now name required routeable capabilities. In adaptive mode the task-transition handler attempts only those named capabilities, applies capability policy and tool availability checks, and enforces the selected context budget. The router does not infer required tools from natural-language text. Existing task-graph callers that omit the field retain their previous behavior; no ordinary-chat task source supplies these requirements yet.
+
+Verification: Not run in this continuation.
+
+## Automatic capability route release
+
+Task-transition capability promotions now retain session-scoped ownership records. On a later structured transition, the Governor releases routes it introduced when the new task no longer requires them, restoring their prior enabled/mounted presentation. An explicit route can take ownership of an automatically promoted tool, and a presentation changed while the automatic route was active is left intact. Release waits while the session is streaming; a later transition can retry cleanup. No ordinary chat task source supplies requirements yet.
+
+Verification: `bun check` passed, including coding-agent type checks, lint, and formatting. No tests were run in this continuation.
+
+## Task-tool capability declarations
+
+In adaptive auto mode, the task tool now advertises an optional `capabilities` list at the call level and per batch item. The handler validates names against the direct-routeable capability catalog, preserves item-level requirements in task facts, and sends the aggregate requirements through the Governor transition. Transitions invoked while the agent is streaming are deferred to the post-prompt queue so the in-flight provider request never sees a mutated tool roster. The next transition can release routes that are no longer required. Calls without declarations retain existing behavior; natural-language task text is not parsed for tool needs.
+
+Verification: `bun check` passed, including coding-agent type checks, lint, and formatting. No tests were run in this continuation.
+
+## Workpool capability declarations and effort binding
+
+Eval workpool `.push(...items, { capabilities })` can now declare routeable direct-tool needs for the batch. The bridge validates capability names and records them on independent Governor task facts; calls that omit the option preserve the current behavior. New pooled workers also receive the batch's Governor-selected coarse effort through structured subagent preflight. Effort is stored per pushed item, so later pushes do not overwrite the selection for already queued work; retained workers keep the thinking level chosen at their original spawn.
+
+## Runtime task-duration escalation
+
+The Governor runtime collector now reads the longest duration from completed task tool results and delivered async task jobs. At the configured stagnation duration it raises a trivial decision to normal; at twice that duration it can raise normal to complex. The revised metric is validated in stored snapshots and the decision includes evidence when duration changes the band. This reacts on subsequent decisions after work settles; it does not interrupt an active worker.
+
+Verification: `bun check` passed, including coding-agent type checks, lint, and formatting. No tests were run in this continuation.
+
+## Latest focused test run
+
+After task-duration escalation, workpool effort and capability routing, and task effort compatibility fixes, seven focused suites passed: Governor decision/revision/session/task-facts, workpool bridge, task spawning, and workpool dispatch. The run reported 69 passed and 0 failed, including regressions for duration escalation/collection, workpool effort propagation, explicit workpool capabilities, and compatibility with existing concurrency routing. `bun check` and `git diff --check` also passed. This was a focused run, not the full repository suite.
+
+## User-facing explicit capability routing
+
+`/prompt route` exposes explicit routing for `lsp`, `subagents`, `debugger`, `github`, `images`, and `browser`; `mcp` requires one exact `mcp__…` tool name. `/prompt unroute` restores the pre-route top-level versus mounted presentation and removes the browser policy override introduced by that route. It reports activation state, routing reason, and estimated token cost when available. Capability policy and each runtime gate remain enforced by the session router. Automatic task inference and MCP/browser auto-selection are not added.
+
+Verification: Not run in this continuation.
+
+## Governor effort binding for independent task batches
+
+The Governor applies effort selection by band when dispatching independent `tasks[]` batches in auto mode. Trivial and normal work preserve the current operator effort, complex work may step up one supported level, and massive work selects the highest supported effort; model support and session/task ceilings still clamp the result. Explicit effort on an individual task and an explicitly selected role effort take precedence. The resulting coarse task effort is injected before task preflight so the executor resolves it against each target model. Batch concurrency continues to use the same recorded decision. Single tasks and non-auto modes retain their previous routing behavior.
+
+Verification: `bun check` passed, including coding-agent type checks, lint, and formatting. No tests were run in this continuation.
+
+## Queued workpool turn lifecycle
+
+A workpool turn waiting for the shared session semaphore now remains queued in both its internal job and pool item/batch status. It becomes running only after acquiring the slot. Closing the pool cancels a waiting turn and reports its item as dropped; cancelling the aggregate also settles the queued batch without starting a worker or retaining a semaphore waiter. Active turns still finish under the existing close behavior.
+
+Verification: 15 focused workpool tests passed; coding-agent type checking, targeted lint/formatting, and diff checks passed. The new regressions cover queued status, explicit close, aggregate cancellation, and subsequent slot acquisition.

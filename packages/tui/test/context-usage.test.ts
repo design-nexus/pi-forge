@@ -196,6 +196,17 @@ describe("renderContextUsage snapcompact section", () => {
 		const output = renderContextUsage(breakdownWith(undefined), themeStub);
 		expect(output).not.toContain("Snapcompact");
 	});
+
+	it("warns when retained notes exceed the selected model's notebook budget", () => {
+		const breakdown = breakdownWith(undefined);
+		breakdown.categories = [
+			{ id: "retainedNotes", label: "Retained notes", tokens: 1200, color: "customMessageLabel", glyph: "⛃" },
+		];
+		breakdown.retainedNotesBudgetTokens = 800;
+		expect(renderContextUsage(breakdown, themeStub)).toContain("Retained notes exceed this model's notebook budget");
+		breakdown.retainedNotesBudgetTokens = 1500;
+		expect(renderContextUsage(breakdown, themeStub)).not.toContain("Retained notes exceed");
+	});
 });
 
 /**

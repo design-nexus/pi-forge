@@ -213,6 +213,20 @@ export class Semaphore {
 	}
 }
 
+const sessionTaskSemaphores = new WeakMap<object, Semaphore>();
+
+/** The task concurrency setting covers every subagent entry point in one session. */
+export function sessionTaskSemaphore(session: object, max: number): Semaphore {
+	let semaphore = sessionTaskSemaphores.get(session);
+	if (semaphore) {
+		semaphore.resize(max);
+	} else {
+		semaphore = new Semaphore(max);
+		sessionTaskSemaphores.set(session, semaphore);
+	}
+	return semaphore;
+}
+
 function semaphoreAbortReason(signal: AbortSignal): unknown {
 	const reason = signal.reason;
 	if (reason !== undefined) return reason;
