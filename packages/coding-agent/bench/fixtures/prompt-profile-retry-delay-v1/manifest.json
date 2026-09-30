@@ -1,0 +1,10 @@
+{
+	"id": "prompt-profile-retry-delay-v1",
+	"category": "tiny edit",
+	"sourceCommit": "04be5042c836ff72df1149653c0bd9097393ce8a",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": ["bun", "test"],
+	"expectedChangedFiles": ["src/retry-delay.ts"],
+	"repeatCount": 3,
+	"notes": "Frozen executable packet for the initial matched task outcome comparison. Three pairs reduce single-run noise for this tiny edit; the other task categories still need frozen packets before broad performance claims."
+}
