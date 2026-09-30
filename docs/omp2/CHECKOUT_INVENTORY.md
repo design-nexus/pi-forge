@@ -498,3 +498,9 @@ Verification: 28 focused task-spawn tests passed; repository `bun check` and `gi
 Task and workpool preflight now treat `state: "active"` as the success condition even when the router reports `selected: false` because the capability was already active. Unavailable, disabled, or merely discoverable routes still block worker startup.
 
 Verification: 51 focused task-spawn and workpool tests passed; repository `bun check` and `git diff --check` passed. Both task tool and eval workpool regressions confirm that an already-active declared capability allows execution.
+
+## Multi-capability routing preflights as a set
+
+Structured task transitions now inspect every required capability before activating any of them. If one requirement is unavailable, disabled, or over budget, the decision returns the full set of preflight results and does not leave earlier capabilities newly promoted for a task that cannot start.
+
+Verification: 66 focused Prompt Engine, task-spawn, and workpool tests passed; repository `bun check` and `git diff --check` passed. The session regression declares an available debugger plus an unavailable exact MCP tool and verifies that the debugger remains inactive.
