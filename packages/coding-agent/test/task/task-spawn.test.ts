@@ -37,6 +37,13 @@ const taskAgent: AgentDefinition = {
 	source: "bundled",
 };
 
+const reviewerAgent: AgentDefinition = {
+	...taskAgent,
+	name: "reviewer",
+	description: "Read-only code reviewer",
+	systemPrompt: "You are a read-only code reviewer.",
+};
+
 function createSession(options: { manager?: AsyncJobManager; settings?: Record<string, unknown> }): ToolSession {
 	return {
 		cwd: "/tmp",
@@ -366,6 +373,87 @@ describe("task spawn routing", () => {
 			],
 		} as TaskParams);
 		expect(observedRoles).toEqual(["reviewer", "reviewer"]);
+	});
+
+	it("runs an independent Governor review after synchronous batch workers settle", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+			agents: [taskAgent, reviewerAgent],
+			projectAgentsDir: null,
+		});
+		const agents: string[] = [];
+		let reviewerAssignment = "";
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			agents.push(options.agent.name);
+			if (options.agent.name === "reviewer") reviewerAssignment = options.assignment ?? "";
+			return makeResult(options.id ?? "?");
+		});
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
+		session.routeGovernorTaskPlan = () => ({ reviewer: "independent" });
+		const tool = await TaskTool.create(session);
+		const result = await tool.execute("tc-governor-independent-review", {
+			context: "Update implementation and tests.",
+			tasks: [
+				{ name: "Implementation", task: "Update the implementation." },
+				{ name: "Tests", task: "Update behavior tests." },
+			],
+		} as TaskParams);
+		expect(agents).toHaveLength(3);
+		expect(agents.at(-1)).toBe("reviewer");
+		expect(reviewerAssignment).toContain("Update implementation and tests.");
+		expect(reviewerAssignment).toContain("Worker results:");
+		expect(getFirstText(result)).toContain("Governor reviewer result:");
+	});
+
+	it("keeps risk-based review off successful low-risk work", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+			agents: [taskAgent, reviewerAgent],
+			projectAgentsDir: null,
+		});
+		const agents: string[] = [];
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			agents.push(options.agent.name);
+			return makeResult(options.id ?? "?");
+		});
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
+		session.routeGovernorTaskPlan = () => ({ reviewer: "risk_based" });
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-governor-risk-review", {
+			context: "Update implementation and tests.",
+			tasks: [
+				{ name: "Implementation", task: "Update the implementation." },
+				{ name: "Tests", task: "Update behavior tests." },
+			],
+		} as TaskParams);
+		expect(agents).toEqual(["task", "task"]);
+	});
+
+	it("queues the Governor reviewer behind asynchronous batch workers", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+			agents: [taskAgent, reviewerAgent],
+			projectAgentsDir: null,
+		});
+		const agents: string[] = [];
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			agents.push(options.agent.name);
+			return makeResult(options.id ?? "?");
+		});
+		const manager = createManager();
+		const session = createSession({ manager, settings: { "task.batch": true, "async.enabled": true } });
+		session.routeGovernorTaskPlan = () => ({ reviewer: "independent", workerCount: 2 });
+		const tool = await TaskTool.create(session);
+		const result = await tool.execute("tc-governor-async-review", {
+			context: "Update implementation and tests.",
+			tasks: [
+				{ name: "Implementation", task: "Update the implementation." },
+				{ name: "Tests", task: "Update behavior tests." },
+			],
+		} as TaskParams);
+		const progress = result.details?.progress ?? [];
+		const reviewer = progress.find(item => item.agent === "reviewer");
+		expect(reviewer).toBeDefined();
+		await Promise.all(progress.map(item => manager.getJob(item.id)?.promise));
+		expect(agents).toEqual(["task", "task", "reviewer"]);
+		expect(manager.getJob(reviewer!.id)?.status).toBe("completed");
 	});
 
 	it("holds a task capability lease until its background worker settles", async () => {

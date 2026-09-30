@@ -38,6 +38,7 @@ import taskSpawnFeedbackTemplate from "../prompts/tools/task-spawn-feedback.md" 
 import taskSpecializationAdvisoryTemplate from "../prompts/tools/task-specialization-advisory.md" with { type: "text" };
 import taskGovernorVerificationTemplate from "../prompts/tools/task-governor-verification.md" with { type: "text" };
 import taskGovernorReviewTemplate from "../prompts/tools/task-governor-review.md" with { type: "text" };
+import taskGovernorReviewAssignmentTemplate from "../prompts/tools/task-governor-review-assignment.md" with { type: "text" };
 import taskFollowUpTemplate from "../prompts/tools/task-follow-up.md" with { type: "text" };
 import { TASK_EFFORTS, type TaskEffort } from "@oh-my-pi/pi-tui/thinking";
 import { truncateForPrompt } from "../tools/approval";
@@ -64,7 +65,12 @@ import { AgentOutputManager } from "./output-manager";
 import { mapWithConcurrencyLimitAllSettled, Semaphore, sessionTaskSemaphore } from "./parallel";
 import { renderResult, renderCall as renderTaskCall } from "@oh-my-pi/pi-tui/tools/task";
 import { repairTaskParams } from "@oh-my-pi/pi-tui/tools/task-repair-args";
-import { resolveEffectiveSubagentPolicy, runStructuredSubagent, StructuredSubagentError } from "./structured-subagent";
+import {
+	resolveEffectiveSubagentPolicy,
+	runStructuredSubagent,
+	StructuredSubagentError,
+	type EffectiveSubagentPolicy,
+} from "./structured-subagent";
 import { formatModelRoleAlias } from "../config/model-roles";
 
 import { cfgAsyncEnabled } from "../tools/settings";
@@ -378,13 +384,18 @@ function taskDependencyIds(items: TaskItem[]): string[] {
 	return items.map((item, index) => item.name?.trim() || `task-${index + 1}`);
 }
 
-async function waitForTaskDependencies(dependencies: readonly Promise<boolean>[], signal?: AbortSignal): Promise<void> {
+async function waitForTaskDependencies(
+	dependencies: readonly Promise<boolean>[],
+	signal?: AbortSignal,
+	requireSuccess = true,
+): Promise<void> {
 	if (signal?.aborted) throw new Error("Aborted while waiting for prerequisite tasks");
 	if (dependencies.length === 0) return;
 	const allSettled = Promise.all(dependencies);
 	if (!signal) {
-		if ((await allSettled).some(success => !success))
+		if (requireSuccess && (await allSettled).some(success => !success))
 			throw new Error("A prerequisite task failed; dependent task was not started");
+		if (!requireSuccess) await allSettled;
 		return;
 	}
 	const aborted = Promise.withResolvers<never>();
@@ -392,7 +403,7 @@ async function waitForTaskDependencies(dependencies: readonly Promise<boolean>[]
 	signal.addEventListener("abort", onAbort, { once: true });
 	try {
 		const results = await Promise.race([allSettled, aborted.promise]);
-		if (results.some(success => !success))
+		if (requireSuccess && results.some(success => !success))
 			throw new Error("A prerequisite task failed; dependent task was not started");
 	} finally {
 		signal.removeEventListener("abort", onAbort);
@@ -413,6 +424,14 @@ interface TaskExecutionParams extends TaskParams {
 	governorModelRole?: string;
 }
 
+interface GovernorReviewTaskItem extends TaskItem {
+	governorReview: true;
+}
+
+function isGovernorReviewTaskItem(item: TaskItem): item is GovernorReviewTaskItem {
+	return (item as Partial<GovernorReviewTaskItem>).governorReview === true;
+}
+
 function spawnParamsFor(
 	params: TaskParams,
 	item: TaskItem,
@@ -420,7 +439,9 @@ function spawnParamsFor(
 	governorPlan?: GovernorTaskPlan,
 ): TaskExecutionParams {
 	const spawn: TaskExecutionParams = { agent: item.agent?.trim() || defaultAgent };
-	if (governorPlan?.modelRole) spawn.governorModelRole = governorPlan.modelRole;
+	if (!isGovernorReviewTaskItem(item) && governorPlan?.modelRole) {
+		spawn.governorModelRole = governorPlan.modelRole;
+	}
 	if (item.name !== undefined) spawn.name = item.name;
 	if (item.task !== undefined) spawn.task = item.task;
 	const governorGuidance = governorPlan?.verification
@@ -584,6 +605,19 @@ export function composeSpawnAdvisory(args: {
 			.filter(Boolean)
 			.join("\n\n") || undefined
 	);
+}
+
+function appendTaskText(result: AgentToolResult<TaskToolDetails>, text: string): AgentToolResult<TaskToolDetails> {
+	let appended = false;
+	const content = result.content.map(part => {
+		if (!appended && part.type === "text" && typeof part.text === "string") {
+			appended = true;
+			return { ...part, text: `${part.text}\n\n${text}` };
+		}
+		return part;
+	});
+	if (!appended) content.push({ type: "text", text });
+	return { ...result, content };
 }
 
 /** Sentinel for async jobs whose subagent finished with a failing result; progress is already updated. */
@@ -971,12 +1005,49 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				return createTaskModeError("Task Governor batch planning is unavailable for this session.");
 			}
 		}
-		const normalizedSpawnParams = spawnItems.map(item => spawnParamsFor(params, item, defaultAgent, governorPlan));
+		const asyncEnabled = cfgAsyncEnabled.get(this.session.settings);
+		const manager = asyncEnabled ? this.session.asyncJobManager : undefined;
+		const depthCapacity = canSpawnAtDepth(
+			cfgTaskMaxRecursionDepth.get(this.session.settings),
+			this.session.taskDepth ?? 0,
+		);
+		let governorReviewIndex: number | undefined;
+		let governorReviewPolicy: EffectiveSubagentPolicy | undefined;
+		if (manager && governorPlan?.reviewer === "independent" && depthCapacity) {
+			const reviewAssignment = prompt.render(taskGovernorReviewAssignmentTemplate, {
+				request: truncateForPrompt(
+					[params.context, params.task, ...spawnItems.map(item => item.task)].filter(Boolean).join("\n\n"),
+					8_000,
+				),
+				results:
+					"This review starts after every implementation worker settles. Inspect the integrated workspace change set before reporting findings.",
+			});
+			const reviewItem: GovernorReviewTaskItem = {
+				name: "Governor review",
+				agent: "reviewer",
+				governorReview: true,
+				task: reviewAssignment,
+			};
+			try {
+				governorReviewPolicy = await this.#resolveSpawnPreflight({ agent: "reviewer", task: reviewAssignment });
+				governorReviewIndex = spawnItems.length;
+				spawnItems.push(reviewItem);
+				dependencies.push(Array.from({ length: governorReviewIndex }, (_, index) => index));
+				dependencyIds.push("governor-review");
+				dependencyGates.push(Promise.withResolvers<boolean>());
+			} catch (error) {
+				logger.warn("Governor independent reviewer is unavailable", { error: String(error) });
+			}
+		}
+		const normalizedSpawnParams = spawnItems.map((item, index) =>
+			spawnParamsFor(params, item, defaultAgent, index === governorReviewIndex ? undefined : governorPlan),
+		);
 		const resolvedAgents = normalizedSpawnParams.map(spawn => spawn.agent ?? defaultAgent);
 		// Resolve every item before choosing an execution path. No executor or
 		// job manager may observe a batch unless every effective policy is valid.
 		const preflights = await Promise.all(
-			normalizedSpawnParams.map(async spawn => {
+			normalizedSpawnParams.map(async (spawn, index) => {
+				if (index === governorReviewIndex && governorReviewPolicy) return { policy: governorReviewPolicy };
 				try {
 					return { policy: await this.#resolveSpawnPreflight(spawn) };
 				} catch (error) {
@@ -1010,13 +1081,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// `blocking: true` runs inline on this turn (the parent waits on its
 		// result); every other item becomes a background job when async
 		// execution is available.
-		const asyncEnabled = cfgAsyncEnabled.get(this.session.settings);
-		const manager = asyncEnabled ? this.session.asyncJobManager : undefined;
 		const asyncItems = manager ? spawnItems.filter((_, index) => !itemBlocking[index]) : [];
-		const depthCapacity = canSpawnAtDepth(
-			cfgTaskMaxRecursionDepth.get(this.session.settings),
-			this.session.taskDepth ?? 0,
-		);
 		const ircEnabled = isIrcEnabled(this.session.settings, this.session.taskDepth ?? 0);
 
 		if (!manager || asyncItems.length === 0) {
@@ -1026,21 +1091,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			if (asyncEnabled && !this.session.asyncJobManager) {
 				logger.warn("task: no AsyncJobManager registered; falling back to sync execution");
 			}
-			const advisory = this.session.suppressSpawnAdvisory
-				? undefined
-				: composeSpawnAdvisory({
-						agents: resolvedAgents,
-						items: asyncItems,
-						depthCapacity,
-						ircEnabled,
-						willRunAsync: false,
-						governorReviewer: governorPlan?.reviewer,
-						scoutAvailable: isScoutSpawnable(
-							cfgTaskDisabledAgents.get(this.session.settings),
-							this.session.getSessionSpawns?.() ?? "*",
-						),
-					});
 			let result: AgentToolResult<TaskToolDetails>;
+			let governorReviewAttempted = governorReviewIndex !== undefined;
 			try {
 				result = await this.#executeSyncFanout(
 					toolCallId,
@@ -1055,9 +1107,28 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					settleDependency,
 					governorPlan,
 				);
+				if (!governorReviewAttempted && governorPlan?.reviewer && governorPlan.reviewer !== "none") {
+					const review = await this.#runGovernorReview(result, params, governorPlan.reviewer, highRisk, signal);
+					result = review.result;
+					governorReviewAttempted = review.attempted;
+				}
 			} finally {
 				await releaseGovernorOwner();
 			}
+			const advisory = this.session.suppressSpawnAdvisory
+				? undefined
+				: composeSpawnAdvisory({
+						agents: resolvedAgents,
+						items: asyncItems,
+						depthCapacity,
+						ircEnabled,
+						willRunAsync: false,
+						governorReviewer: governorReviewAttempted ? undefined : governorPlan?.reviewer,
+						scoutAvailable: isScoutSpawnable(
+							cfgTaskDisabledAgents.get(this.session.settings),
+							this.session.getSessionSpawns?.() ?? "*",
+						),
+					});
 			if (!advisory) return result;
 			let appended = false;
 			const content = result.content.map(part => {
@@ -1082,7 +1153,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					depthCapacity,
 					ircEnabled,
 					willRunAsync: asyncItems.length > 0,
-					governorReviewer: governorPlan?.reviewer,
+					governorReviewer: governorReviewIndex !== undefined ? undefined : governorPlan?.reviewer,
 					scoutAvailable: isScoutSpawnable(
 						cfgTaskDisabledAgents.get(this.session.settings),
 						this.session.getSessionSpawns?.() ?? "*",
@@ -1223,6 +1294,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					onUpdate,
 					batchSemaphore,
 					dependencyPromises: dependencies[spawn.index]!.map(index => dependencyGates[index]!.promise),
+					allowFailedDependencies: isGovernorReviewTaskItem(spawn.item),
 					onSettled: failed => {
 						settleDependency(spawn.index, !failed);
 						settledCount += 1;
@@ -1406,6 +1478,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		batchSemaphore?: Semaphore;
 		dependencyPromises?: readonly Promise<boolean>[];
 		onSettled?: (failed: boolean) => void;
+		allowFailedDependencies?: boolean;
 	}): string {
 		const {
 			manager,
@@ -1419,6 +1492,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			onSettled,
 			batchSemaphore,
 			dependencyPromises = [],
+			allowFailedDependencies,
 		} = options;
 		const buildFollowUpHint = async (aborted: boolean): Promise<string> => {
 			// Isolated runs are parked without a reviver once the run ends
@@ -1443,7 +1517,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			async ({ jobId, signal: runSignal, reportProgress, markRunning }) => {
 				const startedAt = Date.now();
 				try {
-					await waitForTaskDependencies(dependencyPromises, runSignal);
+					await waitForTaskDependencies(dependencyPromises, runSignal, allowFailedDependencies !== true);
 				} catch (error) {
 					progress.status = runSignal.aborted ? "aborted" : "failed";
 					onSettled?.(true);
@@ -1658,6 +1732,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				await waitForTaskDependencies(
 					(dependencies?.[spawn.index] ?? []).map(index => dependencyPromises?.[index] ?? Promise.resolve(false)),
 					signal,
+					!isGovernorReviewTaskItem(spawn.item),
 				);
 				if (batchSemaphore) {
 					await batchSemaphore.acquire(signal);
@@ -1781,6 +1856,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					await waitForTaskDependencies(
 						(dependencies[spawn.index] ?? []).map(index => dependencyPromises[index] ?? Promise.resolve(false)),
 						workerSignal,
+						!isGovernorReviewTaskItem(spawn.item),
 					);
 					if (batchSemaphore) {
 						await batchSemaphore.acquire(workerSignal);
@@ -1838,6 +1914,72 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				details: { projectAgentsDir: null, results: [], totalDurationMs: 0 },
 			};
 		});
+	}
+
+	async #runGovernorReview(
+		result: AgentToolResult<TaskToolDetails>,
+		params: TaskParams,
+		reviewer: NonNullable<GovernorTaskPlan["reviewer"]>,
+		highRisk: boolean,
+		signal?: AbortSignal,
+	): Promise<{ result: AgentToolResult<TaskToolDetails>; attempted: boolean }> {
+		const workerFailed = (result.details?.results ?? []).some(
+			worker => worker.aborted === true || worker.exitCode !== 0 || worker.error !== undefined,
+		);
+		const shouldReview = reviewer === "independent" || (reviewer === "risk_based" && (highRisk || workerFailed));
+		if (
+			!shouldReview ||
+			!canSpawnAtDepth(cfgTaskMaxRecursionDepth.get(this.session.settings), this.session.taskDepth ?? 0)
+		) {
+			return { result, attempted: false };
+		}
+		const taskRequest = params.tasks?.length
+			? params.tasks.map((task, index) => `${task.name?.trim() || `Task ${index + 1}`}: ${task.task}`).join("\n")
+			: (params.task ?? "");
+		const request = [params.context, taskRequest].filter(Boolean).join("\n\n");
+		const workerResults = result.content
+			.filter((part): part is Extract<(typeof result.content)[number], { type: "text" }> => part.type === "text")
+			.map(part => part.text)
+			.join("\n\n");
+		const reviewTask = prompt.render(taskGovernorReviewAssignmentTemplate, {
+			request: truncateForPrompt(request, 8_000),
+			results: truncateForPrompt(workerResults, 12_000),
+		});
+		let reviewResult: AgentToolResult<TaskToolDetails>;
+		try {
+			const semaphore = this.#getSpawnSemaphore();
+			await semaphore.acquire(signal);
+			try {
+				reviewResult = await this.#executeSync("governor-review", { agent: "reviewer", task: reviewTask }, signal);
+			} finally {
+				this.#releaseSpawnSemaphore();
+			}
+		} catch (error) {
+			logger.warn("Governor reviewer could not be started", { error: String(error), reviewer });
+			const text = `Governor review was not run: ${error instanceof Error ? error.message : String(error)}`;
+			return { result: appendTaskText(result, text), attempted: false };
+		}
+		const reviewText = reviewResult.content
+			.filter(
+				(part): part is Extract<(typeof reviewResult.content)[number], { type: "text" }> => part.type === "text",
+			)
+			.map(part => part.text)
+			.join("\n\n");
+		const reviewWorker = reviewResult.details?.results[0];
+		const reviewSucceeded =
+			reviewWorker !== undefined &&
+			!reviewWorker.aborted &&
+			reviewWorker.exitCode === 0 &&
+			reviewWorker.error === undefined;
+		return {
+			result: appendTaskText(
+				result,
+				reviewSucceeded
+					? `Governor reviewer result:\n${reviewText || "(no review output)"}`
+					: `Governor review was not run successfully:\n${reviewText || "(no review output)"}`,
+			),
+			attempted: reviewSucceeded,
+		};
 	}
 
 	/**
