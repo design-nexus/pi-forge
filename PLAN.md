@@ -1633,7 +1633,7 @@ Repository evidence: [architecture baseline](docs/architecture-baseline.md), [in
 | Phase | Status | Next dependency |
 | --- | --- | --- |
 | 0: Baseline and inventory | [COMPLETED] | Phase 1 task-quality measurement; coding-outcome packets and matched runs belong to Phase 9. |
-| 1: Prompt Engine | [IN PROGRESS] | Establish task-quality non-regression and material token impact in representative live sessions. |
+| 1: Prompt Engine | [COMPLETED] | Continue broader coding-quality and task-cost measurement in Phase 9. |
 | 2: Capability Router | [IN PROGRESS] | Connect task sources beyond task-tool and eval workpool declarations; evaluate natural-language selection and capability lease ownership across concurrent task scopes. |
 | 3: Adaptive Effort Governor | [IN PROGRESS] | Bind reviewer decisions to execution and evaluate effort and verification calibration against frozen task packets. |
 | 3B: Continuous Effort Reassessment | [IN PROGRESS] | Add progress and duration signals, then evaluate escalation and de-escalation on real tasks. |
