@@ -3,7 +3,12 @@ import { Effort } from "@oh-my-pi/pi-catalog/effort";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { cfgAdaptiveBands, cfgAdaptiveMode, cfgAdaptiveThresholds } from "@oh-my-pi/pi-coding-agent/governor/settings";
+import {
+	cfgAdaptiveBands,
+	cfgAdaptiveMode,
+	cfgAdaptiveRoles,
+	cfgAdaptiveThresholds,
+} from "@oh-my-pi/pi-coding-agent/governor/settings";
 import { latestGovernorSnapshot } from "@oh-my-pi/pi-coding-agent/governor/ledger";
 import {
 	recentGovernorToolSignals,
@@ -169,6 +174,13 @@ it("previews a live Governor decision from settings and session ceilings without
 			modelRole: "task",
 			model: { provider: bundled.provider, id: bundled.id },
 		});
+		cfgAdaptiveRoles.set(settings, { massive: "task" });
+		expect(session.previewGovernorDecision({ signals: facts })).toMatchObject({
+			modelRole: "task",
+			model: { provider: bundled.provider, id: bundled.id },
+		});
+		expect(() => cfgAdaptiveRoles.set(settings, { unrecognized: "task" } as never)).toThrow();
+		expect(() => cfgAdaptiveRoles.set(settings, { massive: " " })).toThrow();
 		session.setThinkingLevel(Effort.Low);
 		settings.setModelRole("task", `${bundled.provider}/${bundled.id}:off`);
 		expect(session.previewGovernorDecision({ signals: facts, overrides: { role: "task" } })?.effort).toBeUndefined();

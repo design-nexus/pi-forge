@@ -127,6 +127,14 @@ describe("task tool advisory gating via suppressSpawnAdvisory", () => {
 		expect(await spawnTextFor(session(false))).toContain('`agent: "scout"`');
 	});
 
+	it("returns the Governor-selected independent-review handoff", async () => {
+		const s = session(false);
+		s.routeGovernorTaskPlan = () => ({ reviewer: "independent" });
+		const text = await spawnTextFor(s);
+		expect(text).toContain("Governor selected an independent review");
+		expect(text).toContain("After all implementation tasks have settled");
+	});
+
 	it("drops the scout example when scout is disabled", async () => {
 		expect(await spawnTextFor(sessionWithScoutDisabled())).not.toContain("scout");
 	});

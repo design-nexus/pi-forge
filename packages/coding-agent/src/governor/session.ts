@@ -1,4 +1,5 @@
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
+import type { Effort } from "@oh-my-pi/pi-catalog/effort";
 import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
 import { concreteThinkingLevel, toReasoningEffort } from "@oh-my-pi/pi-tui/thinking";
 import { combine } from "../config/registry";
@@ -12,13 +13,14 @@ import {
 	type GovernorDecision,
 	type GovernorDecisionInput,
 } from "./decision";
-import { cfgAdaptiveBands, cfgAdaptiveMode, cfgAdaptiveThresholds } from "./settings";
+import { cfgAdaptiveBands, cfgAdaptiveMode, cfgAdaptiveRoles, cfgAdaptiveThresholds } from "./settings";
 import type { GovernorSnapshot } from "./revision";
 
 export const cfgGovernorBudgetInputs = combine({
 	mode: cfgAdaptiveMode,
 	thresholds: cfgAdaptiveThresholds,
 	bandBudgets: cfgAdaptiveBands,
+	rolePolicies: cfgAdaptiveRoles,
 	taskMaxEffort: cfgTaskMaxEffort,
 	taskMaxConcurrency: cfgTaskMaxConcurrency,
 });
@@ -42,15 +44,20 @@ export function previewGovernorDecision(
 			? recordedRole
 			: "current";
 	const requestedRole = request.overrides?.pinnedRole ?? request.overrides?.role;
-	const resolvedRole =
-		requestedRole && session.settings.getModelRole(requestedRole)
-			? session.resolveRoleModelWithThinking(requestedRole)
-			: undefined;
-	const roleEffort = resolvedRole?.explicitThinkingLevel
-		? resolvedRole.thinkingLevel === ThinkingLevel.Off
-			? "off"
-			: toReasoningEffort(concreteThinkingLevel(resolvedRole.thinkingLevel))
-		: undefined;
+	const rolePolicies = cfgAdaptiveRoles.get(session.settings);
+	const roleNames = new Set([...Object.values(rolePolicies), ...(requestedRole ? [requestedRole] : [])]);
+	const availableRoles = Object.fromEntries(
+		[...roleNames].map(role => {
+			if (!session.settings.getModelRole(role)) return [role, undefined] as const;
+			const resolved = session.resolveRoleModelWithThinking(role);
+			const effort: Effort | "off" | undefined = resolved.explicitThinkingLevel
+				? resolved.thinkingLevel === ThinkingLevel.Off
+					? "off"
+					: toReasoningEffort(concreteThinkingLevel(resolved.thinkingLevel))
+				: undefined;
+			return [role, resolved.model ? { model: resolved.model, effort } : undefined] as const;
+		}),
+	);
 	const profile = session.promptSettingsOverride?.profile ?? cfgPromptProfile.get(session.settings);
 	const capabilities = resolveCapabilityPolicies(profile, {
 		...cfgPromptCapabilities.get(session.settings),
@@ -62,10 +69,9 @@ export function previewGovernorDecision(
 		signals: request.signals,
 		thresholds,
 		bandBudgets: cfgAdaptiveBands.get(session.settings),
+		rolePolicies,
 		current: { role: currentRole, model, effort: toReasoningEffort(session.thinkingLevel) },
-		availableRoles: requestedRole
-			? { [requestedRole]: resolvedRole?.model ? { model: resolvedRole.model, effort: roleEffort } : undefined }
-			: undefined,
+		availableRoles: roleNames.size > 0 ? availableRoles : undefined,
 		overrides: request.overrides,
 		ceilings: {
 			sessionEffort: session.thinkingLevelCeiling,

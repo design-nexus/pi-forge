@@ -25,28 +25,32 @@ function decisionInput(overrides: Partial<GovernorDecisionInput> = {}): Governor
 }
 
 it.each([
-	["trivial", 1, 1, 0, "direct", 0, "none"],
-	["normal", 3, 1, 0, "direct", 0, "brief"],
-	["complex", 6, 2, 1, "parallel", 2, "milestones"],
-	["massive", 14, 5, 3, "parallel", 4, "dependency_graph"],
-] as const)("routes %s scope through a bounded policy", (band, files, tasks, edges, mode, workers, planning) => {
-	const decision = decideGovernor(
-		decisionInput({
-			signals: {
-				fileCount: files,
-				independentTasks: tasks,
-				dependencyEdges: edges,
-				highRisk: false,
-				confidence: 0.9,
-			},
-		}),
-	);
-	expect(decision?.band).toBe(band);
-	expect(decision?.executionMode).toBe(mode);
-	expect(decision?.workerCount).toBe(workers);
-	expect(decision?.planningDepth).toBe(planning);
-	expect(decision?.capabilityIds).toEqual(workers > 0 ? ["subagents"] : []);
-});
+	["trivial", 1, 1, 0, "direct", 0, "none", "none"],
+	["normal", 3, 1, 0, "direct", 0, "brief", "risk_based"],
+	["complex", 6, 2, 1, "parallel", 2, "milestones", "risk_based"],
+	["massive", 14, 5, 3, "parallel", 4, "dependency_graph", "independent"],
+] as const)(
+	"routes %s scope through a bounded policy",
+	(band, files, tasks, edges, mode, workers, planning, reviewer) => {
+		const decision = decideGovernor(
+			decisionInput({
+				signals: {
+					fileCount: files,
+					independentTasks: tasks,
+					dependencyEdges: edges,
+					highRisk: false,
+					confidence: 0.9,
+				},
+			}),
+		);
+		expect(decision?.band).toBe(band);
+		expect(decision?.executionMode).toBe(mode);
+		expect(decision?.workerCount).toBe(workers);
+		expect(decision?.planningDepth).toBe(planning);
+		expect(decision?.reviewer).toBe(reviewer);
+		expect(decision?.capabilityIds).toEqual(workers > 0 ? ["subagents"] : []);
+	},
+);
 
 it("uses a reversible normal workflow when classification confidence is low", () => {
 	const decision = decideGovernor(
@@ -244,6 +248,29 @@ it("prefers a pinned authorized role and applies the session effort ceiling", ()
 		contextBudgetTokens: 800,
 	});
 	expect(decision?.clamps).toContain("effort clamped to medium");
+});
+
+it("selects a configured band role while preserving an explicit role override", () => {
+	const taskModel = { ...model, id: "task-role-model" };
+	const reviewerModel = { ...model, id: "reviewer-role-model" };
+	const signals = { fileCount: 6, independentTasks: 2, dependencyEdges: 1, highRisk: false, confidence: 0.9 };
+	const automatic = decideGovernor(
+		decisionInput({
+			signals,
+			rolePolicies: { complex: "task" },
+			availableRoles: { task: { model: taskModel }, reviewer: { model: reviewerModel } },
+		}),
+	);
+	const explicit = decideGovernor(
+		decisionInput({
+			signals,
+			rolePolicies: { complex: "reviewer" },
+			availableRoles: { task: { model: taskModel }, reviewer: { model: reviewerModel } },
+			overrides: { role: "task" },
+		}),
+	);
+	expect(automatic).toMatchObject({ modelRole: "task", model: { id: "task-role-model" } });
+	expect(explicit).toMatchObject({ modelRole: "task", model: { id: "task-role-model" } });
 });
 
 it("treats OMP's zero concurrency limit as unlimited while retaining the policy cap", () => {

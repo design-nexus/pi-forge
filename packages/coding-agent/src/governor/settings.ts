@@ -117,6 +117,20 @@ function validateBandBudgets(value: unknown): void {
 	}
 }
 
+function validateRolePolicies(value: unknown): void {
+	if (value === undefined) return;
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("adaptive.roles must be an object");
+	}
+	const roles = value as Record<string, unknown>;
+	for (const [band, role] of Object.entries(roles)) {
+		if (!Object.hasOwn(DEFAULT_GOVERNOR_BAND_BUDGETS, band)) throw new Error(`Unknown adaptive role band: ${band}`);
+		if (typeof role !== "string" || role.trim().length === 0) {
+			throw new Error(`adaptive.roles.${band} must name a configured model role`);
+		}
+	}
+}
+
 export const cfgAdaptiveMode = register({
 	id: "adaptive.mode",
 	type: "enum",
@@ -142,4 +156,17 @@ export const cfgAdaptiveBands = register({
 	type: "record",
 	default: {} as Partial<Record<TaskBand, Partial<GovernorBandBudget>>>,
 	validate: validateBandBudgets,
+});
+
+export const cfgAdaptiveRoles = register({
+	id: "adaptive.roles",
+	type: "record",
+	default: {} as Partial<Record<TaskBand, string>>,
+	validate: validateRolePolicies,
+	ui: {
+		tab: "model",
+		group: "Prompt",
+		label: "Adaptive Governor Roles",
+		description: "Optional model roles selected by task band; explicit task role choices take precedence",
+	},
 });

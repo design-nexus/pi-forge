@@ -15,17 +15,19 @@ export interface GovernorVerificationPolicy {
 
 export interface GovernorTaskPlan {
 	workerCount?: number;
+	modelRole?: string;
 	effort?: TaskEffort;
 	verification?: GovernorVerificationPolicy;
+	reviewer?: GovernorDecision["reviewer"];
 }
 
-/** Bind one concrete independent task batch to a Governor decision. */
+/** Bind one concrete task scope to a Governor decision for worker and review handoff. */
 export function routeGovernorTaskPlan(
 	session: AgentSession,
 	taskCount: number,
 	highRisk = false,
 ): GovernorTaskPlan | undefined {
-	if (cfgAdaptiveMode.get(session.settings) !== "auto" || taskCount < 2) return undefined;
+	if (cfgAdaptiveMode.get(session.settings) !== "auto" || taskCount < 1) return undefined;
 	const snapshot = recordGovernorDecision(
 		session,
 		{
@@ -51,6 +53,7 @@ export function routeGovernorTaskPlan(
 			? { workerCount: workers }
 			: {}),
 		...(effort ? { effort } : {}),
+		...(snapshot && snapshot.decision.modelRole !== "current" ? { modelRole: snapshot.decision.modelRole } : {}),
 		...(snapshot
 			? {
 					verification: {
@@ -60,9 +63,11 @@ export function routeGovernorTaskPlan(
 					},
 				}
 			: {}),
+		...(snapshot ? { reviewer: snapshot.decision.reviewer } : {}),
 	};
 }
 
 export function routeGovernorTaskBatch(session: AgentSession, taskCount: number, highRisk = false): number | undefined {
+	if (taskCount < 2) return undefined;
 	return routeGovernorTaskPlan(session, taskCount, highRisk)?.workerCount;
 }
