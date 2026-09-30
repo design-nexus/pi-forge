@@ -1230,6 +1230,16 @@ Compressed context preserves materially useful findings.
 
 ---
 
+### Phase 4 completion record
+
+Status: Completed.
+Implementation: Context notes are bounded by active-model token budgets and cite source entries. Structured findings support pinned retention across compaction and window retention that expires at compaction. Current requests, successful tool evidence, mentioned or edited files, active todo references, and validated task dependencies rank relevant findings; lexical overlap decays with source age. Explicit context rollover carries forward the current objective and latest notebook, and retained findings link back to raw history for recovery. Context usage reports the reserved notebook budget.
+Lifecycle mapping: Pinned notes form the durable working set; relevance ranking promotes currently useful notes; window retention and compaction remove stale notes from active context; source entry links recover detail from summarized history. The implementation uses these behaviors rather than persisting five separate tier labels.
+Tests: Focused context-note, rollover, compaction-budget, and context-usage suites passed (53 tests); `bun check` passed.
+Benchmarks: No matched coding-outcome or relevance-calibration result is claimed. Semantic matching comparison and calibration remain in Phase 9.
+Known limitations: Context notes and rollover remain experimental opt-in. Relevance is bounded local lexical and graph-aware scoring; semantic embeddings are not implemented or claimed.
+Next dependencies: Phase 5 orchestration integration; Phase 9 matched relevance and coding-outcome evaluation.
+
 # Phase 5: Adaptive Orchestration
 
 ## Objective
@@ -1653,7 +1663,7 @@ Repository evidence: [architecture baseline](docs/architecture-baseline.md), [in
 | 2: Capability Router | [COMPLETED] | Phase 3 is complete. |
 | 3: Adaptive Effort Governor | [COMPLETED] | Phase 3B runtime reassessment; Phase 5 reviewer orchestration; Phase 9 matched policy calibration. |
 | 3B: Continuous Effort Reassessment | [IN PROGRESS] | Add progress and duration signals, then evaluate escalation and de-escalation on real tasks. |
-| 4: Context Manager | [IN PROGRESS] | Evaluate dependency-aware lexical relevance against semantic matching and check its calibration on frozen task packets. |
+| 4: Context Manager | [COMPLETED] | Phase 5 orchestration integration; Phase 9 matched relevance and coding-outcome evaluation. |
 | 5: Adaptive Orchestration | [IN PROGRESS] | Bind reviewer decisions and graph dependencies where existing handles cannot. |
 | 6: Integration Gate | [PLANNED] | Exercise the integrated phases against the frozen executable task packets. |
 | 7: Adaptive Verification | [PLANNED] | Begin after Phase 6; evaluate level selection and worker-reported outcomes in Phase 9 against frozen executable task packets. Worker-policy wiring in the current tree is parked groundwork. |
