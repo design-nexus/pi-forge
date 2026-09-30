@@ -3,6 +3,7 @@ import type { CustomTool } from "../extensibility/custom-tools/types";
 import workpoolBatchTemplate from "../prompts/tools/workpool-batch.md" with { type: "text" };
 import workpoolTurnResultTemplate from "../prompts/tools/workpool-turn-result.md" with { type: "text" };
 import taskGovernorVerificationTemplate from "../prompts/tools/task-governor-verification.md" with { type: "text" };
+import taskGovernorReviewTemplate from "../prompts/tools/task-governor-review.md" with { type: "text" };
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import type { CustomMessage } from "../session/messages";
@@ -23,7 +24,7 @@ import { cfgEvalWorkpoolFreshAgents } from "../eval/settings";
 import { cfgTaskMaxConcurrency, cfgTaskMaxRuntimeMs } from "./settings";
 import { sessionTaskSemaphore } from "./parallel";
 import type { GovernorTaskFacts } from "../governor/task-facts";
-import type { GovernorVerificationPolicy } from "../governor/task-batch";
+import type { GovernorTaskPlan, GovernorVerificationPolicy } from "../governor/task-batch";
 import type { GovernorTaskTransitionResult } from "../governor/transition";
 import type { TaskCapabilityId } from "../prompt-engine/capability-catalog";
 import { classifyTaskCapabilities } from "../prompt-engine/task-capability-classifier";
@@ -142,6 +143,7 @@ export class WorkPool {
 	#highRisk = false;
 	#poolJobStarted = false;
 	#governorLimit: number | undefined;
+	#governorReviewer: GovernorTaskPlan["reviewer"];
 	readonly #closedSignal = Promise.withResolvers<void>();
 	readonly #drainWaiters: PromiseWithResolvers<void>[] = [];
 	readonly #freshQueue: WorkPoolItem[] = [];
@@ -235,6 +237,7 @@ export class WorkPool {
 				this.#governorLimit = plan?.workerCount;
 				governorEffort = plan?.effort;
 				governorVerification = plan?.verification;
+				this.#governorReviewer = plan?.reviewer;
 			} else {
 				this.#governorLimit = this.session.routeGovernorTaskBatch?.(pendingCount, pendingHighRisk);
 			}
@@ -694,6 +697,17 @@ export class WorkPool {
 			lines.push(`Transcript: history://${batch.agentId} · full output: agent://${batch.agentId}`);
 		}
 		lines.push("", "Pool queue drained.");
+		if (this.#governorReviewer && this.#governorReviewer !== "none") {
+			lines.push(
+				"",
+				prompt
+					.render(taskGovernorReviewTemplate, {
+						independent: this.#governorReviewer === "independent",
+						riskBased: this.#governorReviewer === "risk_based",
+					})
+					.trim(),
+			);
+		}
 		return lines.join("\n");
 	}
 

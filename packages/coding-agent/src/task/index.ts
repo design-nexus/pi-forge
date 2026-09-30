@@ -37,6 +37,7 @@ import taskCoordinationAdvisoryTemplate from "../prompts/tools/task-coordination
 import taskSpawnFeedbackTemplate from "../prompts/tools/task-spawn-feedback.md" with { type: "text" };
 import taskSpecializationAdvisoryTemplate from "../prompts/tools/task-specialization-advisory.md" with { type: "text" };
 import taskGovernorVerificationTemplate from "../prompts/tools/task-governor-verification.md" with { type: "text" };
+import taskGovernorReviewTemplate from "../prompts/tools/task-governor-review.md" with { type: "text" };
 import taskFollowUpTemplate from "../prompts/tools/task-follow-up.md" with { type: "text" };
 import { TASK_EFFORTS, type TaskEffort } from "@oh-my-pi/pi-tui/thinking";
 import { truncateForPrompt } from "../tools/approval";
@@ -64,6 +65,7 @@ import { mapWithConcurrencyLimitAllSettled, Semaphore, sessionTaskSemaphore } fr
 import { renderResult, renderCall as renderTaskCall } from "@oh-my-pi/pi-tui/tools/task";
 import { repairTaskParams } from "@oh-my-pi/pi-tui/tools/task-repair-args";
 import { resolveEffectiveSubagentPolicy, runStructuredSubagent, StructuredSubagentError } from "./structured-subagent";
+import { formatModelRoleAlias } from "../config/model-roles";
 
 import { cfgAsyncEnabled } from "../tools/settings";
 import {
@@ -406,13 +408,19 @@ async function waitForTaskDependencies(dependencies: readonly Promise<boolean>[]
  * distinguishes an absent `isolated` from an explicit one. The item's
  * `isolated` (batch form) wins over the top-level flag (flat form).
  */
+/** Internal routing metadata; it never appears in the public task tool schema. */
+interface TaskExecutionParams extends TaskParams {
+	governorModelRole?: string;
+}
+
 function spawnParamsFor(
 	params: TaskParams,
 	item: TaskItem,
 	defaultAgent: string,
 	governorPlan?: GovernorTaskPlan,
-): TaskParams {
-	const spawn: TaskParams = { agent: item.agent?.trim() || defaultAgent };
+): TaskExecutionParams {
+	const spawn: TaskExecutionParams = { agent: item.agent?.trim() || defaultAgent };
+	if (governorPlan?.modelRole) spawn.governorModelRole = governorPlan.modelRole;
 	if (item.name !== undefined) spawn.name = item.name;
 	if (item.task !== undefined) spawn.task = item.task;
 	const governorGuidance = governorPlan?.verification
@@ -556,11 +564,22 @@ export function composeSpawnAdvisory(args: {
 	ircEnabled: boolean;
 	willRunAsync: boolean;
 	scoutAvailable?: boolean;
+	governorReviewer?: GovernorTaskPlan["reviewer"];
 }): string | undefined {
+	const reviewerAdvisory =
+		args.depthCapacity && args.governorReviewer && args.governorReviewer !== "none"
+			? prompt
+					.render(taskGovernorReviewTemplate, {
+						independent: args.governorReviewer === "independent",
+						riskBased: args.governorReviewer === "risk_based",
+					})
+					.trim()
+			: undefined;
 	return (
 		[
 			buildSpecializationAdvisory(args.agents, args.depthCapacity, args.scoutAvailable),
 			args.willRunAsync ? buildCoordinationAdvisory(args.items, args.depthCapacity, args.ircEnabled) : undefined,
+			reviewerAdvisory,
 		]
 			.filter(Boolean)
 			.join("\n\n") || undefined
@@ -783,13 +802,14 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	 * normalized task params rather than smuggling internal policy over the
 	 * task wire contract.
 	 */
-	#resolveSpawnPreflight(params: TaskParams) {
+	#resolveSpawnPreflight(params: TaskExecutionParams) {
 		return resolveEffectiveSubagentPolicy({
 			session: this.session,
 			invocationKind: "task",
 			assignment: (params.task ?? "").trim(),
 			context: this.#isBatchEnabled() ? params.context?.trim() || undefined : undefined,
 			agent: params.agent,
+			...(params.governorModelRole ? { model: formatModelRoleAlias(params.governorModelRole) } : {}),
 			...(Object.hasOwn(params, "outputSchema") ? { outputSchema: params.outputSchema } : {}),
 			...(Object.hasOwn(params, "schemaMode") ? { schemaMode: params.schemaMode } : {}),
 			...(params.effort !== undefined ? { effort: params.effort } : {}),
@@ -853,6 +873,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const highRisk = params.highRisk === true || spawnItems.some(item => item.highRisk === true);
 		const governorFactsDeclared =
 			declaredCapabilities.length > 0 || classification.capabilities.length > 0 || highRisk;
+		const batchTaskPlan = params.tasks !== undefined && spawnItems.length > 1;
+		const adaptiveAuto = cfgAdaptiveMode.get(this.session.settings) === "auto";
+		const governorPlanRequired = (batchTaskPlan && governorFactsDeclared) || (adaptiveAuto && governorFactsDeclared);
 		const governorOwnerId = `task:${toolCallId}`;
 		const releaseGovernorOwner = async (): Promise<void> => {
 			if (!governorFactsDeclared) return;
@@ -922,7 +945,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 		let governorPlan: GovernorTaskPlan | undefined;
 		let governorPlanAvailable = false;
-		if (params.tasks && spawnItems.length > 1) {
+		if (batchTaskPlan || (adaptiveAuto && governorFactsDeclared)) {
 			try {
 				if (this.session.routeGovernorTaskPlan) {
 					governorPlan = this.session.routeGovernorTaskPlan(spawnItems.length, highRisk);
@@ -943,7 +966,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					);
 				}
 			}
-			if (governorFactsDeclared && !governorPlanAvailable) {
+			if (governorPlanRequired && !governorPlanAvailable) {
 				await releaseGovernorOwner();
 				return createTaskModeError("Task Governor batch planning is unavailable for this session.");
 			}
@@ -1011,6 +1034,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						depthCapacity,
 						ircEnabled,
 						willRunAsync: false,
+						governorReviewer: governorPlan?.reviewer,
 						scoutAvailable: isScoutSpawnable(
 							cfgTaskDisabledAgents.get(this.session.settings),
 							this.session.getSessionSpawns?.() ?? "*",
@@ -1058,6 +1082,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					depthCapacity,
 					ircEnabled,
 					willRunAsync: asyncItems.length > 0,
+					governorReviewer: governorPlan?.reviewer,
 					scoutAvailable: isScoutSpawnable(
 						cfgTaskDisabledAgents.get(this.session.settings),
 						this.session.getSessionSpawns?.() ?? "*",
@@ -1823,7 +1848,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	 */
 	async #executeSync(
 		toolCallId: string,
-		params: TaskParams,
+		params: TaskExecutionParams,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>,
 		preAllocatedId?: string,
@@ -1848,7 +1873,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	/** Spawn a fresh subagent and run it to completion. */
 	async #runSpawn(
 		toolCallId: string,
-		params: TaskParams,
+		params: TaskExecutionParams,
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>,
 		preAllocatedId?: string,
@@ -1868,6 +1893,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				assignment,
 				context,
 				agent: params.agent,
+				...(params.governorModelRole ? { model: formatModelRoleAlias(params.governorModelRole) } : {}),
 				...(Object.hasOwn(params, "outputSchema") ? { outputSchema: params.outputSchema } : {}),
 				...(Object.hasOwn(params, "schemaMode") ? { schemaMode: params.schemaMode } : {}),
 				...(params.effort !== undefined ? { effort: params.effort } : {}),

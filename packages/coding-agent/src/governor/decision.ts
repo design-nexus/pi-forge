@@ -72,6 +72,7 @@ export interface GovernorDecisionInput {
 	};
 	thresholds?: GovernorThresholds;
 	bandBudgets?: Partial<Record<TaskBand, Partial<GovernorBandBudget>>>;
+	rolePolicies?: Partial<Record<TaskBand, string>>;
 	current: { role: string; model: Model; effort?: Effort };
 	/** Already resolved, authorized role assignments; the policy never discovers models. */
 	availableRoles?: Readonly<Record<string, { model: Model; effort?: Effort | "off" } | undefined>>;
@@ -313,7 +314,7 @@ export function decideGovernor(input: GovernorDecisionInput): GovernorDecision |
 	const contextShare = Number.isFinite(requestedContextShare)
 		? Math.max(0, Math.min(1, requestedContextShare))
 		: defaultBudget.contextShare;
-	const requestedRole = input.overrides?.pinnedRole ?? input.overrides?.role;
+	const requestedRole = input.overrides?.pinnedRole ?? input.overrides?.role ?? input.rolePolicies?.[band];
 	let modelRole = input.current.role;
 	let model = input.current.model;
 	let roleEffort: Effort | "off" | undefined;

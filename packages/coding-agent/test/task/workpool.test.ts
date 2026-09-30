@@ -875,6 +875,7 @@ describe("WorkPool dispatch", () => {
 		const deliveries: Array<{ id: string; text: string }> = [];
 		const cards: CustomMessage[] = [];
 		const session = makeSession(cards, 1, false, deliveries);
+		session.routeGovernorTaskPlan = () => ({ reviewer: "independent" });
 		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
 			const id = request.identity?.id ?? "missing";
 			markIdle(id);
@@ -888,6 +889,10 @@ describe("WorkPool dispatch", () => {
 		expect(deliveries).toHaveLength(1);
 		expect(deliveries[0]?.id).toBe("aggregate");
 		expect(deliveries[0]?.text).toContain("Pool `aggregate`");
+		expect(deliveries[0]?.text).toContain("Governor selected an independent review");
+		expect(deliveries[0]?.text.indexOf("Pool queue drained.")).toBeLessThan(
+			deliveries[0]?.text.indexOf("Governor selected an independent review") ?? -1,
+		);
 		expect(cards.map(cardMode)).toContain("completed");
 	});
 

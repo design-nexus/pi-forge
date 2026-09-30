@@ -58,4 +58,15 @@ describe("composeSpawnAdvisory", () => {
 			}),
 		).toBeUndefined();
 	});
+
+	it("hands an independent Governor review decision back to the task caller", () => {
+		const advisory = composeSpawnAdvisory({
+			...genericFanout,
+			ircEnabled: false,
+			willRunAsync: true,
+			governorReviewer: "independent",
+		});
+		expect(advisory).toContain("Governor selected an independent review");
+		expect(advisory).toContain("Wait for any background tasks to finish");
+	});
 });

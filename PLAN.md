@@ -1145,6 +1145,22 @@ This is a default policy, not immutable behavior.
 
 ---
 
+### Acceptance Criteria
+
+- All four bands return bounded, inspectable execution decisions with confidence, evidence, and clamps.
+- Configured band budgets and model roles affect the selected plan; explicit operator role and effort choices and OMP ceilings remain authoritative.
+- Task batches and workpools receive selected effort and verification guidance, and the review policy reaches the caller after execution settles.
+- Small tasks stay direct with no workers or reviewer; larger separable tasks can select bounded workers and independent review.
+
+### Phase 3 completion record
+
+Status: Completed.
+Implementation: Completed the opt-in band policy across worker count, execution mode, planning depth, model role, reasoning effort, context budget, verification bounds, reviewer strategy, and capability selection. Added validated per-band model-role settings with explicit role precedence; selected roles now pass through task preflight and the existing child model resolver. Task and workpool plans carry reviewer decisions into completion guidance that can request the existing reviewer after changes are integrated and asynchronous work has settled. Decisions and their evidence remain durable and inspectable through the Governor ledger.
+Tests: Focused Governor and task/workpool contract suites passed (139 tests); `bun check` passed.
+Benchmarks: Matched task calibration was not run. The corpus still contains scenarios rather than frozen executable packets; calibration is deferred to Phase 9.
+Known limitations: The reviewer policy is handed to the parent caller; actual reviewer dispatch and integration gating belong to Phase 5/6. Automatic selection remains opt-in.
+Next dependencies: Phase 3B runtime reassessment; Phase 5 reviewer orchestration; Phase 9 matched policy calibration.
+
 # Phase 3B: Continuous Effort Reassessment
 
 Implement runtime feedback into the Governor.
@@ -1634,8 +1650,8 @@ Repository evidence: [architecture baseline](docs/architecture-baseline.md), [in
 | --- | --- | --- |
 | 0: Baseline and inventory | [COMPLETED] | Phase 1 task-quality measurement; coding-outcome packets and matched runs belong to Phase 9. |
 | 1: Prompt Engine | [COMPLETED] | Continue broader coding-quality and task-cost measurement in Phase 9. |
-| 2: Capability Router | [COMPLETED] | Phase 3: bind reviewer decisions to execution and evaluate effort and verification calibration against frozen task packets. |
-| 3: Adaptive Effort Governor | [IN PROGRESS] | Bind reviewer decisions to execution and evaluate effort and verification calibration against frozen task packets. |
+| 2: Capability Router | [COMPLETED] | Phase 3 is complete. |
+| 3: Adaptive Effort Governor | [COMPLETED] | Phase 3B runtime reassessment; Phase 5 reviewer orchestration; Phase 9 matched policy calibration. |
 | 3B: Continuous Effort Reassessment | [IN PROGRESS] | Add progress and duration signals, then evaluate escalation and de-escalation on real tasks. |
 | 4: Context Manager | [IN PROGRESS] | Evaluate dependency-aware lexical relevance against semantic matching and check its calibration on frozen task packets. |
 | 5: Adaptive Orchestration | [IN PROGRESS] | Bind reviewer decisions and graph dependencies where existing handles cannot. |

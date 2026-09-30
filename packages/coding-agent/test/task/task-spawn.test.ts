@@ -347,6 +347,27 @@ describe("task spawn routing", () => {
 		}
 	});
 
+	it("routes the Governor-selected model role to each batch worker", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const observedRoles: Array<string | undefined> = [];
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			observedRoles.push(options.modelRole);
+			return makeResult(options.id ?? "?");
+		});
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
+		session.settings.setModelRole("reviewer", "openai/gpt-4o");
+		session.routeGovernorTaskPlan = () => ({ modelRole: "reviewer" });
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-model-role-policy", {
+			context: "Update the implementation and tests.",
+			tasks: [
+				{ name: "Implementation", task: "Update the implementation." },
+				{ name: "Tests", task: "Update the tests." },
+			],
+		} as TaskParams);
+		expect(observedRoles).toEqual(["reviewer", "reviewer"]);
+	});
+
 	it("holds a task capability lease until its background worker settles", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
 		const gate = deferred();
