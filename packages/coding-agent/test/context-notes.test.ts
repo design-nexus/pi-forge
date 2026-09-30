@@ -312,6 +312,112 @@ describe("experimental context notes", () => {
 		expect(rendered.indexOf("Preserve this other finding")).toBeLessThan(rendered.indexOf("Preserve this finding"));
 	});
 
+	it("uses valid task prerequisites to carry relevance into dependent assignments", async () => {
+		const manager = SessionManager.inMemory();
+		const settings = Settings.isolated({ "compaction.experimentalContextManagement": true });
+		const tool = ContextNotesTool.createIf(toolSession(settings, manager));
+		if (!tool) throw new Error("expected context notes tool");
+		manager.appendMessage({ role: "user", content: "Plan the data migration", timestamp: 1 });
+		manager.appendMessage({
+			role: "assistant",
+			api: "openai-completions",
+			provider: "openai",
+			model: "gpt-test",
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "toolUse",
+			content: [
+				{
+					type: "toolCall",
+					id: "task-batch",
+					name: "task",
+					arguments: {
+						context: "Roll out the migration safely.",
+						tasks: [
+							{ name: "InspectSchema", task: "Inspect database schema constraints before implementation." },
+							{
+								name: "Migration",
+								task: "Implement migration rollout after schema review.",
+								dependsOn: ["InspectSchema"],
+							},
+						],
+					},
+				},
+			],
+			timestamp: 2,
+		});
+		const unrelatedSource = manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "api-notes",
+			toolName: "read",
+			content: [{ type: "text", text: "Public API compatibility requires preserving the old response envelope." }],
+			isError: false,
+			timestamp: 3,
+		});
+		const dependentSource = manager.appendMessage({
+			role: "toolResult",
+			toolCallId: "migration-notes",
+			toolName: "read",
+			content: [{ type: "text", text: "Migration rollout must preserve existing rows and support safe retries." }],
+			isError: false,
+			timestamp: 4,
+		});
+		await tool.execute("dependency-findings", {
+			findings: [
+				{ text: "Keep the API response contract", retention: "pinned", sourceEntryIds: [unrelatedSource] },
+				{
+					text: "Preserve the migration rollout constraints",
+					retention: "pinned",
+					sourceEntryIds: [dependentSource],
+				},
+			],
+		});
+		manager.appendMessage({ role: "user", content: "Continue database schema checks", timestamp: 5 });
+		const rendered = renderContextNotes(manager.getBranch());
+		expect(rendered.indexOf("Preserve the migration rollout constraints")).toBeLessThan(
+			rendered.indexOf("Keep the API response contract"),
+		);
+		manager.appendMessage({
+			role: "assistant",
+			api: "openai-completions",
+			provider: "openai",
+			model: "gpt-test",
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "toolUse",
+			content: [
+				{
+					type: "toolCall",
+					id: "invalid-task-graph",
+					name: "task",
+					arguments: {
+						tasks: [
+							{ name: "InspectSchema", task: "Inspect database schema constraints.", dependsOn: ["Migration"] },
+							{ name: "Migration", task: "Implement migration rollout.", dependsOn: ["InspectSchema"] },
+						],
+					},
+				},
+			],
+			timestamp: 6,
+		});
+		const invalidGraph = renderContextNotes(manager.getBranch());
+		expect(invalidGraph.indexOf("Keep the API response contract")).toBeLessThan(
+			invalidGraph.indexOf("Preserve the migration rollout constraints"),
+		);
+	});
+
 	it("does not use failed tool output as notebook relevance evidence", async () => {
 		const manager = SessionManager.inMemory();
 		const settings = Settings.isolated({ "compaction.experimentalContextManagement": true });
