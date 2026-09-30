@@ -359,6 +359,22 @@ describe("WorkPool dispatch", () => {
 		});
 	});
 
+	it("does not run Governor routing for empty workpool declarations", async () => {
+		const session = makeSession();
+		const transition = vi.fn();
+		session.routeGovernorTaskTransition = transition;
+		const spawn = vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "empty-governor-facts");
+		workpool.push(["inspect the route"], [], false);
+		await finishPool(session, workpool);
+		expect(transition).not.toHaveBeenCalled();
+		expect(spawn).toHaveBeenCalledTimes(1);
+	});
+
 	it("keeps workpool risk and capability requirements across later pushes", async () => {
 		const session = makeSession();
 		let routedFacts: unknown;

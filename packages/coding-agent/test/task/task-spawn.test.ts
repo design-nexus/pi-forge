@@ -233,6 +233,25 @@ describe("task spawn routing", () => {
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
+	it("does not defer a task for empty capability and low-risk declarations", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "async.enabled": false } });
+		const transition = vi.fn(async () => ({ snapshot: undefined, route: undefined, deferred: true as const }));
+		session.routeGovernorTaskTransition = transition;
+		const tool = await TaskTool.create(session);
+		await tool.execute("tc-empty-governor-facts", {
+			agent: "task",
+			task: "Inspect the route implementation.",
+			capabilities: [],
+			highRisk: false,
+		} as TaskParams);
+		expect(transition).not.toHaveBeenCalled();
+		expect(runSpy).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not start a task when its declared capability has no active route", async () => {
 		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
 		const runSpy = vi

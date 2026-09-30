@@ -171,7 +171,7 @@ export class WorkPool {
 		if (texts.length === 0) return [];
 		for (const capability of capabilities ?? []) this.#requiredCapabilities.add(capability);
 		this.#highRisk ||= highRisk;
-		if (capabilities !== undefined || highRisk) {
+		if ((capabilities?.length ?? 0) > 0 || highRisk) {
 			const facts: GovernorTaskFacts = {
 				files: [],
 				tasks: texts.map((_, index) => ({
