@@ -1,4 +1,4 @@
-{{#if asyncEnabled}}{{#if batchEnabled}}Spawn `tasks[]` concurrently; IDs return immediately.{{else}}Spawn one agent; ID returns immediately.{{/if}}{{#if hasBlockingAgents}} BLOCKING agents return inline.{{/if}}{{else}}{{#if batchEnabled}}Run `tasks[]` synchronously.{{else}}Run one agent synchronously.{{/if}}{{/if}}
+{{#if asyncEnabled}}{{#if batchEnabled}}Spawn independent `tasks[]` together; items may name prerequisites with `dependsOn` (referencing each prerequisite item's unique `name`), and dependent items wait for those prerequisites to finish. IDs return immediately.{{else}}Spawn one agent; ID returns immediately.{{/if}}{{#if hasBlockingAgents}} BLOCKING agents return inline.{{/if}}{{else}}{{#if batchEnabled}}Run independent `tasks[]` together; items may name prerequisites with `dependsOn` (referencing each prerequisite item's unique `name`), and dependent items wait for those prerequisites to finish.{{else}}Run one agent synchronously.{{/if}}{{/if}}
 {{#if asyncEnabled}}
 
 # Results

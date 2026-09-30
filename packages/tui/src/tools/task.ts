@@ -1726,6 +1726,8 @@ export interface TaskItem {
 	agent?: string;
 	/** The work; required by the schema. */
 	task?: string;
+	/** Names of prerequisite items in the same structured batch. */
+	dependsOn?: string[];
 	/** Per-spawn thinking effort: lowest/middle/highest level the resolved model supports. Overrides the agent's default selector (e.g. `auto`). */
 	effort?: "lo" | "med" | "hi";
 	/** Caller-provided output schema; its presence overrides the selected agent's schema. */

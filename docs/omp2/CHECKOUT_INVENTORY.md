@@ -617,3 +617,32 @@ The 20 contracts closed in this slice batch are:
 20. Browser route cleanup restores a prior policy or removes the temporary override when none existed.
 
 Verification: Prompt Engine, task-spawn, and workpool suites passed (87 tests, 403 assertions); repository `bun check` and `git diff --check` passed.
+
+## Structured task batches enforce prerequisite graphs
+
+Task batch items can declare `dependsOn` names. The task tool validates the graph before routing or starting work, sends named edges to Governor task facts when Governor routing is already active, and waits for each prerequisite to finish successfully before starting its dependents. Failed or cancelled prerequisites prevent dependent execution. Dependency waits occur before session and batch semaphore acquisition, so waiting tasks do not consume execution slots. The task prompt describes how to name prerequisite items.
+
+The 20 contracts closed in this slice batch are:
+
+1. Batch item types expose optional `dependsOn` task names.
+2. Batch wire schemas accept `dependsOn` on each item.
+3. The tool instructions explain that prerequisite names refer to item `name` values.
+4. Dependency lists must be arrays of non-empty strings.
+5. Every prerequisite must resolve to a named item in the same batch.
+6. Prerequisite lookup is case-insensitive, matching task-name uniqueness rules.
+7. Repeated references to one prerequisite are rejected.
+8. Self-dependencies are rejected.
+9. Cyclic graphs are rejected before execution.
+10. A valid graph maps names to stable item indexes for execution.
+11. Governor task facts retain named dependency edges when the call already declares structured Governor facts.
+12. Synchronous fan-out waits for prerequisite completion before starting a dependent.
+13. Background jobs wait for prerequisite completion before starting a dependent.
+14. Mixed inline and background execution shares the same dependency gates.
+15. A failed prerequisite blocks synchronous dependents.
+16. A failed background prerequisite settles its dependent as failed without invoking its executor.
+17. Dependency waiters do not acquire the session concurrency semaphore early.
+18. Dependency waiters do not acquire the batch concurrency semaphore early.
+19. Cancellation interrupts a background dependency wait and settles that item as aborted.
+20. Results retain the caller's original task ordering even when dependencies change execution order.
+
+Verification: task batch, task schema, and task spawn suites passed (70 tests, 302 assertions); repository `bun check` passed. The focused regression checks invalid graph forms, synchronous failure blocking, background wait ordering, and Governor fact edges.

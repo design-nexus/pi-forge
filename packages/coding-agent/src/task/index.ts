@@ -268,6 +268,13 @@ function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string 
 			if (item.highRisk !== undefined && typeof item.highRisk !== "boolean") {
 				return `Task ${i + 1} has an invalid highRisk value.`;
 			}
+			if (
+				item.dependsOn !== undefined &&
+				(!Array.isArray(item.dependsOn) ||
+					item.dependsOn.some(name => typeof name !== "string" || name.trim() === ""))
+			) {
+				return `Task ${i + 1} has invalid dependencies; use prerequisite task names.`;
+			}
 		}
 		const seen = new Map<string, string>();
 		for (const item of tasks) {
@@ -280,6 +287,46 @@ function validateSpawnParams(params: TaskParams, batchEnabled: boolean): string 
 			}
 			seen.set(key, name);
 		}
+		const nameToIndex = new Map(
+			tasks.flatMap((item, index) => {
+				const name = item.name?.trim();
+				return name ? [[name.toLowerCase(), index] as const] : [];
+			}),
+		);
+		const dependencyCounts = Array.from({ length: tasks.length }, () => 0);
+		const dependents = new Map<number, number[]>();
+		for (let index = 0; index < tasks.length; index++) {
+			const item = tasks[index]!;
+			const dependencies = item.dependsOn ?? [];
+			if (new Set(dependencies.map(name => name.trim().toLowerCase())).size !== dependencies.length) {
+				return `Task ${index + 1} lists a prerequisite more than once.`;
+			}
+			for (const dependency of dependencies) {
+				const dependencyIndex = nameToIndex.get(dependency.trim().toLowerCase());
+				if (dependencyIndex === undefined) {
+					return `Task ${index + 1} depends on unknown task \`${dependency}\`; every prerequisite needs a task name.`;
+				}
+				if (dependencyIndex === index) return `Task ${index + 1} cannot depend on itself.`;
+				dependencyCounts[index] += 1;
+				const children = dependents.get(dependencyIndex);
+				if (children) children.push(index);
+				else dependents.set(dependencyIndex, [index]);
+			}
+		}
+		let ready = dependencyCounts.flatMap((count, index) => (count === 0 ? [index] : []));
+		let visited = 0;
+		while (ready.length > 0) {
+			const next: number[] = [];
+			for (const index of ready) {
+				visited++;
+				for (const child of dependents.get(index) ?? []) {
+					dependencyCounts[child] -= 1;
+					if (dependencyCounts[child] === 0) next.push(child);
+				}
+			}
+			ready = next;
+		}
+		if (visited !== tasks.length) return "Task dependencies contain a cycle.";
 		if (typeof params.context !== "string" || params.context.trim() === "") {
 			return "Missing `context`. Provide the shared background for this batch — goal, constraints, and any contract the tasks share.";
 		}
@@ -310,6 +357,41 @@ function resolveSpawnItems(params: TaskParams): TaskItem[] {
 	if ("effort" in params) item.effort = params.effort;
 	if ("isolated" in params) item.isolated = params.isolated;
 	return [item];
+}
+
+function taskDependencyIndices(items: TaskItem[]): number[][] {
+	const nameToIndex = new Map(
+		items.flatMap((item, index) => {
+			const name = item.name?.trim();
+			return name ? [[name.toLowerCase(), index] as const] : [];
+		}),
+	);
+	return items.map(item => (item.dependsOn ?? []).map(name => nameToIndex.get(name.trim().toLowerCase())!));
+}
+
+function taskDependencyIds(items: TaskItem[]): string[] {
+	return items.map((item, index) => item.name?.trim() || `task-${index + 1}`);
+}
+
+async function waitForTaskDependencies(dependencies: readonly Promise<boolean>[], signal?: AbortSignal): Promise<void> {
+	if (signal?.aborted) throw new Error("Aborted while waiting for prerequisite tasks");
+	if (dependencies.length === 0) return;
+	const allSettled = Promise.all(dependencies);
+	if (!signal) {
+		if ((await allSettled).some(success => !success))
+			throw new Error("A prerequisite task failed; dependent task was not started");
+		return;
+	}
+	const aborted = Promise.withResolvers<never>();
+	const onAbort = () => aborted.reject(new Error("Aborted while waiting for prerequisite tasks"));
+	signal.addEventListener("abort", onAbort, { once: true });
+	try {
+		const results = await Promise.race([allSettled, aborted.promise]);
+		if (results.some(success => !success))
+			throw new Error("A prerequisite task failed; dependent task was not started");
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+	}
 }
 
 /**
@@ -732,6 +814,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 
 		const spawnItems = resolveSpawnItems(params);
+		const dependencies = taskDependencyIndices(spawnItems);
+		const dependencyIds = taskDependencyIds(spawnItems);
+		const dependencyGates = spawnItems.map(() => Promise.withResolvers<boolean>());
+		const settleDependency = (index: number, success: boolean): void => {
+			dependencyGates[index]!.resolve(success);
+		};
 		const evalToolNames = spawnItems.flatMap(item => item.tools ?? []);
 		if (evalToolNames.length > 0) {
 			if (this.session.getPlanModeState?.()?.enabled === true) {
@@ -763,8 +851,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			const facts: GovernorTaskFacts = {
 				files: [],
 				tasks: spawnItems.map((item, index) => ({
-					id: `task-${index + 1}`,
-					dependsOn: [],
+					id: dependencyIds[index]!,
+					dependsOn: dependencies[index]!.map(dependency => dependencyIds[dependency]!),
 					requiredCapabilities: item.capabilities?.filter(isTaskToolCapabilityId),
 				})),
 				highRisk,
@@ -923,6 +1011,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					signal,
 					onUpdate,
 					batchSemaphore,
+					dependencies,
+					dependencyGates.map(gate => gate.promise),
+					settleDependency,
 				);
 			} finally {
 				await releaseGovernorOwner();
@@ -982,6 +1073,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					signal,
 					onUpdate,
 					batchSemaphore,
+					dependencies,
+					dependencyGates.map(gate => gate.promise),
+					settleDependency,
 				),
 			);
 		}
@@ -1086,7 +1180,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					buildDetails: buildAsyncDetails,
 					onUpdate,
 					batchSemaphore,
+					dependencyPromises: dependencies[spawn.index]!.map(index => dependencyGates[index]!.promise),
 					onSettled: failed => {
+						settleDependency(spawn.index, !failed);
 						settledCount += 1;
 						if (failed) failedCount += 1;
 						releaseSettledGovernorOwner();
@@ -1098,6 +1194,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				const message = error instanceof Error ? error.message : String(error);
 				failedSchedules.push(`${spawn.agentId}: ${message}`);
 				spawn.progress.status = "failed";
+				settleDependency(spawn.index, false);
 				settledCount += 1;
 				failedCount += 1;
 				releaseSettledGovernorOwner();
@@ -1195,6 +1292,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				signal,
 				spawns: syncSpawns.map(spawn => ({ item: spawn.item, index: spawn.index, preAllocatedId: spawn.agentId })),
 				batchSemaphore,
+				dependencyPromises: dependencyGates.map(gate => gate.promise),
+				dependencies,
+				settleDependency,
 				onItemProgress: onUpdate
 					? (index, progress) => {
 							const spawn = spawns.find(candidate => candidate.index === index);
@@ -1261,6 +1361,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		buildDetails: () => TaskToolDetails;
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>;
 		batchSemaphore?: Semaphore;
+		dependencyPromises?: readonly Promise<boolean>[];
 		onSettled?: (failed: boolean) => void;
 	}): string {
 		const {
@@ -1274,6 +1375,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			onUpdate,
 			onSettled,
 			batchSemaphore,
+			dependencyPromises = [],
 		} = options;
 		const buildFollowUpHint = async (aborted: boolean): Promise<string> => {
 			// Isolated runs are parked without a reviver once the run ends
@@ -1297,6 +1399,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			agentId,
 			async ({ jobId, signal: runSignal, reportProgress, markRunning }) => {
 				const startedAt = Date.now();
+				try {
+					await waitForTaskDependencies(dependencyPromises, runSignal);
+				} catch (error) {
+					progress.status = runSignal.aborted ? "aborted" : "failed";
+					onSettled?.(true);
+					throw new TaskJobError(error instanceof Error ? error.message : String(error));
+				}
 				const semaphore = this.#getSpawnSemaphore();
 				let semaphoreHeld = false;
 				let batchHeld = false;
@@ -1490,6 +1599,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		signal?: AbortSignal,
 		onUpdate?: AgentToolUpdateCallback<TaskToolDetails>,
 		batchSemaphore?: Semaphore,
+		dependencies?: number[][],
+		dependencyPromises?: readonly Promise<boolean>[],
+		settleDependency?: (index: number, success: boolean) => void,
 	): Promise<AgentToolResult<TaskToolDetails>> {
 		if (spawns.length === 1) {
 			const spawn = spawns[0]!;
@@ -1497,7 +1609,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			const invokedAt = Date.now();
 			let batchHeld = false;
 			let semaphoreHeld = false;
+			let success = false;
 			try {
+				await waitForTaskDependencies(
+					(dependencies?.[spawn.index] ?? []).map(index => dependencyPromises?.[index] ?? Promise.resolve(false)),
+					signal,
+				);
 				if (batchSemaphore) {
 					await batchSemaphore.acquire(signal);
 					batchHeld = true;
@@ -1505,7 +1622,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				await semaphore.acquire(signal);
 				semaphoreHeld = true;
 				const acquiredAt = Date.now();
-				return await this.#executeSync(
+				const result = await this.#executeSync(
 					toolCallId,
 					spawnParamsFor(params, spawn.item, defaultAgent),
 					signal,
@@ -1515,7 +1632,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					false,
 					{ invokedAt, acquiredAt },
 				);
+				const single = result.details?.results[0];
+				success = !!single && !single.aborted && single.exitCode === 0 && single.error === undefined;
+				return result;
 			} finally {
+				settleDependency?.(spawn.index, success);
 				if (semaphoreHeld) this.#releaseSpawnSemaphore();
 				if (batchHeld) batchSemaphore?.release();
 			}
@@ -1544,6 +1665,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			signal,
 			spawns,
 			batchSemaphore,
+			dependencies,
+			dependencyPromises,
+			settleDependency,
 			onItemProgress: onUpdate
 				? (index, progress) => {
 						latestProgress.set(index, { ...progress, index });
@@ -1580,9 +1704,23 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		spawns: SyncSpawnRef[];
 		batchSemaphore?: Semaphore;
 		signal?: AbortSignal;
+		dependencies?: number[][];
+		dependencyPromises?: readonly Promise<boolean>[];
+		settleDependency?: (index: number, success: boolean) => void;
 		onItemProgress?: (index: number, progress: AgentProgress) => void;
 	}): Promise<(AgentToolResult<TaskToolDetails> | undefined)[]> {
-		const { toolCallId, params, defaultAgent, spawns, signal, onItemProgress, batchSemaphore } = args;
+		const {
+			toolCallId,
+			params,
+			defaultAgent,
+			spawns,
+			signal,
+			onItemProgress,
+			batchSemaphore,
+			dependencies = [],
+			dependencyPromises = [],
+			settleDependency,
+		} = args;
 		const semaphore = this.#getSpawnSemaphore();
 		const { results } = await mapWithConcurrencyLimitAllSettled(
 			spawns,
@@ -1591,7 +1729,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				const invokedAt = Date.now();
 				let semaphoreHeld = false;
 				let batchHeld = false;
+				let taskSucceeded = false;
 				try {
+					await waitForTaskDependencies(
+						(dependencies[spawn.index] ?? []).map(index => dependencyPromises[index] ?? Promise.resolve(false)),
+						workerSignal,
+					);
 					if (batchSemaphore) {
 						await batchSemaphore.acquire(workerSignal);
 						batchHeld = true;
@@ -1600,6 +1743,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					semaphoreHeld = true;
 				} catch (error) {
 					if (batchHeld) batchSemaphore?.release();
+					settleDependency?.(spawn.index, false);
 					if (workerSignal.aborted) return undefined;
 					throw error;
 				}
@@ -1611,7 +1755,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 								if (progress) onItemProgress(spawn.index, progress);
 							}
 						: undefined;
-					return await this.#executeSync(
+					const result = await this.#executeSync(
 						toolCallId,
 						spawnParamsFor(params, spawn.item, defaultAgent),
 						workerSignal,
@@ -1621,7 +1765,11 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						false,
 						{ invokedAt, acquiredAt },
 					);
+					const single = result.details?.results[0];
+					taskSucceeded = !!single && !single.aborted && single.exitCode === 0 && single.error === undefined;
+					return result;
 				} finally {
+					settleDependency?.(spawn.index, taskSucceeded);
 					if (semaphoreHeld) this.#releaseSpawnSemaphore();
 					if (batchHeld) batchSemaphore?.release();
 				}

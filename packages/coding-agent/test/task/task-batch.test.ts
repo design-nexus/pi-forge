@@ -98,6 +98,14 @@ function mockDiscovery(agent: AgentDefinition | AgentDefinition[] = taskAgent): 
 		projectAgentsDir: null,
 	});
 }
+
+async function pollUntil(predicate: () => boolean): Promise<void> {
+	const startedAt = Date.now();
+	while (!predicate()) {
+		if (Date.now() - startedAt > 2000) throw new Error("Timed out waiting for task batch state");
+		await Bun.sleep(5);
+	}
+}
 describe("task.batch schema gating", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
@@ -128,6 +136,7 @@ describe("task.batch schema gating", () => {
 		expect(onProperties.outputSchema).toBeUndefined();
 		expect(onProperties.schemaMode).toBeUndefined();
 		const itemProperties = getBatchItemProperties(on);
+		expect(itemProperties.dependsOn).toBeDefined();
 		expect(itemProperties.task).toBeDefined();
 		expect(itemProperties.name).toBeDefined();
 		expect(itemProperties.agent).toBeDefined();
@@ -262,6 +271,42 @@ describe("task.batch validation", () => {
 		expect(text).toContain("Duplicate task name");
 	});
 
+	it("rejects unknown, repeated, self, and cyclic task prerequisites", async () => {
+		const settings = { "task.batch": true };
+		const unknown = await executeText(
+			{ context: "Shared", tasks: [{ name: "A", task: "A", dependsOn: ["missing"] }] },
+			settings,
+		);
+		expect(unknown).toContain("unknown task `missing`");
+		const repeated = await executeText(
+			{
+				context: "Shared",
+				tasks: [
+					{ name: "A", task: "A" },
+					{ name: "B", task: "B", dependsOn: ["A", "a"] },
+				],
+			},
+			settings,
+		);
+		expect(repeated).toContain("lists a prerequisite more than once");
+		const self = await executeText(
+			{ context: "Shared", tasks: [{ name: "A", task: "A", dependsOn: ["a"] }] },
+			settings,
+		);
+		expect(self).toContain("cannot depend on itself");
+		const cycle = await executeText(
+			{
+				context: "Shared",
+				tasks: [
+					{ name: "A", task: "A", dependsOn: ["B"] },
+					{ name: "B", task: "B", dependsOn: ["A"] },
+				],
+			},
+			settings,
+		);
+		expect(cycle).toContain("dependencies contain a cycle");
+	});
+
 	it("marks lenientArgValidation so execute() surfaces the actionable shape error", async () => {
 		// Regression (#6039): the flat single-spawn wire schema carries
 		// `"+": "delete"`, so a batch `{ context, tasks[] }` payload is stripped
@@ -295,6 +340,56 @@ describe("task.batch spawning", () => {
 	beforeEach(() => {
 		AgentRegistry.resetGlobalForTests();
 		AgentLifecycleManager.resetGlobalForTests();
+	});
+
+	it("does not start a dependent item when its prerequisite fails", async () => {
+		mockDiscovery();
+		const started: string[] = [];
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			started.push(options.assignment ?? "");
+			return options.assignment === "Prepare"
+				? makeResult(options.id ?? "?", { exitCode: 1 })
+				: makeResult(options.id ?? "?");
+		});
+		const tool = await TaskTool.create(createSession({ settings: { "task.batch": true, "async.enabled": false } }));
+		const result = await tool.execute("dependency-failure", {
+			context: "A dependent task must not run after a failed prerequisite.",
+			tasks: [
+				{ name: "Prepare", task: "Prepare" },
+				{ name: "FollowUp", task: "Follow up", dependsOn: ["Prepare"] },
+			],
+		} as TaskParams);
+		expect(started).toEqual(["Prepare"]);
+		expect(getFirstText(result)).toContain("prerequisite task failed");
+	});
+
+	it("keeps a background dependent queued until its prerequisite finishes", async () => {
+		mockDiscovery();
+		const prerequisite = Promise.withResolvers<void>();
+		const started: string[] = [];
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			started.push(options.assignment ?? "");
+			if (options.assignment === "Prepare") await prerequisite.promise;
+			return makeResult(options.id ?? "?");
+		});
+		const manager = createManager();
+		const tool = await TaskTool.create(
+			createSession({ manager, settings: { "task.batch": true, "async.enabled": true } }),
+		);
+		const result = await tool.execute("dependency-async", {
+			context: "The dependent item starts only after its prerequisite completes.",
+			tasks: [
+				{ name: "Prepare", task: "Prepare" },
+				{ name: "FollowUp", task: "Follow up", dependsOn: ["Prepare"] },
+			],
+		} as TaskParams);
+		expect(getFirstText(result)).toContain("Spawned 2 background agents");
+		const jobs = [manager.getJob("Prepare")!, manager.getJob("FollowUp")!];
+		await pollUntil(() => started.length === 1);
+		expect(started).toEqual(["Prepare"]);
+		prerequisite.resolve();
+		await Promise.all(jobs.map(job => job.promise));
+		expect(started).toEqual(["Prepare", "Follow up"]);
 	});
 
 	afterEach(async () => {
