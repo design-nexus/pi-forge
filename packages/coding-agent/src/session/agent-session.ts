@@ -5814,15 +5814,15 @@ export class AgentSession implements SettingsScope {
 		return routeGovernorTaskTransition(this, request, trigger);
 	}
 
-	releaseGovernorTaskCapabilityRoutes(): Promise<void> {
+	releaseGovernorTaskCapabilityRoutes(ownerId = "default"): Promise<void> {
 		if (this.isStreaming) {
 			this.#schedulePostPromptTask(async signal => {
 				if (signal.aborted || this.#isDisposed) return;
-				await releaseStaleTaskCapabilityRoutes(this, new Set());
+				await releaseStaleTaskCapabilityRoutes(this, new Set(), ownerId);
 			});
 			return Promise.resolve();
 		}
-		return releaseStaleTaskCapabilityRoutes(this, new Set());
+		return releaseStaleTaskCapabilityRoutes(this, new Set(), ownerId);
 	}
 
 	routeGovernorTaskBatch(taskCount: number, highRisk = false): number | undefined {

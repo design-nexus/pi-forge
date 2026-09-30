@@ -19,6 +19,8 @@ import { signalsFromTaskFacts, type GovernorTaskFacts } from "./task-facts";
 export interface GovernorTaskTransitionRequest {
 	facts: GovernorTaskFacts;
 	overrides?: GovernorPreviewRequest["overrides"];
+	/** Stable identity for the task scope that owns its automatic capability routes. */
+	ownerId?: string;
 }
 
 export interface GovernorTaskTransitionResult {
@@ -59,13 +61,15 @@ export async function routeGovernorTaskTransition(
 			]),
 		];
 		const retainedRouteKeys = requiredCapabilities.map(id => (isTaskMcpCapability(id) ? `mcp:${id}` : id));
-		await releaseStaleTaskCapabilityRoutes(session, new Set(retainedRouteKeys));
+		const ownerId = request.ownerId ?? "default";
+		await releaseStaleTaskCapabilityRoutes(session, new Set(retainedRouteKeys), ownerId);
 		const capabilityRequests = requiredCapabilities.map(id => ({
 			id: isTaskMcpCapability(id) ? ("mcp" as const) : id,
 			...(isTaskMcpCapability(id) ? { toolName: id } : {}),
 			required: true,
 			signal: "task_transition" as const,
 			contextBudgetTokens: snapshot.decision.contextBudgetTokens,
+			ownerId,
 		}));
 		const capabilityPreflight = capabilityRequests.map(request => selectToolCapability(session, request));
 		const canActivateAll = capabilityPreflight.every(decision => decision.state === "active" || decision.selected);

@@ -21,6 +21,8 @@ export interface ToolCapabilityRouteRequest {
 	signal: "explicit" | "task_transition";
 	intent?: "parallel_work" | "single_task";
 	contextBudgetTokens?: number;
+	/** Structured task scope that owns an automatic activation lease. */
+	ownerId?: string;
 }
 
 export interface ToolCapabilityRouteDecision {
@@ -38,6 +40,7 @@ export interface ToolCapabilityRouteDecision {
 export type DelegationRouteDecision = ToolCapabilityRouteDecision & { id: "subagents"; toolName: "task" };
 
 interface CapabilityActivationLease {
+	capabilityId: ToolCapabilityRouteRequest["id"];
 	toolName: string;
 	enabledBefore: boolean;
 	mountedBefore: boolean;
@@ -45,10 +48,31 @@ interface CapabilityActivationLease {
 }
 
 const capabilityActivationLeases = new WeakMap<AgentSession, Map<string, CapabilityActivationLease>>();
-const taskCapabilityActivationLeases = new WeakMap<AgentSession, Map<string, CapabilityActivationLease>>();
+interface TaskCapabilityLease extends CapabilityActivationLease {
+	owners: Set<string>;
+}
+
+const taskCapabilityActivationLeases = new WeakMap<AgentSession, Map<string, TaskCapabilityLease>>();
 
 function capabilityLeaseKey(request: ToolCapabilityRouteRequest): string {
 	return request.id === "mcp" ? `mcp:${request.toolName ?? ""}` : request.id;
+}
+
+async function restoreBrowserPolicy(
+	session: AgentSession,
+	capabilityId: ToolCapabilityRouteRequest["id"],
+	lease: CapabilityActivationLease,
+): Promise<void> {
+	const currentOverride = session.promptSettingsOverride;
+	if (capabilityId !== "browser" || currentOverride?.capabilities?.browser !== "always") return;
+	const capabilities = { ...currentOverride.capabilities };
+	if (lease.browserPolicyBefore) capabilities.browser = lease.browserPolicyBefore;
+	else delete capabilities.browser;
+	const next = {
+		...currentOverride,
+		capabilities: Object.keys(capabilities).length > 0 ? capabilities : undefined,
+	};
+	await session.setPromptSettingsOverride(next.profile || next.modules || next.capabilities ? next : undefined);
 }
 
 /** Select a registered direct-tool capability without mutating the session. */
@@ -192,6 +216,12 @@ export async function routeToolCapability(
 	return session.runToolRegistryMutation(async () => {
 		const decision = selectToolCapability(session, request);
 		if (!decision.selected) {
+			if (request.signal === "task_transition" && decision.state === "active") {
+				taskCapabilityActivationLeases
+					.get(session)
+					?.get(capabilityLeaseKey(request))
+					?.owners.add(request.ownerId ?? "default");
+			}
 			if (request.signal === "explicit") {
 				const key = capabilityLeaseKey(request);
 				const automaticLease = taskCapabilityActivationLeases.get(session)?.get(key);
@@ -201,8 +231,8 @@ export async function routeToolCapability(
 						leases = new Map();
 						capabilityActivationLeases.set(session, leases);
 					}
-					leases.set(key, automaticLease);
-					taskCapabilityActivationLeases.get(session)?.delete(key);
+					const { owners: _owners, ...explicitLease } = automaticLease;
+					leases.set(key, explicitLease);
 				}
 			}
 			return decision;
@@ -210,6 +240,7 @@ export async function routeToolCapability(
 		const enabled = session.getEnabledToolNames();
 		const mounted = session.getMountedXdevToolNames();
 		const lease: CapabilityActivationLease = {
+			capabilityId: request.id,
 			toolName: decision.toolName,
 			enabledBefore: enabled.includes(decision.toolName),
 			mountedBefore: mounted.includes(decision.toolName),
@@ -228,13 +259,27 @@ export async function routeToolCapability(
 			});
 		}
 		if (request.signal === "explicit" || request.signal === "task_transition") {
-			const leaseStore = request.signal === "explicit" ? capabilityActivationLeases : taskCapabilityActivationLeases;
-			let leases = leaseStore.get(session);
-			if (!leases) {
-				leases = new Map();
-				leaseStore.set(session, leases);
+			if (request.signal === "explicit") {
+				let leases = capabilityActivationLeases.get(session);
+				if (!leases) {
+					leases = new Map();
+					capabilityActivationLeases.set(session, leases);
+				}
+				leases.set(capabilityLeaseKey(request), lease);
+			} else {
+				let leases = taskCapabilityActivationLeases.get(session);
+				if (!leases) {
+					leases = new Map();
+					taskCapabilityActivationLeases.set(session, leases);
+				}
+				const key = capabilityLeaseKey(request);
+				const existing = leases.get(key);
+				if (existing) {
+					existing.owners.add(request.ownerId ?? "default");
+				} else {
+					leases.set(key, { ...lease, owners: new Set([request.ownerId ?? "default"]) });
+				}
 			}
-			leases.set(capabilityLeaseKey(request), lease);
 		}
 		return { ...selectToolCapability(session, request), selected: true, reason: decision.reason };
 	});
@@ -244,13 +289,20 @@ export async function routeToolCapability(
 export async function releaseStaleTaskCapabilityRoutes(
 	session: AgentSession,
 	retained: ReadonlySet<string>,
+	ownerId = "default",
 ): Promise<void> {
 	await session.runToolRegistryMutation(async () => {
 		const leases = taskCapabilityActivationLeases.get(session);
 		if (!leases || session.isStreaming) return;
 		const retainedKeys = new Set<string>(retained);
 		for (const [key, lease] of leases) {
-			if (retainedKeys.has(key)) continue;
+			if (retainedKeys.has(key) || !lease.owners.has(ownerId)) continue;
+			lease.owners.delete(ownerId);
+			if (lease.owners.size > 0) continue;
+			if (capabilityActivationLeases.get(session)?.has(key)) {
+				leases.delete(key);
+				continue;
+			}
 			if (
 				!session.getEnabledToolNames().includes(lease.toolName) ||
 				session.getMountedXdevToolNames().includes(lease.toolName)
@@ -263,6 +315,7 @@ export async function releaseStaleTaskCapabilityRoutes(
 			if (lease.enabledBefore) enabled.push(lease.toolName);
 			if (lease.mountedBefore) mounted.push(lease.toolName);
 			await session.setActiveToolPresentation(enabled, mounted);
+			await restoreBrowserPolicy(session, lease.capabilityId, lease);
 			leases.delete(key);
 		}
 	});
@@ -290,23 +343,20 @@ export async function releaseToolCapability(
 			const decision = selectToolCapability(session, request);
 			return { ...decision, selected: false, reason: "no session-scoped activation to release" };
 		}
+		if ((taskCapabilityActivationLeases.get(session)?.get(key)?.owners.size ?? 0) > 0) {
+			leases?.delete(key);
+			return {
+				...selectToolCapability(session, request),
+				selected: false,
+				reason: "activation remains required by an active task scope",
+			};
+		}
 		const enabled = session.getEnabledToolNames().filter(name => name !== lease.toolName);
 		const mounted = session.getMountedXdevToolNames().filter(name => name !== lease.toolName);
 		if (lease.enabledBefore) enabled.push(lease.toolName);
 		if (lease.mountedBefore) mounted.push(lease.toolName);
 		await session.setActiveToolPresentation(enabled, mounted);
-		const currentOverride = session.promptSettingsOverride;
-		if (request.id === "browser" && currentOverride?.capabilities?.browser === "always") {
-			const current = currentOverride;
-			const capabilities = { ...current.capabilities };
-			if (lease.browserPolicyBefore) capabilities.browser = lease.browserPolicyBefore;
-			else delete capabilities.browser;
-			const next = {
-				...current,
-				capabilities: Object.keys(capabilities).length > 0 ? capabilities : undefined,
-			};
-			await session.setPromptSettingsOverride(next.profile || next.modules || next.capabilities ? next : undefined);
-		}
+		await restoreBrowserPolicy(session, request.id, lease);
 		leases?.delete(key);
 		return {
 			...selectToolCapability(session, request),

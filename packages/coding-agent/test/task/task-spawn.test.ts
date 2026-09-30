@@ -243,8 +243,11 @@ describe("task spawn routing", () => {
 			.mockImplementation(async options => makeResult(options.id ?? "?"));
 		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
 		let routedCapabilities: readonly string[] = [];
+		const releaseRoutes = vi.fn(async () => {});
+		session.releaseGovernorTaskCapabilityRoutes = releaseRoutes;
 		session.routeGovernorTaskTransition = async request => {
 			routedCapabilities = request.facts.requiredCapabilities ?? [];
+			expect(request.ownerId).toBe("task:tc-item-capabilities");
 			return {
 				snapshot: undefined,
 				route: undefined,
@@ -285,6 +288,167 @@ describe("task spawn routing", () => {
 		} as TaskParams);
 		expect(routedCapabilities).toEqual(["browser", "debugger"]);
 		expect(runSpy).toHaveBeenCalledTimes(2);
+		expect(releaseRoutes).toHaveBeenCalledWith("task:tc-item-capabilities");
+	});
+
+	it("holds a task capability lease until its background worker settles", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const gate = deferred();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			await gate.promise;
+			return makeResult(options.id ?? "?");
+		});
+		const manager = createManager();
+		const session = createSession({ manager });
+		const releaseRoutes = vi.fn(async () => {});
+		session.releaseGovernorTaskCapabilityRoutes = releaseRoutes;
+		session.routeGovernorTaskTransition = async request => {
+			expect(request.ownerId).toBe("task:tc-capability-lifetime");
+			return {
+				snapshot: undefined,
+				route: undefined,
+				capabilityRoutes: [
+					{
+						id: "debugger",
+						toolName: "debug",
+						state: "active",
+						selected: true,
+						source: "built-in",
+						estimatedGuidanceTokens: 0,
+						estimatedToolSchemaTokens: 0,
+						estimatedActivationTokens: 0,
+						reason: "debug tool active",
+					},
+				],
+			};
+		};
+		const tool = await TaskTool.create(session);
+
+		const result = await tool.execute("tc-capability-lifetime", {
+			agent: "task",
+			task: "Inspect the debugger output.",
+			capabilities: ["debugger"],
+		} as TaskParams);
+		const job = manager.getJob(result.details?.async?.jobId ?? "");
+		expect(job?.status).toBe("running");
+		expect(releaseRoutes).not.toHaveBeenCalled();
+
+		gate.resolve();
+		await job!.promise;
+		expect(releaseRoutes).toHaveBeenCalledWith("task:tc-capability-lifetime");
+	});
+
+	it("releases the task capability lease after a background worker fails", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		vi.spyOn(executorModule, "runSubprocess").mockResolvedValue(
+			makeResult("failed-worker", { exitCode: 1, error: "worker failed" }),
+		);
+		const manager = createManager();
+		const session = createSession({ manager });
+		const releaseRoutes = vi.fn(async () => {});
+		session.releaseGovernorTaskCapabilityRoutes = releaseRoutes;
+		session.routeGovernorTaskTransition = async () => ({
+			snapshot: undefined,
+			route: undefined,
+			capabilityRoutes: [
+				{
+					id: "debugger",
+					toolName: "debug",
+					state: "active",
+					selected: true,
+					source: "built-in",
+					estimatedGuidanceTokens: 0,
+					estimatedToolSchemaTokens: 0,
+					estimatedActivationTokens: 0,
+					reason: "debug tool active",
+				},
+			],
+		});
+		const tool = await TaskTool.create(session);
+		const result = await tool.execute("tc-capability-failure", {
+			agent: "task",
+			task: "Inspect the debugger output.",
+			capabilities: ["debugger"],
+		} as TaskParams);
+		const job = manager.getJob(result.details?.async?.jobId ?? "");
+		expect(job).toBeDefined();
+
+		await job!.promise;
+
+		expect(job!.status).toBe("failed");
+		expect(releaseRoutes).toHaveBeenCalledWith("task:tc-capability-failure");
+	});
+
+	it("returns completed synchronous work when capability lease cleanup fails", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "async.enabled": false } });
+		const releaseRoutes = vi.fn(async () => {
+			throw new Error("session is shutting down");
+		});
+		session.releaseGovernorTaskCapabilityRoutes = releaseRoutes;
+		session.routeGovernorTaskTransition = async () => ({ snapshot: undefined, route: undefined });
+		const tool = await TaskTool.create(session);
+
+		const result = await tool.execute("tc-capability-release-error", {
+			agent: "task",
+			task: "Inspect the authentication handler.",
+			highRisk: true,
+		} as TaskParams);
+
+		expect(getFirstText(result)).toContain("All done.");
+		expect(releaseRoutes).toHaveBeenCalledWith("task:tc-capability-release-error");
+	});
+
+	it("holds a shared task lease until both inline and background workers settle", async () => {
+		const inlineAgent: AgentDefinition = { ...taskAgent, name: "inline", blocking: true };
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({
+			agents: [taskAgent, inlineAgent],
+			projectAgentsDir: null,
+		});
+		const backgroundGate = deferred();
+		vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+			if (options.id === "Background") await backgroundGate.promise;
+			return makeResult(options.id ?? "?");
+		});
+		const manager = createManager();
+		const session = createSession({ manager, settings: { "task.batch": true, "async.enabled": true } });
+		const releaseRoutes = vi.fn(async () => {});
+		session.releaseGovernorTaskCapabilityRoutes = releaseRoutes;
+		session.routeGovernorTaskPlan = () => ({ workerCount: 2 });
+		session.routeGovernorTaskTransition = async () => ({
+			snapshot: undefined,
+			route: undefined,
+			capabilityRoutes: [
+				{
+					id: "debugger",
+					toolName: "debug",
+					state: "active",
+					selected: true,
+					source: "built-in",
+					estimatedGuidanceTokens: 0,
+					estimatedToolSchemaTokens: 0,
+					estimatedActivationTokens: 0,
+					reason: "debug tool active",
+				},
+			],
+		});
+		const tool = await TaskTool.create(session);
+
+		const result = await tool.execute("tc-mixed-capability-lifetime", {
+			context: "Inspect the debugger output.",
+			tasks: [
+				{ name: "Inline", agent: "inline", task: "Inspect the failing route.", capabilities: ["debugger"] },
+				{ name: "Background", agent: "task", task: "Inspect its callers.", capabilities: ["debugger"] },
+			],
+		} as TaskParams);
+		const job = manager.getJob(result.details?.async?.jobId ?? "");
+		expect(job?.status).toBe("running");
+		expect(releaseRoutes).not.toHaveBeenCalled();
+
+		backgroundGate.resolve();
+		await job!.promise;
+		expect(releaseRoutes).toHaveBeenCalledWith("task:tc-mixed-capability-lifetime");
 	});
 
 	it("does not start a task whose Governor transition is deferred", async () => {

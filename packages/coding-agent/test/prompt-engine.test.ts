@@ -495,7 +495,7 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 	});
 	try {
 		cfgAdaptiveMode.set(settings, "auto");
-		await session.setPromptSettingsOverride({ capabilities: { debugger: "automatic" } });
+		await session.setPromptSettingsOverride({ capabilities: { debugger: "automatic", browser: "automatic" } });
 		const available = new Set([...session.getEnabledToolNames(), "debug"]);
 		const mounted = new Set([...session.getMountedXdevToolNames(), "debug"]);
 		await session.setActiveToolPresentation([...available], [...mounted]);
@@ -563,6 +563,18 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 		expect(session.getActiveToolNames()).toContain("debug");
 		await session.releaseToolCapability({ id: "debugger", signal: "explicit" });
 		expect(session.getActiveToolNames()).not.toContain("debug");
+		await session.routeGovernorTaskTransition({ facts, ownerId: "scope-a" }, "scope");
+		await session.routeGovernorTaskTransition({ facts, ownerId: "scope-b" }, "scope");
+		await session.releaseGovernorTaskCapabilityRoutes("scope-a");
+		expect(session.getActiveToolNames()).toContain("debug");
+		await session.releaseGovernorTaskCapabilityRoutes("scope-b");
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		await session.routeGovernorTaskTransition({ facts, ownerId: "scope-c" }, "scope");
+		await session.routeToolCapability({ id: "debugger", signal: "explicit" });
+		await session.releaseToolCapability({ id: "debugger", signal: "explicit" });
+		expect(session.getActiveToolNames()).toContain("debug");
+		await session.releaseGovernorTaskCapabilityRoutes("scope-c");
+		expect(session.getActiveToolNames()).not.toContain("debug");
 		const browserAvailable = session.promptComposition?.capabilities.browser.available === true;
 		const browserRoute = await session.routeGovernorTaskTransition(
 			{
@@ -598,6 +610,31 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 		await session.releaseGovernorTaskCapabilityRoutes();
 		expect(session.getActiveToolNames()).not.toContain("debug");
 		expect(session.getMountedXdevToolNames()).toContain("debug");
+		expect(session.promptSettingsOverride?.capabilities?.browser).toBe("automatic");
+		if (browserAvailable) {
+			await session.setPromptSettingsOverride({ capabilities: { debugger: "automatic" } });
+			await session.routeGovernorTaskTransition(
+				{
+					facts: {
+						...facts,
+						tasks: [{ id: "browser-cleanup", dependsOn: [], requiredCapabilities: ["browser"] }],
+					},
+					ownerId: "browser-cleanup",
+				},
+				"scope",
+			);
+			await session.releaseGovernorTaskCapabilityRoutes("browser-cleanup");
+			expect(session.promptSettingsOverride?.capabilities?.browser).toBeUndefined();
+		}
+		const enabledBeforeUnownedRelease = session.getEnabledToolNames();
+		const mountedBeforeUnownedRelease = session.getMountedXdevToolNames();
+		await session.setActiveToolPresentation(
+			[...new Set([...enabledBeforeUnownedRelease, "debug"])],
+			mountedBeforeUnownedRelease.filter(name => name !== "debug"),
+		);
+		await session.releaseGovernorTaskCapabilityRoutes("unowned-scope");
+		expect(session.getActiveToolNames()).toContain("debug");
+		await session.setActiveToolPresentation(enabledBeforeUnownedRelease, mountedBeforeUnownedRelease);
 		await session.routeGovernorTaskTransition({ facts }, "scope");
 		expect(session.getActiveToolNames()).toContain("debug");
 		cfgAdaptiveMode.set(settings, "inspect");

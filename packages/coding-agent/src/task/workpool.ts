@@ -188,7 +188,11 @@ export class WorkPool {
 				.then(async () => {
 					const routeTransition = this.session.routeGovernorTaskTransition;
 					if (!routeTransition) throw new ToolError("workpool Governor preflight is unavailable for this session");
-					const routing = await routeTransition.call(this.session, { facts }, "scope");
+					const routing = await routeTransition.call(
+						this.session,
+						{ facts, ownerId: `workpool:${this.name}` },
+						"scope",
+					);
 					this.#capabilityTransitionDeferred = routing?.deferred === true;
 					this.#capabilityRouteError = this.#capabilityRoutingError(routing);
 				})
@@ -367,7 +371,10 @@ export class WorkPool {
 			if (this.closed || item.status !== "queued") return;
 			const facts = this.#capabilityFacts;
 			if (!facts) break;
-			const routing = await this.session.routeGovernorTaskTransition?.({ facts }, "scope");
+			const routing = await this.session.routeGovernorTaskTransition?.(
+				{ facts, ownerId: `workpool:${this.name}` },
+				"scope",
+			);
 			this.#capabilityTransitionDeferred = routing?.deferred === true;
 			this.#capabilityRouteError = this.#capabilityRoutingError(routing);
 		}
@@ -718,6 +725,11 @@ export class WorkPool {
 	close(): { dropped: string[] } {
 		this.closed = true;
 		this.#closedSignal.resolve();
+		void this.#capabilityRouting
+			.then(() => this.session.releaseGovernorTaskCapabilityRoutes?.(`workpool:${this.name}`))
+			.catch(error => {
+				logger.warn("workpool capability release failed", { pool: this.name, error: String(error) });
+			});
 		const manager = this.session.asyncJobManager;
 		for (const batch of this.batches) {
 			if (batch.status === "queued") manager?.cancel(batch.jobId, { ownerId: this.ownerId });

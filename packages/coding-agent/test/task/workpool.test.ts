@@ -337,6 +337,7 @@ describe("WorkPool dispatch", () => {
 		let routedFacts: unknown;
 		session.routeGovernorTaskTransition = async request => {
 			routedFacts = request.facts;
+			expect(request.ownerId).toBe("workpool:governor-capability");
 			return {
 				snapshot: undefined,
 				route: undefined,
@@ -359,6 +360,61 @@ describe("WorkPool dispatch", () => {
 		});
 	});
 
+	it("releases the workpool's capability lease when the pool closes", async () => {
+		const session = makeSession();
+		const release = vi.fn(async () => {});
+		session.releaseGovernorTaskCapabilityRoutes = release;
+		const workpool = pool(session, "lease-owner");
+
+		workpool.close();
+		await Bun.sleep(0);
+
+		expect(release).toHaveBeenCalledWith("workpool:lease-owner");
+	});
+
+	it("releases a capability lease after a pending transition settles on close", async () => {
+		const session = makeSession();
+		const transition = Promise.withResolvers<{
+			snapshot: undefined;
+			route: undefined;
+			capabilityRoutes: ToolCapabilityRouteDecision[];
+		}>();
+		const release = vi.fn(async () => {});
+		session.routeGovernorTaskTransition = async () => transition.promise;
+		session.releaseGovernorTaskCapabilityRoutes = release;
+		const workpool = pool(session, "pending-lease-owner");
+		workpool.push(["inspect the browser trace"], ["browser"]);
+
+		workpool.close();
+		transition.resolve({
+			snapshot: undefined,
+			route: undefined,
+			capabilityRoutes: [activeCapabilityRoute("browser")],
+		});
+		await Bun.sleep(0);
+
+		expect(release).toHaveBeenCalledWith("workpool:pending-lease-owner");
+	});
+
+	it("releases the workpool owner when a pending route rejects during close", async () => {
+		const session = makeSession();
+		const transition = Promise.withResolvers<{
+			snapshot: undefined;
+			route: undefined;
+		}>();
+		const release = vi.fn(async () => {});
+		session.routeGovernorTaskTransition = async () => transition.promise;
+		session.releaseGovernorTaskCapabilityRoutes = release;
+		const workpool = pool(session, "rejected-lease-owner");
+		workpool.push(["inspect the debugger output"], ["debugger"]);
+
+		workpool.close();
+		transition.reject(new Error("route failed"));
+		await Bun.sleep(0);
+
+		expect(release).toHaveBeenCalledWith("workpool:rejected-lease-owner");
+	});
+
 	it("does not run Governor routing for empty workpool declarations", async () => {
 		const session = makeSession();
 		const transition = vi.fn();
@@ -378,9 +434,11 @@ describe("WorkPool dispatch", () => {
 	it("keeps workpool risk and capability requirements across later pushes", async () => {
 		const session = makeSession();
 		let routedFacts: unknown;
+		const routeOwners: string[] = [];
 		const plannedRisks: boolean[] = [];
 		session.routeGovernorTaskTransition = async request => {
 			routedFacts = request.facts;
+			if (request.ownerId) routeOwners.push(request.ownerId);
 			return {
 				snapshot: undefined,
 				route: undefined,
@@ -402,6 +460,7 @@ describe("WorkPool dispatch", () => {
 		await finishPool(session, workpool);
 		expect(routedFacts).toMatchObject({ highRisk: true, requiredCapabilities: ["debugger"] });
 		expect(plannedRisks).toEqual([true, true]);
+		expect(routeOwners).toEqual(["workpool:governor-risk"]);
 	});
 
 	it("does not start a high-risk workpool item when Governor planning throws", async () => {
