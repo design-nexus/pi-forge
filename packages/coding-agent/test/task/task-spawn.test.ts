@@ -337,6 +337,24 @@ describe("task spawn routing", () => {
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
+	it("does not start a high-risk batch when the session lacks a Governor planner", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "task.batch": true, "async.enabled": false } });
+		session.routeGovernorTaskTransition = async () => ({ snapshot: undefined, route: undefined });
+		session.routeGovernorTaskPlan = undefined;
+		session.routeGovernorTaskBatch = undefined;
+		const tool = await TaskTool.create(session);
+		const result = await tool.execute("tc-no-planner", {
+			context: "Audit credential handling.",
+			tasks: [{ task: "Review token validation.", highRisk: true }, { task: "Review token tests." }],
+		} as TaskParams);
+		expect(getFirstText(result)).toContain("batch planning is unavailable");
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
 	for (const { label, runnerOverrides, expectRetained } of [
 		{
 			label: "tells the parent an isolated agent cannot be messaged instead of calling it idle",
