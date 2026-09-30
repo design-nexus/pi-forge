@@ -250,6 +250,25 @@ describe("task spawn routing", () => {
 		expect(runSpy).not.toHaveBeenCalled();
 	});
 
+	it("does not start a task when Governor preflight throws", async () => {
+		vi.spyOn(discoveryModule, "discoverAgents").mockResolvedValue({ agents: [taskAgent], projectAgentsDir: null });
+		const runSpy = vi
+			.spyOn(executorModule, "runSubprocess")
+			.mockImplementation(async options => makeResult(options.id ?? "?"));
+		const session = createSession({ settings: { "async.enabled": false } });
+		session.routeGovernorTaskTransition = async () => {
+			throw new Error("capability registry is unavailable");
+		};
+		const tool = await TaskTool.create(session);
+		const result = await tool.execute("tc-preflight-error", {
+			agent: "task",
+			task: "Inspect the debugger output.",
+			capabilities: ["debugger"],
+		} as TaskParams);
+		expect(getFirstText(result)).toContain("capability registry is unavailable");
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
 	for (const { label, runnerOverrides, expectRetained } of [
 		{
 			label: "tells the parent an isolated agent cannot be messaged instead of calling it idle",
