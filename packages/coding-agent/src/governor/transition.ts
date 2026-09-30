@@ -24,6 +24,7 @@ export interface GovernorTaskTransitionResult {
 	snapshot: GovernorSnapshot | undefined;
 	route: DelegationRouteDecision | undefined;
 	capabilityRoutes?: ToolCapabilityRouteDecision[];
+	deferred?: true;
 }
 
 function isTaskMcpCapability(value: TaskCapabilityId): value is `mcp__${string}` {

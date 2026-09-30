@@ -475,6 +475,8 @@ export interface ToolSession {
 	) => Promise<GovernorTaskTransitionResult>;
 	/** Release Governor-owned direct-tool routes when the next task declares none. */
 	releaseGovernorTaskCapabilityRoutes?: () => Promise<void>;
+	/** Wait until the active provider turn and its deferred tool mutations settle. */
+	waitForIdle?: () => Promise<void>;
 	/** Replace cached todo phases for this session. */
 	setTodoPhases?: (phases: TodoPhase[]) => void;
 	/**
