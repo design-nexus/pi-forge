@@ -27,7 +27,7 @@ The earlier authenticated single-turn comparison in [the Phase 1 report](omp2/PH
 | Phase | Status | Evidence and next dependency |
 | --- | --- | --- |
 | 0: inventory and baseline | **COMPLETED (2026-09-30)** | Architecture inventory, initial benchmark fixtures, and paired upstream/Pi Forge first-turn input baseline are recorded. Coding-outcome evaluation remains in Phase 9. |
-| 1: Prompt Engine | **IN PROGRESS** | Profiles, overrides, commands, inspection, and lifecycle tests exist. Material token reduction and coding non-regression remain unproven. |
+| 1: Prompt Engine | **COMPLETED (2026-09-30)** | Profiles, overrides, commands, inspection, live prompt measurements, and a matched coding-task smoke test are recorded. Broader task-quality measurement remains in Phase 9. |
 | 2: Capability Router | **IN PROGRESS** | Direct tool catalog and opt-in delegation routing exist. Browser/MCP runtime gates, automatic task signals, and lifecycle telemetry remain open. |
 | 3: Adaptive Effort Governor | **IN PROGRESS** | Opt-in decisions, session snapshots, revision triggers, and bounded worker/context policy exist. Model-role selection is inspectable but not dispatched. Verification floors are provisional labels. |
 | 3B–9 | **PLANNED / UPSTREAM REUSE** | The primitives above can be reused; adaptive feedback, working set, orchestration, integration, verification, repair, and matched evaluation remain to be connected. |

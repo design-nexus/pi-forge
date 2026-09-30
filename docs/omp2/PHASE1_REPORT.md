@@ -24,8 +24,16 @@ Run `bun packages/coding-agent/bench/prompt-profiles.ts` from the repo root. It 
 
 | Fixture | Full initial / peak | Minimal initial / peak | Coding initial / peak | Agentic initial / peak |
 | --- | ---: | ---: | ---: | ---: |
-| Simple question | 1,809 / 1,809 | 1,667 / 1,667 | 1,809 / 1,809 | 1,809 / 1,809 |
-| Browser task | 1,809 / 1,850 | 1,667 / 1,708 | 1,809 / 1,850 | 1,809 / 1,850 |
-| Task-agent workflow | 1,809 / 2,005 | 1,667 / 1,863 | 1,809 / 2,005 | 1,809 / 2,005 |
+| Simple question | 1,846 / 1,846 | 1,704 / 1,704 | 1,846 / 1,846 | 1,846 / 1,846 |
+| Browser task | 1,846 / 1,887 | 1,704 / 1,745 | 1,846 / 1,887 | 1,846 / 1,887 |
+| Task-agent workflow | 1,846 / 2,042 | 1,704 / 1,900 | 1,846 / 2,042 | 1,846 / 2,042 |
 
-The small reduction is deliberate: required policy, project rules, and capability discovery stay loaded. A separate authenticated live comparison was run with `openai-codex/gpt-5.5` using the same first-turn task and session context for each profile. Provider-reported input tokens were Full 12,896, Minimal 12,079, Coding 12,284, and Agentic 12,916. Locally counted prompt text plus tool schemas for that run was Full 11,756 (9,389 + 2,367), Minimal 10,973 (9,041 + 1,932), Coding 11,178 (9,246 + 1,932), and Agentic 11,776 (9,409 + 2,367). The gap between local and provider counts reflects provider framing and request serialization; this single run measures input size, not task success, cache savings, or a general model-independent reduction. Re-run matched tasks and repository state before making broader performance claims.
+The small reduction is deliberate: required policy, project rules, and capability discovery stay loaded. The latest paired live first-turn measurement uses upstream OMP and Pi Forge with `openai-codex/gpt-5.5`; the complete table, pinned revisions, and limitations are recorded in [the architecture baseline](../architecture-baseline.md). Provider-reported input was 12,916 for upstream OMP, 13,027 for Pi Forge Full, 12,174 for Minimal, 12,373 for Coding, and 13,027 for Agentic. Minimal saves 742 tokens (5.7%) against that single upstream observation; this measures request size, not task success or cache savings.
+
+## Coding behavior spot check
+
+The frozen fixture `packages/coding-agent/bench/fixtures/prompt-profile-retry-delay-v1/TASK.md` was run once each under Full, Minimal, and Coding on `openai-codex/gpt-5.5`, in three clean copies with the same tools and acceptance tests. All three runs implemented the required bounded exponential retry delay, reported `bun test`, and passed both tests (9 assertions). Full and Minimal produced identical implementation bytes; Coding differed only in the RangeError message while satisfying the same observable contract. This is a small-task smoke check, not a broad task-quality benchmark; the Phase 9 corpus remains necessary for general non-regression claims.
+
+## Verification and status
+
+The prompt-engine, model-module, template, and dynamic tool-activation suites passed 101 tests (474 assertions). Coverage includes explicit user overrides, live profile reconciliation, capability activation and unload, and model changes across provider families. `bun check` and the live first-turn runner passed. Phase 1 is complete as an implementation and initial acceptance gate; broader coding quality and task-cost calibration remain in Phase 9.
