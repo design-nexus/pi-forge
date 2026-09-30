@@ -1634,7 +1634,7 @@ Repository evidence: [architecture baseline](docs/architecture-baseline.md), [in
 | --- | --- | --- |
 | 0: Baseline and inventory | [IN PROGRESS] | Freeze executable task packets and run matched upstream/Pi Forge baselines. |
 | 1: Prompt Engine | [IN PROGRESS] | Establish task-quality non-regression and material token impact in representative live sessions. |
-| 2: Capability Router | [IN PROGRESS] | Connect task sources beyond explicit task-tool declarations; evaluate automatic browser/MCP selection and cleanup after deferred task transitions. |
+| 2: Capability Router | [IN PROGRESS] | Connect task sources beyond task-tool and eval workpool declarations; evaluate natural-language selection and cleanup after deferred task transitions. |
 | 3: Adaptive Effort Governor | [IN PROGRESS] | Bind more decisions to execution and verification while honoring operator ceilings. |
 | 3B: Continuous Effort Reassessment | [IN PROGRESS] | Add progress and duration signals, then evaluate escalation and de-escalation on real tasks. |
 | 4: Context Manager | [IN PROGRESS] | Add dependency-aware relevance from structured task graphs; evaluate local relevance against semantic matching. |

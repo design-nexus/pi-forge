@@ -555,6 +555,18 @@ it("routes declared task capabilities and releases Governor-owned tools when req
 		expect(missingMcp.capabilityRoutes).toMatchObject([
 			{ id: "mcp", toolName: "mcp__server__tool", state: "unavailable", selected: false },
 		]);
+		await session.routeGovernorTaskTransition({ facts }, "scope");
+		expect(session.getActiveToolNames()).toContain("debug");
+		await session.releaseGovernorTaskCapabilityRoutes();
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		expect(session.getMountedXdevToolNames()).toContain("debug");
+		await session.routeGovernorTaskTransition({ facts }, "scope");
+		expect(session.getActiveToolNames()).toContain("debug");
+		cfgAdaptiveMode.set(settings, "inspect");
+		await Bun.sleep(0);
+		await session.runToolRegistryMutation(async () => {});
+		expect(session.getActiveToolNames()).not.toContain("debug");
+		expect(session.getMountedXdevToolNames()).toContain("debug");
 	} finally {
 		await session.dispose();
 		authStorage.close();

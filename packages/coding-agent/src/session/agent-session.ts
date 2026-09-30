@@ -39,6 +39,7 @@ import { recordGovernorTodoScope } from "../governor/todo-scope";
 import type { PromptComposition } from "../prompt-engine/compose";
 import {
 	releaseToolCapability,
+	releaseStaleTaskCapabilityRoutes,
 	routeDelegationCapability,
 	routeToolCapability,
 	selectDelegationCapability,
@@ -5769,7 +5770,6 @@ export class AgentSession implements SettingsScope {
 			this.#governorTaskReleaseOnIdle = undefined;
 			return;
 		}
-		if (this.#governorTaskWasMounted === undefined) return;
 		if (this.isStreaming) {
 			if (!this.#governorTaskReleaseOnIdle) {
 				this.#governorTaskReleaseOnIdle = this.subscribeRunState(state => {
@@ -5783,7 +5783,10 @@ export class AgentSession implements SettingsScope {
 		}
 		try {
 			await this.runToolRegistryMutation(async () => {
-				if (cfgAdaptiveMode.get(this.settings) !== "auto") await this.releaseGovernorTaskPromotion();
+				if (cfgAdaptiveMode.get(this.settings) !== "auto") {
+					await this.releaseGovernorTaskPromotion();
+					await releaseStaleTaskCapabilityRoutes(this, new Set());
+				}
 			});
 		} catch (error) {
 			logger.warn("Governor task capability release failed", { error: String(error) });
@@ -5820,6 +5823,17 @@ export class AgentSession implements SettingsScope {
 			return Promise.resolve({ snapshot: latestGovernorSnapshot(this.sessionManager), route: undefined });
 		}
 		return routeGovernorTaskTransition(this, request, trigger);
+	}
+
+	releaseGovernorTaskCapabilityRoutes(): Promise<void> {
+		if (this.isStreaming) {
+			this.#schedulePostPromptTask(async signal => {
+				if (signal.aborted || this.#isDisposed) return;
+				await releaseStaleTaskCapabilityRoutes(this, new Set());
+			});
+			return Promise.resolve();
+		}
+		return releaseStaleTaskCapabilityRoutes(this, new Set());
 	}
 
 	routeGovernorTaskBatch(taskCount: number): number | undefined {
