@@ -71,8 +71,28 @@ function validateBandBudgets(value: unknown): void {
 			throw new Error(`adaptive.bands.${band} must be an object`);
 		}
 		const budget = rawBudget as Record<string, unknown>;
-		if (Object.keys(budget).some(key => key !== "maxWorkers" && key !== "contextShare")) {
+		if (
+			Object.keys(budget).some(
+				key =>
+					key !== "maxWorkers" &&
+					key !== "contextShare" &&
+					key !== "verificationFloor" &&
+					key !== "verificationCeiling",
+			)
+		) {
 			throw new Error(`adaptive.bands.${band} contains an unknown field`);
+		}
+		const verificationOrder = ["V0", "V1", "V2", "V3", "V4"] as const;
+		const defaultBudget = DEFAULT_GOVERNOR_BAND_BUDGETS[band as TaskBand];
+		const floor = budget.verificationFloor ?? defaultBudget.verificationFloor;
+		const ceiling = budget.verificationCeiling ?? defaultBudget.verificationCeiling;
+		if (
+			!verificationOrder.includes(floor as (typeof verificationOrder)[number]) ||
+			!verificationOrder.includes(ceiling as (typeof verificationOrder)[number]) ||
+			verificationOrder.indexOf(floor as (typeof verificationOrder)[number]) >
+				verificationOrder.indexOf(ceiling as (typeof verificationOrder)[number])
+		) {
+			throw new Error(`adaptive.bands.${band} requires verificationFloor <= verificationCeiling (V0–V4)`);
 		}
 		const workerLimit = DEFAULT_GOVERNOR_BAND_BUDGETS[band as TaskBand].maxWorkers;
 		if (

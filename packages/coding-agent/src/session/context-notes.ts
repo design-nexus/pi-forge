@@ -4,7 +4,7 @@ import { prompt } from "@oh-my-pi/pi-utils";
 import type { CustomEntry, SessionEntry } from "./session-entries";
 import contextNotesPrompt from "../prompts/system/context-notes.md" with { type: "text" };
 import { getLatestTodoPhasesFromEntries, nextActionableTask } from "../tools/todo";
-import { extractFileMentions } from "../utils/file-mention-parser";
+import { extractFileMentions, withoutFileMentions } from "../utils/file-mention-parser";
 import { toolResultPaths } from "./tool-result-paths";
 
 export const CONTEXT_NOTES_ENTRY_TYPE = "experimental_context_notes";
@@ -269,7 +269,10 @@ export function renderContextNotes(entries: readonly SessionEntry[]): string {
 						? toolResultPaths(source.message.toolName, source.message.details)
 						: [];
 				sourcePaths.set(id, paths);
-				if (source?.type === "message" && source.message.role === "user") {
+				if (
+					source?.type === "message" &&
+					(source.message.role === "user" || (source.message.role === "toolResult" && !source.message.isError))
+				) {
 					const content = textContent(source.message.content).slice(0, MAX_CONTEXT_NOTE_SOURCE_MATCH_CHARS);
 					sourceTerms.set(id, contextTerms(content));
 				}
@@ -286,7 +289,9 @@ export function renderContextNotes(entries: readonly SessionEntry[]): string {
 		const resetBoundary = entries.findLastIndex(entry => entry.type === "reset_boundary");
 		const activeTodo = nextActionableTask(getLatestTodoPhasesFromEntries(entries.slice(resetBoundary + 1)));
 		const todoPaths = matchingSourcePaths(activeTodo ? extractFileMentions(activeTodo.content) : [], allSourcePaths);
-		const taskTerms = contextTerms(`${currentRequest} ${activeTodo?.content ?? ""}`);
+		const taskTerms = contextTerms(
+			`${withoutFileMentions(currentRequest)} ${withoutFileMentions(activeTodo?.content ?? "")}`,
+		);
 		const score = (finding: ContextNotesFinding): number => {
 			if (finding.sourceEntryIds.some(id => currentTurnIds.has(id))) return 4;
 			if (finding.sourceEntryIds.some(id => sourcePaths.get(id)?.some(sourcePath => mentionedPaths.has(sourcePath))))
@@ -301,12 +306,14 @@ export function renderContextNotes(entries: readonly SessionEntry[]): string {
 				for (const term of sourceTerms.get(id) ?? []) evidenceTerms.add(term);
 			}
 			const sharedTerms = taskTerms.size > 0 ? [...evidenceTerms].filter(term => taskTerms.has(term)).length : 0;
-			if (sharedTerms > 0) return 0.25 + (0.5 * sharedTerms) / Math.max(taskTerms.size, evidenceTerms.size);
-			const latestSourceIndex = Math.max(...finding.sourceEntryIds.map(id => sourceIndexes.get(id) ?? -1));
-			if (latestSourceIndex < 0) return 0;
-			const age = Math.max(0, currentTurnStart - latestSourceIndex);
-			// Recency only orders otherwise-unmatched sourced findings; task matches score at least 0.25.
-			return 0.15 / (1 + Math.log1p(age));
+			if (sharedTerms > 0) {
+				const latestSourceIndex = Math.max(...finding.sourceEntryIds.map(id => sourceIndexes.get(id) ?? -1));
+				const age = Math.max(0, currentTurnStart - latestSourceIndex);
+				return (0.25 + Math.min(0.5, sharedTerms * 0.1)) / (1 + Math.log1p(age));
+			}
+			// Keep source-order stable without a positive relevance signal; recency alone
+			// should not make unrelated findings displace authored context.
+			return 0;
 		};
 		const ordered = notes.findings.toSorted((left, right) => score(right) - score(left));
 		return renderContextFindingsContent(ordered);

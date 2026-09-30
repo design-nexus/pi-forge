@@ -51,6 +51,7 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 		allowArgs: true,
 		subcommands: [
 			{ name: "stats", description: "Show loaded modules and token counts" },
+			{ name: "governor", description: "Show the latest recorded adaptive decision" },
 			{ name: "compare", description: "Compare prompt profiles using this session's context and tools" },
 			{ name: "inspect", description: "Show the assembled system prompt; supports --redact" },
 			{ name: "route", description: "Activate a capability for this session" },
@@ -61,6 +62,13 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 			const { verb, rest } = parseSubcommand(command.args);
 			if ((!verb || verb === "stats") && !rest) {
 				await runtime.output(promptStats(runtime.session));
+				return commandConsumed();
+			}
+			if (verb === "governor" && !rest) {
+				await runtime.output(
+					runtime.session.inspectRecordedGovernorDecision() ??
+						"No Governor decision has been recorded in this session.",
+				);
 				return commandConsumed();
 			}
 			if (verb === "inspect" && (!rest || rest === "--redact")) {
@@ -83,7 +91,10 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 				await runtime.output("/prompt setup requires the interactive terminal UI.");
 				return commandConsumed();
 			}
-			return usage("Usage: /prompt [stats|compare|inspect [--redact]|route|unroute <capability>|setup]", runtime);
+			return usage(
+				"Usage: /prompt [stats|governor|compare|inspect [--redact]|route|unroute <capability>|setup]",
+				runtime,
+			);
 		},
 		handleTui: async (command, runtime) => {
 			const { verb, rest } = parseSubcommand(command.args);
@@ -91,6 +102,13 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 			ctx.editor.setText("");
 			if ((!verb || verb === "stats") && !rest) {
 				ctx.presentCommandOutput(new Markdown(replaceTabs(promptStats(ctx.session)), 1, 1, getMarkdownTheme()));
+				return;
+			}
+			if (verb === "governor" && !rest) {
+				const report =
+					ctx.session.inspectRecordedGovernorDecision() ??
+					"No Governor decision has been recorded in this session.";
+				ctx.presentCommandOutput(new Markdown(replaceTabs(report), 1, 1, getMarkdownTheme()));
 				return;
 			}
 			if (verb === "inspect" && (!rest || rest === "--redact")) {
@@ -123,7 +141,9 @@ export const BUILTIN_PROMPT_SLASH_COMMANDS: readonly SlashCommandSpec[] = [
 				return;
 			}
 			if (verb !== "setup" || rest) {
-				ctx.showError("Usage: /prompt [stats|compare|inspect [--redact]|route|unroute <capability>|setup]");
+				ctx.showError(
+					"Usage: /prompt [stats|governor|compare|inspect [--redact]|route|unroute <capability>|setup]",
+				);
 				return;
 			}
 			const overlayState: { handle?: { hide(): void } } = {};

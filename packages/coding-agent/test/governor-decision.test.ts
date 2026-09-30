@@ -69,6 +69,31 @@ it("limits a context allocation to remaining window room and restores it when us
 	expect(exhausted?.contextBudgetTokens).toBe(0);
 });
 
+it("selects a verification floor by risk and failures without exceeding the band ceiling", () => {
+	const signals = decisionInput().signals;
+	const ordinary = decideGovernor(decisionInput({ signals: { ...signals, fileCount: 6 } }));
+	const risky = decideGovernor(decisionInput({ signals: { ...signals, fileCount: 6, highRisk: true } }));
+	const failed = decideGovernor(
+		decisionInput({
+			signals: {
+				...signals,
+				fileCount: 6,
+				runtime: { completedCalls: 2, explorationCalls: 0, failedCalls: 0, verificationFailures: 4 },
+			},
+		}),
+	);
+	const customized = decideGovernor(
+		decisionInput({
+			signals: { ...signals, fileCount: 6 },
+			bandBudgets: { complex: { verificationFloor: "V1", verificationCeiling: "V2" } },
+		}),
+	);
+	expect(ordinary).toMatchObject({ verificationFloor: "V2", verificationCeiling: "V3" });
+	expect(risky).toMatchObject({ verificationFloor: "V3", verificationCeiling: "V3" });
+	expect(failed).toMatchObject({ verificationFloor: "V3", verificationCeiling: "V3" });
+	expect(customized).toMatchObject({ verificationFloor: "V1", verificationCeiling: "V2" });
+});
+
 it("raises effort only when recent exploration and failures combine, while preserving an explicit band", () => {
 	const runtime = { completedCalls: 16, explorationCalls: 8, failedCalls: 2 };
 	expect(decideGovernor(decisionInput({ signals: { ...decisionInput().signals, runtime } }))).toMatchObject({

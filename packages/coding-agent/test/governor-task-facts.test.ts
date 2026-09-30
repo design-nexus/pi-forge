@@ -8,7 +8,7 @@ it("derives the runnable task width from dependencies without counting dependent
 			tasks: [
 				{ id: "a", dependsOn: [] },
 				{ id: "b", dependsOn: [] },
-				{ id: "c", dependsOn: ["a", "b"] },
+				{ id: "c", dependsOn: ["a", "a", "b"] },
 				{ id: "d", dependsOn: ["c"] },
 			],
 			highRisk: true,
@@ -27,7 +27,7 @@ it("rejects a cyclic or dangling task graph before a transition can be recorded"
 				{ id: "b", dependsOn: ["a"] },
 			],
 		}),
-	).toThrow("cycle");
+	).toThrow("cycle or blocked chain: a, b");
 	expect(() => signalsFromTaskFacts({ ...base, tasks: [{ id: "a", dependsOn: ["missing"] }] })).toThrow(
 		"unknown dependency",
 	);

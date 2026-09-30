@@ -37,3 +37,14 @@ export function extractFileMentions(text: string): string[] {
 
 	return [...new Set(mentions)];
 }
+
+/** Remove valid @file references before matching the remaining natural-language task terms. */
+export function withoutFileMentions(text: string): string {
+	let result = text;
+	for (const match of [...text.matchAll(FILE_MENTION_REGEX)].reverse()) {
+		const index = match.index ?? 0;
+		if (!isMentionBoundary(text, index)) continue;
+		result = `${result.slice(0, index)} ${result.slice(index + match[0].length)}`;
+	}
+	return result.replace(/\s+/gu, " ").trim();
+}
