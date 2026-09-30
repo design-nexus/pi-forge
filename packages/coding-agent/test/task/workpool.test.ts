@@ -340,6 +340,31 @@ describe("WorkPool dispatch", () => {
 		});
 	});
 
+	it("keeps workpool risk and capability requirements across later pushes", async () => {
+		const session = makeSession();
+		let routedFacts: unknown;
+		const plannedRisks: boolean[] = [];
+		session.routeGovernorTaskTransition = async request => {
+			routedFacts = request.facts;
+			return { snapshot: undefined, route: undefined };
+		};
+		session.routeGovernorTaskPlan = (_count, highRisk) => {
+			plannedRisks.push(highRisk === true);
+			return undefined;
+		};
+		vi.spyOn(structured, "runStructuredSubagent").mockImplementation(async request => {
+			const id = request.identity?.id ?? "missing";
+			markIdle(id);
+			return execution(id);
+		});
+		const workpool = pool(session, "governor-risk");
+		workpool.push(["inspect authentication"], ["debugger"], true);
+		workpool.push(["add regression coverage"]);
+		await finishPool(session, workpool);
+		expect(routedFacts).toMatchObject({ highRisk: true, requiredCapabilities: ["debugger"] });
+		expect(plannedRisks).toEqual([true, true]);
+	});
+
 	it("routes declared capabilities before starting a workpool worker", async () => {
 		const session = makeSession();
 		const route = Promise.withResolvers<void>();

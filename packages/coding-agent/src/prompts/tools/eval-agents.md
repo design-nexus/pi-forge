@@ -4,6 +4,7 @@ agent(prompt, agent?="{{spawnDefaultAgent}}", label?=None, schema?=None, schema{
 {{#if js}}    JS: ONE trailing object — agent(prompt, { agent, label, schema, schemaMode, isolated, apply, merge{{#if evalTools}}, tools{{/if}} }).{{/if}}
 workpool(agent?=None, name?=None, context?=None{{#if evalTools}}, tools?=None{{/if}}) → WorkPool
     {{#if eagerDelegation}}Default for 2+ independent items.{{else}}Keep-alive worker pool for a batch of independent items.{{/if}} `.push(*items)`; `.status()`; `.peek()`; `.close()`. Pool name = async job id; results auto-deliver.{{#if waitTool}} Completely blocked? Leave `eval` and call `wait`;{{/if}} NEVER poll. `eval.workpool.freshAgents=true` uses a new agent per item.
+    Python `.push(*items, capabilities=[...], high_risk=True)`; JS `.push(...items, { capabilities: [...], highRisk: true })`. Capability needs accumulate across the pool; high risk remains set once declared.
 ```
 
 <dag>

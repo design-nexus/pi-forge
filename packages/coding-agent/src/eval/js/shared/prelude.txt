@@ -456,15 +456,20 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 
 		async push(...items) {
 			let capabilities;
+			let highRisk;
 			const trailing = items.at(-1);
-			if (isPlainObject(trailing) && Object.hasOwn(trailing, "capabilities")) {
+			if (isPlainObject(trailing) && (Object.hasOwn(trailing, "capabilities") || Object.hasOwn(trailing, "highRisk"))) {
 				items.pop();
-				if (Object.keys(trailing).some(key => key !== "capabilities")) {
-					throw new TypeError("WorkPool.push() options only accept capabilities");
+				if (Object.keys(trailing).some(key => key !== "capabilities" && key !== "highRisk")) {
+					throw new TypeError("WorkPool.push() options only accept capabilities and highRisk");
 				}
 				capabilities = trailing.capabilities;
-				if (!Array.isArray(capabilities) || !capabilities.every(value => typeof value === "string")) {
+				if (capabilities !== undefined && (!Array.isArray(capabilities) || !capabilities.every(value => typeof value === "string"))) {
 					throw new TypeError("WorkPool.push() capabilities must be an array of strings");
+				}
+				highRisk = trailing.highRisk;
+				if (highRisk !== undefined && typeof highRisk !== "boolean") {
+					throw new TypeError("WorkPool.push() highRisk must be a boolean");
 				}
 			}
 			if (!items.every(item => typeof item === "string")) {
@@ -475,6 +480,7 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 				name: this.name,
 				items,
 				...(capabilities === undefined ? {} : { capabilities }),
+				...(highRisk === undefined ? {} : { highRisk }),
 			});
 			return result?.ids ?? [];
 		}

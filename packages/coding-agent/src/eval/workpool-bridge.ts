@@ -124,7 +124,10 @@ export async function runEvalWorkpool(args: unknown, options: EvalWorkpoolBridge
 			throw new ToolError("workpool push requires an items string array");
 		}
 		const capabilities = optionalCapabilities(record);
-		const ids = pool.push(record.items, capabilities);
+		if (record.highRisk !== undefined && typeof record.highRisk !== "boolean") {
+			throw new ToolError("workpool highRisk must be a boolean");
+		}
+		const ids = pool.push(record.items, capabilities, record.highRisk === true);
 		options.emitStatus?.({ op: "workpool", action: "push", pool: name, count: ids.length });
 		return { ids };
 	}

@@ -126,6 +126,29 @@ describe("eval js immediate-handle contract", () => {
 	});
 });
 
+describe("eval js workpool push contract", () => {
+	it("forwards high-risk options with cumulative capability declarations", async () => {
+		const requests: Array<{ name: string; args: unknown }> = [];
+		const sandbox = loadPrelude(async (name, args) => {
+			requests.push({ name, args });
+			if (name === "__workpool__" && (args as { op?: string }).op === "create") {
+				return { name: "review", agent: "scout", limit: 2 };
+			}
+			return { ids: ["review#1"] };
+		});
+		const workpool = sandbox.workpool as (
+			agent: string,
+			options?: Record<string, unknown>,
+		) => Promise<{ push(...items: unknown[]): Promise<unknown> }>;
+		const pool = await workpool("scout", { name: "review" });
+		await pool.push("inspect auth", { capabilities: ["debugger"], highRisk: true });
+		expect(requests[1]).toMatchObject({
+			name: "__workpool__",
+			args: { op: "push", name: "review", items: ["inspect auth"], capabilities: ["debugger"], highRisk: true },
+		});
+	});
+});
+
 describe("eval js read() URI delegation", () => {
 	it("appends line selectors to delegated URI paths", async () => {
 		const calls: Array<{ name: string; args: unknown }> = [];

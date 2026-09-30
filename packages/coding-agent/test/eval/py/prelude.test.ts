@@ -50,7 +50,7 @@ describe("python prelude", () => {
 			const result = await runPrelude(
 				[
 					'pool = WorkPool("pool", "scout", 2)',
-					'print(pool.push("inspect", capabilities=["browser", "mcp__server__tool"]))',
+					'print(pool.push("inspect", capabilities=["browser", "mcp__server__tool"], high_risk=True))',
 				].join("\n"),
 				{
 					PI_TOOL_BRIDGE_URL: server.url.toString(),
@@ -68,6 +68,7 @@ describe("python prelude", () => {
 						name: "pool",
 						items: ["inspect"],
 						capabilities: ["browser", "mcp__server__tool"],
+						highRisk: true,
 					},
 				},
 			]);
