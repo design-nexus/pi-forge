@@ -1,4 +1,4 @@
-import type { RoutableToolCapabilityId } from "../prompt-engine/capability-catalog";
+import type { TaskCapabilityId } from "../prompt-engine/capability-catalog";
 import type { GovernorDecisionInput } from "./decision";
 
 export interface GovernorTaskFacts {
@@ -6,12 +6,12 @@ export interface GovernorTaskFacts {
 	tasks: readonly {
 		id: string;
 		dependsOn: readonly string[];
-		requiredCapabilities?: readonly RoutableToolCapabilityId[];
+		requiredCapabilities?: readonly TaskCapabilityId[];
 	}[];
 	highRisk: boolean;
 	confidence: number;
 	/** Capabilities required by this structured task source; never inferred from prompt text. */
-	requiredCapabilities?: readonly RoutableToolCapabilityId[];
+	requiredCapabilities?: readonly TaskCapabilityId[];
 }
 
 /** Count distinct files, dependency edges, and the widest runnable task wave. */

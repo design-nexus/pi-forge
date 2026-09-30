@@ -84,8 +84,9 @@ function validateBandBudgets(value: unknown): void {
 		}
 		const verificationOrder = ["V0", "V1", "V2", "V3", "V4"] as const;
 		const defaultBudget = DEFAULT_GOVERNOR_BAND_BUDGETS[band as TaskBand];
-		const floor = budget.verificationFloor ?? defaultBudget.verificationFloor;
-		const ceiling = budget.verificationCeiling ?? defaultBudget.verificationCeiling;
+		const floor = budget.verificationFloor === undefined ? defaultBudget.verificationFloor : budget.verificationFloor;
+		const ceiling =
+			budget.verificationCeiling === undefined ? defaultBudget.verificationCeiling : budget.verificationCeiling;
 		if (
 			!verificationOrder.includes(floor as (typeof verificationOrder)[number]) ||
 			!verificationOrder.includes(ceiling as (typeof verificationOrder)[number]) ||

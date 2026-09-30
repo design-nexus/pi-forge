@@ -712,7 +712,7 @@ describe("task spawn routing", () => {
 			tasks: ["First", "Second", "Third", "Fourth"].map(name => ({ name, task: `Work ${name}.` })),
 		} as TaskParams);
 		await pollUntil(() => started.length === 2);
-		expect(started).toEqual(["First", "Second"]);
+		expect([...started].sort()).toEqual(["First", "Second"]);
 		expect(manager.getJob("Third")?.queued).toBe(true);
 		gates.get("First")!.resolve();
 		await pollUntil(() => started.length === 3);

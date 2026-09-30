@@ -450,3 +450,9 @@ Verification: the task-facts contract suite passed with cycle IDs and duplicate 
 ## Expanded verification for this continuation
 
 Final focused verification passed 69 tests across context notes, file mentions, Governor decisions/revisions/session/task facts, and Prompt Engine routing. `bun check` and `git diff --check` passed. Coverage includes failed-source exclusion, matching-source age decay, keeping `@file` terms out of ambiguous lexical matches, verification floor/ceiling selection and persistence, and structured graph diagnostics.
+
+## Structured task requirements for browser and MCP
+
+With `adaptive.mode=auto`, task calls and workpool pushes can declare `browser` and an exact `mcp__server__tool` alongside the existing direct-tool capabilities. The shared capability validator accepts only registered capability names, the browser route still checks browser runtime availability, and MCP routing looks up the exact connected tool instead of silently dropping it. Governor-owned routes are released when a later task transition no longer requires them; explicit routes retain ownership. Python `WorkPool.push(..., capabilities=[...])` forwards the same declarations through the eval bridge. Workpool dispatch waits for the serialized capability transition before starting a worker, so a worker cannot begin before its declared route is resolved.
+
+Verification: 72 focused Prompt Engine, task schema/spawn, workpool, eval bridge, and Python prelude tests passed. Coverage includes task schema acceptance, disabled-field stripping, browser runtime gating, unavailable exact MCP reporting, Python forwarding, Governor route release and explicit ownership, and route-before-worker ordering. Coding-agent type checking and `git diff --check` passed; repository-wide checks are pending.

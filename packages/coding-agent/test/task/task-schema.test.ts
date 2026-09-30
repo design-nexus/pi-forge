@@ -66,6 +66,41 @@ describe("task schema (single-spawn)", () => {
 			expect("schema" in parsed).toBe(false);
 		}
 	});
+
+	it("accepts browser and exact MCP capability requirements only when routing is enabled", () => {
+		const schema = getTaskSchema({
+			isolationEnabled: false,
+			batchEnabled: true,
+			defaultAgent: "task",
+			effortEnabled: false,
+			evalToolsEnabled: false,
+			capabilityRoutingEnabled: true,
+		});
+		const parsed = schema({
+			context: "Inspect the web app",
+			capabilities: ["browser", "mcp__server__tool"],
+			tasks: [
+				{ task: "Use the browser", capabilities: ["browser"] },
+				{ task: "Inspect connected service", capabilities: ["mcp__server__tool"] },
+			],
+		});
+		expect(parsed instanceof type.errors).toBe(false);
+		const disabled = getTaskSchema({
+			isolationEnabled: false,
+			batchEnabled: true,
+			defaultAgent: "task",
+			effortEnabled: false,
+			evalToolsEnabled: false,
+			capabilityRoutingEnabled: false,
+		});
+		const disabledParsed = disabled({
+			context: "Inspect",
+			tasks: [{ task: "Use the browser" }],
+			capabilities: ["browser"],
+		});
+		expect(disabledParsed instanceof type.errors).toBe(false);
+		expect(Reflect.has(disabledParsed as object, "capabilities")).toBe(false);
+	});
 });
 
 describe("task spawn validation", () => {

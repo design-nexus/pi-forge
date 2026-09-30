@@ -265,6 +265,7 @@ it("previews a live Governor decision from settings and session ceilings without
 		expect(() =>
 			cfgAdaptiveBands.set(settings, { complex: { verificationFloor: "V3", verificationCeiling: "V1" } }),
 		).toThrow();
+		expect(() => cfgAdaptiveBands.set(settings, { complex: { verificationFloor: null } } as never)).toThrow();
 	} finally {
 		await session.dispose();
 		await sessionManager.close();

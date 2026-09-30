@@ -243,7 +243,7 @@ export async function routeToolCapability(
 /** Release Governor-owned routes no longer named by the current structured task. */
 export async function releaseStaleTaskCapabilityRoutes(
 	session: AgentSession,
-	retained: ReadonlySet<RoutableToolCapabilityId>,
+	retained: ReadonlySet<string>,
 ): Promise<void> {
 	await session.runToolRegistryMutation(async () => {
 		const leases = taskCapabilityActivationLeases.get(session);
