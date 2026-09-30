@@ -39,6 +39,7 @@ import taskSpecializationAdvisoryTemplate from "../prompts/tools/task-specializa
 import taskGovernorVerificationTemplate from "../prompts/tools/task-governor-verification.md" with { type: "text" };
 import taskGovernorReviewTemplate from "../prompts/tools/task-governor-review.md" with { type: "text" };
 import taskGovernorReviewAssignmentTemplate from "../prompts/tools/task-governor-review-assignment.md" with { type: "text" };
+import taskIntegrationGateTemplate from "../prompts/tools/task-integration-gate.md" with { type: "text" };
 import taskFollowUpTemplate from "../prompts/tools/task-follow-up.md" with { type: "text" };
 import { TASK_EFFORTS, type TaskEffort } from "@oh-my-pi/pi-tui/thinking";
 import { truncateForPrompt } from "../tools/approval";
@@ -47,6 +48,7 @@ import { isIrcEnabled } from "../irc/messaging";
 import { isReadOnlyAgent } from "./read-only-policy";
 import { formatTaskResultSummary } from "./result-summary";
 import { isScoutSpawnable, resolveSpawnPolicy } from "./spawn-policy";
+import { IntegrationGate, integrationGateFailure, integrationOrder } from "./integration-gate";
 import { type AgentDefinition, canSpawnAtDepth, getTaskSchema, type TaskToolSchemaInstance } from "./types";
 import {
 	type AgentProgress,
@@ -422,7 +424,44 @@ async function waitForTaskDependencies(
 /** Internal routing metadata; it never appears in the public task tool schema. */
 interface TaskExecutionParams extends TaskParams {
 	governorModelRole?: string;
+	integrationGate?: IntegrationGate;
+	integrationGateTask?: boolean;
+	integrationGateContext?: string;
+	integrationGateAssignments?: string;
 }
+
+interface IntegrationGateTaskMetadata {
+	context: string;
+	assignments: string;
+}
+
+const integrationGateTaskMetadata = new WeakMap<TaskItem, IntegrationGateTaskMetadata>();
+
+const integrationGateOutputSchema = {
+	type: "object",
+	additionalProperties: false,
+	properties: {
+		status: { type: "string", enum: ["verified", "reconciled", "unresolved"] },
+		summary: { type: "string" },
+		checks: {
+			type: "array",
+			minItems: 1,
+			items: {
+				type: "object",
+				additionalProperties: false,
+				properties: {
+					command: { type: "string" },
+					status: { type: "string", enum: ["passed", "failed", "skipped"] },
+					result: { type: "string" },
+				},
+				required: ["command", "status", "result"],
+			},
+		},
+		files: { type: "array", items: { type: "string" } },
+		repairAttempts: { type: "integer", minimum: 0, maximum: 1 },
+	},
+	required: ["status", "summary", "checks", "files", "repairAttempts"],
+} as const;
 
 interface GovernorReviewTaskItem extends TaskItem {
 	governorReview: true;
@@ -432,13 +471,29 @@ function isGovernorReviewTaskItem(item: TaskItem): item is GovernorReviewTaskIte
 	return (item as Partial<GovernorReviewTaskItem>).governorReview === true;
 }
 
+function isIntegrationGateTaskItem(item: TaskItem): boolean {
+	return integrationGateTaskMetadata.has(item);
+}
+
+function canRunAfterFailedDependency(item: TaskItem): boolean {
+	return isGovernorReviewTaskItem(item) || isIntegrationGateTaskItem(item);
+}
+
 function spawnParamsFor(
 	params: TaskParams,
 	item: TaskItem,
 	defaultAgent: string,
 	governorPlan?: GovernorTaskPlan,
+	integrationGate?: IntegrationGate,
 ): TaskExecutionParams {
 	const spawn: TaskExecutionParams = { agent: item.agent?.trim() || defaultAgent };
+	if (integrationGate) spawn.integrationGate = integrationGate;
+	const integrationMetadata = integrationGateTaskMetadata.get(item);
+	if (integrationMetadata) {
+		spawn.integrationGateTask = true;
+		spawn.integrationGateContext = integrationMetadata.context;
+		spawn.integrationGateAssignments = integrationMetadata.assignments;
+	}
 	if (!isGovernorReviewTaskItem(item) && governorPlan?.modelRole) {
 		spawn.governorModelRole = governorPlan.modelRole;
 	}
@@ -881,7 +936,51 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		}
 
 		const spawnItems = resolveSpawnItems(params);
+		const implementationCount = spawnItems.length;
+		const requestedIsolatedWorkers = spawnItems.filter(
+			item => item.isolated === true || (params.isolated === true && item.isolated === undefined),
+		).length;
+		const integrationGateRequired =
+			implementationCount > 1 &&
+			requestedIsolatedWorkers > 1 &&
+			cfgTaskIsolationEnabled.get(this.session.settings) &&
+			cfgTaskIsolationApply.get(this.session.settings);
+		if (integrationGateRequired) {
+			const assignments = truncateForPrompt(
+				spawnItems
+					.map((item, index) => `${item.name?.trim() || `Task ${index + 1}`}: ${item.task?.trim() ?? ""}`)
+					.join("\n"),
+				8_000,
+			);
+			const taskNames = new Set(spawnItems.map(item => item.name?.trim().toLowerCase()).filter(Boolean));
+			let integrationGateName = "Integration gate";
+			for (let suffix = 2; taskNames.has(integrationGateName.toLowerCase()); suffix++) {
+				integrationGateName = `Integration gate ${suffix}`;
+			}
+			const gateTask: TaskItem = {
+				name: integrationGateName,
+				agent: defaultAgent,
+				isolated: false,
+				outputSchema: integrationGateOutputSchema,
+				schemaMode: "strict",
+				task: prompt.render(taskIntegrationGateTemplate, {
+					context: truncateForPrompt(params.context?.trim() ?? "", 8_000),
+					assignments,
+					results: "Implementation worker results are added after the workers settle.",
+				}),
+			};
+			integrationGateTaskMetadata.set(gateTask, {
+				context: truncateForPrompt(params.context?.trim() ?? "", 8_000),
+				assignments,
+			});
+			spawnItems.push(gateTask);
+		}
 		const dependencies = taskDependencyIndices(spawnItems);
+		if (integrationGateRequired) {
+			dependencies[implementationCount] = Array.from({ length: implementationCount }, (_, index) => index);
+		}
+		const integrationGate = spawnItems.length > 1 ? new IntegrationGate(integrationOrder(dependencies)) : undefined;
+		const requestedTaskItems = spawnItems.slice(0, implementationCount);
 		const dependencyIds = taskDependencyIds(spawnItems);
 		const dependencyGates = spawnItems.map(() => Promise.withResolvers<boolean>());
 		const settleDependency = (index: number, success: boolean): void => {
@@ -903,11 +1002,14 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		const declaredCapabilities = [
 			...new Set([...(params.capabilities ?? []), ...spawnItems.flatMap(item => item.capabilities ?? [])]),
 		].filter(isTaskToolCapabilityId);
-		const classification = classifyTaskCapabilities([params.task ?? "", ...spawnItems.map(item => item.task ?? "")]);
-		const highRisk = params.highRisk === true || spawnItems.some(item => item.highRisk === true);
+		const classification = classifyTaskCapabilities([
+			params.task ?? "",
+			...requestedTaskItems.map(item => item.task ?? ""),
+		]);
+		const highRisk = params.highRisk === true || requestedTaskItems.some(item => item.highRisk === true);
 		const governorFactsDeclared =
 			declaredCapabilities.length > 0 || classification.capabilities.length > 0 || highRisk;
-		const batchTaskPlan = params.tasks !== undefined && spawnItems.length > 1;
+		const batchTaskPlan = params.tasks !== undefined && implementationCount > 1;
 		const adaptiveAuto = cfgAdaptiveMode.get(this.session.settings) === "auto";
 		const governorPlanRequired = (batchTaskPlan && governorFactsDeclared) || (adaptiveAuto && governorFactsDeclared);
 		const governorOwnerId = `task:${toolCallId}`;
@@ -922,7 +1024,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		if (governorFactsDeclared) {
 			const facts: GovernorTaskFacts = {
 				files: [],
-				tasks: spawnItems.map((item, index) => ({
+				tasks: requestedTaskItems.map((item, index) => ({
 					id: dependencyIds[index]!,
 					dependsOn: dependencies[index]!.map(dependency => dependencyIds[dependency]!),
 					requiredCapabilities: item.capabilities?.filter(isTaskToolCapabilityId),
@@ -982,10 +1084,10 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		if (batchTaskPlan || (adaptiveAuto && governorFactsDeclared)) {
 			try {
 				if (this.session.routeGovernorTaskPlan) {
-					governorPlan = this.session.routeGovernorTaskPlan(spawnItems.length, highRisk);
+					governorPlan = this.session.routeGovernorTaskPlan(implementationCount, highRisk);
 					governorPlanAvailable = governorPlan !== undefined;
 				} else {
-					const workerCount = this.session.routeGovernorTaskBatch?.(spawnItems.length, highRisk);
+					const workerCount = this.session.routeGovernorTaskBatch?.(implementationCount, highRisk);
 					if (workerCount !== undefined) {
 						governorPlan = { workerCount };
 						governorPlanAvailable = true;
@@ -1016,7 +1118,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		if (manager && governorPlan?.reviewer === "independent" && depthCapacity) {
 			const reviewAssignment = prompt.render(taskGovernorReviewAssignmentTemplate, {
 				request: truncateForPrompt(
-					[params.context, params.task, ...spawnItems.map(item => item.task)].filter(Boolean).join("\n\n"),
+					[params.context, params.task, ...requestedTaskItems.map(item => item.task)].filter(Boolean).join("\n\n"),
 					8_000,
 				),
 				results:
@@ -1040,7 +1142,13 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			}
 		}
 		const normalizedSpawnParams = spawnItems.map((item, index) =>
-			spawnParamsFor(params, item, defaultAgent, index === governorReviewIndex ? undefined : governorPlan),
+			spawnParamsFor(
+				params,
+				item,
+				defaultAgent,
+				index === governorReviewIndex ? undefined : governorPlan,
+				integrationGate,
+			),
 		);
 		const resolvedAgents = normalizedSpawnParams.map(spawn => spawn.agent ?? defaultAgent);
 		// Resolve every item before choosing an execution path. No executor or
@@ -1106,6 +1214,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					dependencyGates.map(gate => gate.promise),
 					settleDependency,
 					governorPlan,
+					integrationGate,
 				);
 				if (!governorReviewAttempted && governorPlan?.reviewer && governorPlan.reviewer !== "none") {
 					const review = await this.#runGovernorReview(result, params, governorPlan.reviewer, highRisk, signal);
@@ -1189,6 +1298,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					dependencyGates.map(gate => gate.promise),
 					settleDependency,
 					governorPlan,
+					integrationGate,
 				),
 			);
 		}
@@ -1286,7 +1396,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				const jobId = this.#registerSpawnJob({
 					manager,
 					toolCallId,
-					spawnParams: spawnParamsFor(params, spawn.item, defaultAgent, governorPlan),
+					spawnParams: spawnParamsFor(params, spawn.item, defaultAgent, governorPlan, integrationGate),
 					agentId: spawn.agentId,
 					progress: spawn.progress,
 					ircEnabled,
@@ -1294,8 +1404,9 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					onUpdate,
 					batchSemaphore,
 					dependencyPromises: dependencies[spawn.index]!.map(index => dependencyGates[index]!.promise),
-					allowFailedDependencies: isGovernorReviewTaskItem(spawn.item),
+					allowFailedDependencies: canRunAfterFailedDependency(spawn.item),
 					onSettled: failed => {
+						integrationGate?.settle(spawn.index);
 						settleDependency(spawn.index, !failed);
 						settledCount += 1;
 						if (failed) failedCount += 1;
@@ -1308,6 +1419,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				const message = error instanceof Error ? error.message : String(error);
 				failedSchedules.push(`${spawn.agentId}: ${message}`);
 				spawn.progress.status = "failed";
+				integrationGate?.settle(spawn.index);
 				settleDependency(spawn.index, false);
 				settledCount += 1;
 				failedCount += 1;
@@ -1469,7 +1581,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 	#registerSpawnJob(options: {
 		manager: AsyncJobManager;
 		toolCallId: string;
-		spawnParams: TaskParams;
+		spawnParams: TaskExecutionParams;
 		agentId: string;
 		progress: AgentProgress;
 		ircEnabled: boolean;
@@ -1520,6 +1632,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					await waitForTaskDependencies(dependencyPromises, runSignal, allowFailedDependencies !== true);
 				} catch (error) {
 					progress.status = runSignal.aborted ? "aborted" : "failed";
+					spawnParams.integrationGate?.settle(progress.index);
 					onSettled?.(true);
 					throw new TaskJobError(error instanceof Error ? error.message : String(error));
 				}
@@ -1559,6 +1672,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				if (!semaphoreHeld || runSignal.aborted) {
 					releasePermit();
 					progress.status = "aborted";
+					spawnParams.integrationGate?.settle(progress.index);
 					onSettled?.(true);
 					throw new Error("Aborted before execution");
 				}
@@ -1688,6 +1802,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					throw new TaskJobError(`${message}${hint}`);
 				} finally {
 					releasePermit();
+					spawnParams.integrationGate?.settle(progress.index);
 				}
 			},
 			{
@@ -1720,6 +1835,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		dependencyPromises?: readonly Promise<boolean>[],
 		settleDependency?: (index: number, success: boolean) => void,
 		governorPlan?: GovernorTaskPlan,
+		integrationGate?: IntegrationGate,
 	): Promise<AgentToolResult<TaskToolDetails>> {
 		if (spawns.length === 1) {
 			const spawn = spawns[0]!;
@@ -1732,7 +1848,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				await waitForTaskDependencies(
 					(dependencies?.[spawn.index] ?? []).map(index => dependencyPromises?.[index] ?? Promise.resolve(false)),
 					signal,
-					!isGovernorReviewTaskItem(spawn.item),
+					!canRunAfterFailedDependency(spawn.item),
 				);
 				if (batchSemaphore) {
 					await batchSemaphore.acquire(signal);
@@ -1743,7 +1859,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				const acquiredAt = Date.now();
 				const result = await this.#executeSync(
 					toolCallId,
-					spawnParamsFor(params, spawn.item, defaultAgent, governorPlan),
+					spawnParamsFor(params, spawn.item, defaultAgent, governorPlan, integrationGate),
 					signal,
 					onUpdate,
 					spawn.preAllocatedId,
@@ -1755,6 +1871,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				success = !!single && !single.aborted && single.exitCode === 0 && single.error === undefined;
 				return result;
 			} finally {
+				integrationGate?.settle(spawn.index);
 				settleDependency?.(spawn.index, success);
 				if (semaphoreHeld) this.#releaseSpawnSemaphore();
 				if (batchHeld) batchSemaphore?.release();
@@ -1788,6 +1905,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			dependencyPromises,
 			settleDependency,
 			governorPlan,
+			integrationGate,
 			onItemProgress: onUpdate
 				? (index, progress) => {
 						latestProgress.set(index, { ...progress, index });
@@ -1828,6 +1946,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		dependencyPromises?: readonly Promise<boolean>[];
 		settleDependency?: (index: number, success: boolean) => void;
 		governorPlan?: GovernorTaskPlan;
+		integrationGate?: IntegrationGate;
 		onItemProgress?: (index: number, progress: AgentProgress) => void;
 	}): Promise<(AgentToolResult<TaskToolDetails> | undefined)[]> {
 		const {
@@ -1842,6 +1961,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			dependencyPromises = [],
 			settleDependency,
 			governorPlan,
+			integrationGate,
 		} = args;
 		const semaphore = this.#getSpawnSemaphore();
 		const { results } = await mapWithConcurrencyLimitAllSettled(
@@ -1856,7 +1976,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					await waitForTaskDependencies(
 						(dependencies[spawn.index] ?? []).map(index => dependencyPromises[index] ?? Promise.resolve(false)),
 						workerSignal,
-						!isGovernorReviewTaskItem(spawn.item),
+						!canRunAfterFailedDependency(spawn.item),
 					);
 					if (batchSemaphore) {
 						await batchSemaphore.acquire(workerSignal);
@@ -1866,6 +1986,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					semaphoreHeld = true;
 				} catch (error) {
 					if (batchHeld) batchSemaphore?.release();
+					integrationGate?.settle(spawn.index);
 					settleDependency?.(spawn.index, false);
 					if (workerSignal.aborted) return undefined;
 					throw error;
@@ -1880,7 +2001,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 						: undefined;
 					const result = await this.#executeSync(
 						toolCallId,
-						spawnParamsFor(params, spawn.item, defaultAgent, governorPlan),
+						spawnParamsFor(params, spawn.item, defaultAgent, governorPlan, integrationGate),
 						workerSignal,
 						itemOnUpdate,
 						spawn.preAllocatedId,
@@ -1892,6 +2013,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					taskSucceeded = !!single && !single.aborted && single.exitCode === 0 && single.error === undefined;
 					return result;
 				} finally {
+					integrationGate?.settle(spawn.index);
 					settleDependency?.(spawn.index, taskSucceeded);
 					if (semaphoreHeld) this.#releaseSpawnSemaphore();
 					if (batchHeld) batchSemaphore?.release();
@@ -2025,7 +2147,38 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		onArtifactsRetained?: (cleanup: () => Promise<void>) => void,
 	): Promise<AgentToolResult<TaskToolDetails>> {
 		const startTime = Date.now();
-		const assignment = (params.task ?? "").trim();
+		let assignment = (params.task ?? "").trim();
+		if (params.integrationGateTask) {
+			if (!params.integrationGate?.reserveReconciliationAttempt()) {
+				throw new StructuredSubagentError(
+					"execution",
+					"Integration repair budget exhausted before reconciliation started.",
+				);
+			}
+			const results = params.integrationGate
+				.workerResults()
+				.filter(({ result }) => result.index < spawnIndex)
+				.map(({ result, mergeSummary, changesApplied }) => {
+					const status = result.error ?? (result.aborted ? "aborted" : `exit code ${result.exitCode}`);
+					const integration =
+						changesApplied === false ? `\nIntegration apply failed: ${mergeSummary ?? "no details"}` : "";
+					const artifacts = [
+						result.outputPath ? `output: ${result.outputPath}` : undefined,
+						result.patchPath ? `patch: ${result.patchPath}` : undefined,
+						result.branchName ? `branch: ${result.branchName}` : undefined,
+					]
+						.filter(Boolean)
+						.join("; ");
+					const output = truncateForPrompt(result.output || result.stderr, 2_000);
+					return `${result.task} (${status})${artifacts ? `; ${artifacts}` : ""}${integration}\n${output}`;
+				})
+				.join("\n\n");
+			assignment = prompt.render(taskIntegrationGateTemplate, {
+				context: truncateForPrompt(params.integrationGateContext ?? "", 8_000),
+				assignments: truncateForPrompt(params.integrationGateAssignments ?? "", 8_000),
+				results: truncateForPrompt(results || "No implementation results were reported.", 12_000),
+			});
+		}
 		const context = this.#isBatchEnabled() ? params.context?.trim() || undefined : undefined;
 		let latestProgress: AgentProgress | undefined;
 		try {
@@ -2051,6 +2204,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				// path did not pre-reserve one. Do not treat it as a HUD description.
 				identity: { id: preAllocatedId, label: params.name },
 				index: spawnIndex,
+				integrationGate: params.integrationGate,
 				parentToolCallId: toolCallId,
 				detached,
 				// Detached (async) spawns advertise `agent://<id>` handles in the
@@ -2081,6 +2235,17 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					});
 				},
 			});
+			if (params.integrationGateTask) {
+				const failure = integrationGateFailure(execution.result);
+				if (failure) execution.result.error = failure;
+			}
+			if (!params.integrationGateTask) {
+				params.integrationGate?.recordWorkerResult(spawnIndex, {
+					result: execution.result,
+					mergeSummary: execution.mergeSummary,
+					changesApplied: execution.changesApplied,
+				});
+			}
 			return this.#buildResultPayload(
 				execution.result,
 				execution.policy.discovery.projectAgentsDir,
@@ -2098,6 +2263,8 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 					...(latestProgress ? { progress: [latestProgress] } : {}),
 				},
 			};
+		} finally {
+			params.integrationGate?.settle(spawnIndex);
 		}
 	}
 

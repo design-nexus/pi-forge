@@ -43,6 +43,7 @@ import {
 import { generateTaskName } from "./name-generator";
 import { AgentOutputManager } from "./output-manager";
 import { resolveSpawnPolicy } from "./spawn-policy";
+import type { IntegrationGate } from "./integration-gate";
 import { type AgentDefinition, canSpawnAtDepth } from "./types";
 import type {
 	AgentProgress,
@@ -111,6 +112,8 @@ export interface StructuredSubagentRequest {
 	effort?: TaskEffort;
 	identity?: StructuredSubagentIdentity;
 	index?: number;
+	/** Task-batch gate that serializes integration after independent work settles. */
+	integrationGate?: IntegrationGate;
 	parentToolCallId?: string;
 	detached?: boolean;
 	invokedAt?: number;
@@ -746,25 +749,35 @@ export async function runStructuredSubagent(request: StructuredSubagentRequest):
 			!result.error &&
 			!result.aborted
 		) {
-			const outcome = await mergeIsolatedChanges({
-				result,
-				repoRoot: isolationContext.repoRoot,
-				mergeMode: policy.mergeMode,
-			});
-			mergeSummary = outcome.summary;
-			changesApplied = outcome.changesApplied;
-			if (outcome.changesApplied !== false) {
-				const nestedPatchSummary = await applyEligibleNestedPatches({
+			const integrate = async (): Promise<void> => {
+				const outcome = await mergeIsolatedChanges({
 					result,
 					repoRoot: isolationContext.repoRoot,
 					mergeMode: policy.mergeMode,
-					changesApplied: outcome.changesApplied,
-					mergedBranchForNestedPatches: outcome.mergedBranchForNestedPatches,
-					commitMessage: makeIsolationCommitMessage(request.session)(),
 				});
-				mergeSummary += nestedPatchSummary;
-				requiresRecoveryArtifacts ||=
-					nestedPatchSummary.includes("<system-notification>") && (result.nestedPatches?.length ?? 0) > 0;
+				mergeSummary = outcome.summary;
+				changesApplied = outcome.changesApplied;
+				if (outcome.changesApplied !== false) {
+					const nestedPatchSummary = await applyEligibleNestedPatches({
+						result,
+						repoRoot: isolationContext.repoRoot,
+						mergeMode: policy.mergeMode,
+						changesApplied: outcome.changesApplied,
+						mergedBranchForNestedPatches: outcome.mergedBranchForNestedPatches,
+						commitMessage: makeIsolationCommitMessage(request.session)(),
+					});
+					mergeSummary += nestedPatchSummary;
+					requiresRecoveryArtifacts ||=
+						nestedPatchSummary.includes("<system-notification>") && (result.nestedPatches?.length ?? 0) > 0;
+				}
+			};
+			if (request.integrationGate && request.index !== undefined) {
+				await request.integrationGate.apply(request.index, integrate);
+			} else {
+				await integrate();
+			}
+			if (changesApplied === false) {
+				result.error = `Integration failed: ${mergeSummary.trim()}`;
 			}
 		} else if (policy.isIsolated && isolationContext && result.exitCode === 0 && result.error && !result.aborted) {
 			// The agent finished but the runner could not capture, persist, or
