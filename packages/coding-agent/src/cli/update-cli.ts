@@ -9,7 +9,16 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { $env, $which, APP_NAME, compareVersions, isEnoent, VERSION } from "@oh-my-pi/pi-utils";
+import {
+	$env,
+	$which,
+	APP_NAME,
+	APP_REPOSITORY,
+	compareVersions,
+	isCompiledBinary,
+	isEnoent,
+	VERSION,
+} from "@oh-my-pi/pi-utils";
 import chalk from "@oh-my-pi/pi-utils/chalk";
 import { withFileLock } from "@oh-my-pi/pi-utils/file-lock";
 import { $ } from "bun";
@@ -23,7 +32,6 @@ import {
 } from "../utils/fetch-timeout";
 import {
 	DEFAULT_NPM_REGISTRY,
-	loadNpmRegistryResolver,
 	type NpmRegistry,
 	type NpmRegistryResolver,
 	npmRegistryPackageUrl,
@@ -31,10 +39,10 @@ import {
 
 import { cfgUpdateChannel } from "../modes/settings";
 
-const REPO = "can1357/oh-my-pi";
+const REPO = APP_REPOSITORY;
 const PACKAGE = "@oh-my-pi/pi-coding-agent";
-const HOMEBREW_FORMULA = "can1357/tap/omp";
-const MISE_TOOL = "github:can1357/oh-my-pi";
+const HOMEBREW_FORMULA = "design-nexus/tap/pi-forge";
+const MISE_TOOL = "github:design-nexus/pi-forge";
 const NIX_STORE_DIR = "/nix/store";
 const GITHUB_API = "https://api.github.com";
 const RELEASE_METADATA_TIMEOUT_MS = 30_000;
@@ -804,9 +812,9 @@ async function resolveUpdateTarget(options: { allowPackageManagers: boolean }): 
 }
 
 /** Bound on `omp.rename` hops so a broken pointer chain cannot loop forever. */
-const MAX_RENAME_HOPS = 3;
+const _MAX_RENAME_HOPS = 3;
 
-async function fetchLatestManifest(
+async function _fetchLatestManifest(
 	pkg: string,
 	registry: NpmRegistry,
 	timeoutMs: number,
@@ -870,44 +878,52 @@ async function fetchLatestManifest(
 	return { version: data.version, manifest: data };
 }
 
-/**
- * Get the latest release info from the npm registry, following `omp.rename`
- * pointers ({@link resolveReleaseRename}) when the package has moved to a new
- * npm name. Version, dist, and install names all come from the final manifest
- * in the chain. Uses npm instead of GitHub API to avoid unauthenticated rate
- * limiting.
- *
- * The registry comes from the user's npm/bun configuration
- * ({@link loadNpmRegistryResolver}), so a configured feed is honored for every
- * install method, including standalone binaries.
- */
-export async function getLatestRelease(
-	options: { timeoutMs?: number; channel?: UpdateChannel; registries?: NpmRegistryResolver } = {},
-): Promise<ReleaseInfo> {
-	const timeoutMs = options.timeoutMs ?? RELEASE_METADATA_TIMEOUT_MS;
-	const channel = options.channel ?? "stable";
-	const registries = options.registries ?? (await loadNpmRegistryResolver());
-	const packages: ReleasePackages = { ...CURRENT_PACKAGES };
-	const visited = new Set([packages.pkg]);
-	let registry = registries(packages.pkg);
-	let latest = await fetchLatestManifest(packages.pkg, registry, timeoutMs, channel);
-	for (let hop = 0; hop < MAX_RENAME_HOPS; hop++) {
-		const rename = resolveReleaseRename(latest.manifest);
-		if (!rename || visited.has(rename.pkg)) break;
-		visited.add(rename.pkg);
-		packages.pkg = rename.pkg;
-		if (rename.natives) packages.natives = rename.natives;
-		registry = registries(packages.pkg);
-		latest = await fetchLatestManifest(packages.pkg, registry, timeoutMs, channel);
+/** Validate published Pi Forge GitHub metadata before selecting an application release. */
+export function resolveForgeRelease(value: unknown, channel: UpdateChannel): ReleaseInfo {
+	if (!isRecord(value) || value.draft !== false || typeof value.tag_name !== "string") {
+		throw new Error("Invalid Pi Forge release metadata");
 	}
+	const version = value.tag_name.replace(/^v/, "");
+	if (
+		!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value.tag_name) ||
+		!Bun.semver.satisfies(version.split("-")[0], ">=0.0.0") ||
+		(channel === "stable" && (value.prerelease !== false || version.includes("-")))
+	) {
+		throw new Error("Release is not eligible for the selected Pi Forge channel");
+	}
+	return { tag: value.tag_name, version, dist: "binary", packages: { ...CURRENT_PACKAGES }, registry: GITHUB_API };
+}
 
-	return {
-		tag: `v${latest.version}`,
-		version: latest.version,
-		dist: resolveReleaseDist(latest.manifest),
-		packages,
-		registry: registry.url,
-	};
+export async function getLatestRelease(
+	options: { timeoutMs?: number; channel?: UpdateChannel; registries?: NpmRegistryResolver; fetchImpl?: Fetch } = {},
+): Promise<ReleaseInfo> {
+	const channel = options.channel ?? "stable";
+	const token = await resolveGitHubToken();
+	const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
+	if (token) headers.Authorization = `Bearer ${token}`;
+	const endpoint = channel === "stable" ? "releases/latest" : "releases?per_page=30";
+	let response: Response;
+	try {
+		response = await (options.fetchImpl ?? fetch)(`${GITHUB_API}/repos/${REPO}/${endpoint}`, {
+			headers,
+			signal: withTimeoutSignal(options.timeoutMs ?? RELEASE_METADATA_TIMEOUT_MS),
+		});
+	} catch (error) {
+		if (isUnsupportedProxyError(error)) throw new Error(unsupportedProxyMessage(), { cause: error });
+		throw error;
+	}
+	if (!response.ok) throw new Error(`Pi Forge release lookup failed (${response.status}); no OMP fallback is used`);
+	const value: unknown = await response.json();
+	if (channel === "stable") return resolveForgeRelease(value, channel);
+	if (!Array.isArray(value)) throw new Error("Invalid Pi Forge release list");
+	for (const candidate of value) {
+		try {
+			return resolveForgeRelease(candidate, channel);
+		} catch {
+			/* skip drafts and malformed releases */
+		}
+	}
+	throw new Error("No published Pi Forge releases available");
 }
 
 interface BunInstallCachePruneResult {
@@ -2089,8 +2105,8 @@ export async function updateViaShimTakeover(
  */
 function installerHint(): string {
 	return process.platform === "win32"
-		? "& ([scriptblock]::Create((irm https://omp.sh/install.ps1))) -Binary"
-		: "curl -fsSL https://omp.sh/install | sh -s -- --binary";
+		? "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/design-nexus/pi-forge/main/scripts/install.ps1))) -Binary"
+		: "curl -fsSL https://raw.githubusercontent.com/design-nexus/pi-forge/main/scripts/install.sh | sh -s -- --binary";
 }
 
 /** Persisted channel, or undefined when settings are unavailable (SDK/test embedding without `Settings.init()`). */
@@ -2120,6 +2136,12 @@ export async function runUpdateCommand(opts: {
 	channel?: UpdateChannel;
 }): Promise<void> {
 	console.log(chalk.dim(`Current version: ${VERSION}`));
+	if (!opts.check && !isCompiledBinary()) {
+		console.log(
+			"Source installation: merge changes from design-nexus/pi-forge and rerun bun run setup. This checkout will not be changed by the updater.",
+		);
+		return;
+	}
 	const persistedChannel = readPersistedChannel() ?? "stable";
 	const channel = opts.channel ?? persistedChannel;
 	const isChannelSwitch = opts.channel !== undefined && opts.channel !== persistedChannel;
@@ -2162,6 +2184,20 @@ export async function runUpdateCommand(opts: {
 		return;
 	}
 
+	await updateViaBinaryAt(process.execPath, release.version, {
+		allowPrerelease: channel === "canary",
+		validateExistingTarget: true,
+	});
+	persistChannel(channel);
+	return;
+}
+
+/** Historical package-manager updater retained for upstream reconciliation; Forge uses release binaries. */
+async function _runPackageManagerUpdate(
+	release: ReleaseInfo,
+	channel: UpdateChannel,
+	opts: { force: boolean; channel?: UpdateChannel },
+): Promise<void> {
 	// Choose update method based on the prioritized omp binary in PATH. For
 	// binary-only releases the package managers are never consulted: a bun/npm
 	// symlink resolves to method "binary" and is replaced in place, keeping the

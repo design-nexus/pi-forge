@@ -18,14 +18,14 @@ export default class Read extends Command {
 	};
 
 	static examples = [
-		"omp read src/foo.ts",
-		"omp read src/foo.ts:50-100",
-		"omp read src/foo.ts:raw",
-		"omp read https://example.com",
-		"omp read omp://",
-		"omp read issue://123",
-		"omp read path/to/archive.zip:dir/file.ts",
-		"omp read path/to/db.sqlite:users:42",
+		"pi-forge read src/foo.ts",
+		"pi-forge read src/foo.ts:50-100",
+		"pi-forge read src/foo.ts:raw",
+		"pi-forge read https://example.com",
+		"pi-forge read omp://",
+		"pi-forge read issue://123",
+		"pi-forge read path/to/archive.zip:dir/file.ts",
+		"pi-forge read path/to/db.sqlite:users:42",
 	];
 
 	async run(): Promise<void> {

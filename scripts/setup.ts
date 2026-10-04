@@ -6,7 +6,7 @@
  * `OMP_NATIVE_BUILD_BACKEND=bazel` to opt into bazel. Flags after `--` are
  * appended to the native build invocation.
  *
- * On Windows the final `link omp` step runs natively in this file instead of
+ * On Windows the final `link pi-forge` step runs natively in this file instead of
  * spawning `sh` (issue #12483): same target check, same global-bin lookup
  * order, symlink with copy fallback.
  */
@@ -56,7 +56,7 @@ function linkOmpWindows(repoRoot: string): number {
 		// fall through to the default below
 	}
 	if (!globalBin) globalBin = path.join(process.env.BUN_INSTALL ?? path.join(os.homedir(), ".bun"), "bin");
-	const linkPath = path.join(globalBin, "omp");
+	const linkPath = path.join(globalBin, "pi-forge");
 	try {
 		fs.mkdirSync(globalBin, { recursive: true });
 		try {
@@ -84,12 +84,12 @@ const steps: Step[] = [
 	{ label: "bun install", cmd: ["bun", "install"] },
 	{ label: "build:native", cmd: ["bun", "run", "build:native", ...passthrough] },
 	{ label: "coding-agent link", cmd: ["bun", "--cwd=packages/coding-agent", "link"] },
-	{ label: "link omp", cmd: ["sh", "scripts/link-omp.sh"] },
+	{ label: "link pi-forge", cmd: ["sh", "scripts/link-omp.sh"] },
 ];
 
 for (const step of steps) {
 	console.log(`\n▶ ${step.label}`);
-	if (step.label === "link omp" && process.platform === "win32") {
+	if (step.label === "link pi-forge" && process.platform === "win32") {
 		const exitCode = linkOmpWindows(repoRoot);
 		if (exitCode !== 0) {
 			console.error(`\nsetup step "${step.label}" failed (exit ${exitCode})`);

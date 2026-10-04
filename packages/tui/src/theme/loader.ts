@@ -1,3 +1,4 @@
+import { readOmarchyTheme } from "./omarchy";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { adjustHsv } from "@oh-my-pi/pi-utils/color";
@@ -107,6 +108,11 @@ function parseThemeJson(name: string, content: string): ThemeJson {
 }
 
 export async function loadThemeJson(name: string): Promise<ThemeJson> {
+	if (name === "omarchy") {
+		const palette = readOmarchyTheme();
+		if (palette) return palette;
+		throw new Error("Omarchy palette unavailable");
+	}
 	const builtinThemes = getBuiltinThemes();
 	if (name in builtinThemes) {
 		return builtinThemes[name];
@@ -123,6 +129,11 @@ export async function loadThemeJson(name: string): Promise<ThemeJson> {
 
 /** Load a theme definition synchronously for the first terminal frame. */
 export function loadThemeJsonSync(name: string): ThemeJson {
+	if (name === "omarchy") {
+		const palette = readOmarchyTheme();
+		if (palette) return palette;
+		throw new Error("Omarchy palette unavailable");
+	}
 	const builtinThemes = getBuiltinThemes();
 	if (name in builtinThemes) {
 		return builtinThemes[name];

@@ -1,8 +1,8 @@
 /**
  * omp-side access to IDA databases hosted by broker-supervised daemons (`host.ts`).
  *
- * Every open database is one `omp.ida.<id>` daemon in the project's daemon broker, so `omp ps`
- * lists, stops, and tails it, and every omp process in the project shares it. This module starts
+ * Every open database is one `omp.ida.<id>` daemon in the project's daemon broker, so `pi-forge ps`
+ * lists, stops, and tails it, and every pi-forge process in the project shares it. This module starts
  * hosts on demand (evicting the least recently used idle one beyond `ida.maxOpen`), attaches to
  * hosts other processes started, and forwards requests over each host's socket.
  */
@@ -91,7 +91,7 @@ class HostConnection {
 		socket.on("error", error => logger.debug("IDA host connection error", { name, error: errorMessage(error) }));
 		socket.on("close", () => {
 			this.#open = false;
-			const error = new IdaHostGoneError(`IDA host ${name} exited; see \`omp ps logs ${name}\``);
+			const error = new IdaHostGoneError(`IDA host ${name} exited; see \`pi-forge ps logs ${name}\``);
 			for (const entry of this.#pending.values()) entry.reject(error);
 			this.#pending.clear();
 			onClose();
@@ -111,7 +111,7 @@ class HostConnection {
 	call(request: IdaHostRequest): Promise<unknown> {
 		if (!this.#open) {
 			return Promise.reject(
-				new IdaHostGoneError(`IDA host ${this.#name} exited; see \`omp ps logs ${this.#name}\``),
+				new IdaHostGoneError(`IDA host ${this.#name} exited; see \`pi-forge ps logs ${this.#name}\``),
 			);
 		}
 		const entry = Promise.withResolvers<unknown>();
@@ -146,11 +146,11 @@ class HostConnection {
 }
 
 /**
- * An open IDA database as seen from this omp process: a connection to its host daemon plus the
+ * An open IDA database as seen from this pi-forge process: a connection to its host daemon plus the
  * last reported {@link IdaHostStatus}. Shared by every agent in the process.
  */
 export class IdaDatabase {
-	/** Broker daemon name (`omp ps` row, `omp ps logs <name>`). */
+	/** Broker daemon name (`pi-forge ps` row, `pi-forge ps logs <name>`). */
 	readonly name: string;
 	readonly #conn: HostConnection;
 	#status: IdaHostStatus;
@@ -224,7 +224,7 @@ export class IdaDatabase {
 	}
 
 	/**
-	 * Run one worker request on the host, queued behind requests from every omp process.
+	 * Run one worker request on the host, queued behind requests from every pi-forge process.
 	 * `timeoutMs` covers the queue wait; an abort cancels this request only (see `IdaWorker.request`).
 	 */
 	async request<T>(method: IdaCallMethod, params: object, options: IdaRequestOptions = {}): Promise<T> {
@@ -352,7 +352,7 @@ async function startHost(
 			spec: {
 				name,
 				application: spawn.cmd[0]!,
-				// The trailing ref is ignored by the host; it labels the `omp ps` COMMAND column.
+				// The trailing ref is ignored by the host; it labels the `pi-forge ps` COMMAND column.
 				args: [...spawn.cmd.slice(1), idbRef(loc)],
 				env: { [IDA_HOST_CONFIG_ENV]: JSON.stringify(config) },
 				cwd: spawn.cwd ?? broker.projectDir,
@@ -372,7 +372,7 @@ async function startHost(
 	}
 	if (TERMINAL_STATES[started.state]) {
 		const reason = started.exitReason ?? `code ${started.exitCode}`;
-		throw new ToolError(`IDA host ${name} exited during startup (${reason}); see \`omp ps logs ${name}\``);
+		throw new ToolError(`IDA host ${name} exited during startup (${reason}); see \`pi-forge ps logs ${name}\``);
 	}
 }
 
@@ -390,11 +390,11 @@ async function openIdaDatabase(session: ToolSession, loc: IdbLocation): Promise<
 		});
 		if (db) return db;
 		if (attempt === ENSURE_ATTEMPTS) {
-			throw new ToolError(`IDA host ${name} did not come up; see \`omp ps logs ${name}\``);
+			throw new ToolError(`IDA host ${name} did not come up; see \`pi-forge ps logs ${name}\``);
 		}
 		const existing = await describeQuietly(broker, name, HOST_LABEL);
 		if (existing && !TERMINAL_STATES[existing.state]) {
-			// Starting (possibly by another omp process): wait for its banner. Ready yet unreachable: replace it.
+			// Starting (possibly by another pi-forge process): wait for its banner. Ready yet unreachable: replace it.
 			if (existing.readyAt === undefined) await waitReady(broker, name, HOST_LABEL, undefined, READY_TIMEOUT_MS);
 			else await stopQuietly(broker, name, HOST_LABEL);
 			continue;
@@ -441,7 +441,7 @@ export async function findOpenIdaDatabase(session: ToolSession, ref: string): Pr
 	return db?.status.state === "open" ? db : undefined;
 }
 
-/** Every database hosted in this project, including ones other omp processes opened. */
+/** Every database hosted in this project, including ones other pi-forge processes opened. */
 export async function listIdaDatabases(session: ToolSession): Promise<IdaDatabase[]> {
 	const broker = await daemonClientForProject(session.cwd);
 	return attachAll(broker, await liveHostNames(broker));
@@ -449,7 +449,7 @@ export async function listIdaDatabases(session: ToolSession): Promise<IdaDatabas
 
 /**
  * Save every attached database with unsaved changes and drop this process's connections; the hosts
- * keep running for other omp processes and exit with the project's broker. Failures are logged.
+ * keep running for other pi-forge processes and exit with the project's broker. Failures are logged.
  */
 export async function releaseIdaDatabases(): Promise<void> {
 	const dbs = [...handles.values()];

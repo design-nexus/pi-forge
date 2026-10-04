@@ -1,3 +1,4 @@
+import { getConfigDirName } from "@oh-my-pi/pi-utils/dirs";
 /**
  * OMP extension package roots.
  *
@@ -157,9 +158,18 @@ interface ScopeDirs {
 	user: string;
 }
 
-function scopeDirs(ctx: LoadContext): ScopeDirs {
+async function scopeDirs(ctx: LoadContext): Promise<ScopeDirs> {
+	const native = path.join(ctx.cwd, getConfigDirName());
+	const legacy = path.join(ctx.cwd, ".omp");
+	let project = native;
+	try {
+		await fs.stat(native);
+	} catch (error) {
+		if (isEnoent(error)) project = legacy;
+		else throw error;
+	}
 	return {
-		project: path.join(ctx.cwd, ".omp"),
+		project,
 		user: getAgentDir(),
 	};
 }
@@ -219,7 +229,7 @@ interface ConfiguredExtensions {
  * migration source even when it omits `extensions`.
  */
 async function readConfiguredExtensions(ctx: LoadContext): Promise<ConfiguredExtensions | null> {
-	const { project, user } = scopeDirs(ctx);
+	const { project, user } = await scopeDirs(ctx);
 	const [projectYaml, projectSettings, userYaml, userSettings] = await Promise.all([
 		readYamlExtensions(project, PROJECT_CONFIG_FILENAMES),
 		readSettingsExtensions(path.join(project, "settings.json")),

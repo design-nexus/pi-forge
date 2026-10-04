@@ -984,7 +984,10 @@ export class SettingsSelectorComponent implements Component {
 				return baseOpt || { value: level, label: level };
 			});
 		} else if (def.path === "theme.dark" || def.path === "theme.light") {
-			options = this.#context.availableThemes.map(t => ({ value: t, label: t }));
+			options = this.#context.availableThemes.map(t => ({
+				value: t,
+				label: t === "dark-catppuccin" ? "Catppuccin Mocha" : t === "light-catppuccin" ? "Catppuccin Latte" : t,
+			}));
 		} else if (def.path === "composer.shape") {
 			options = getComposerShapeOptions();
 		}

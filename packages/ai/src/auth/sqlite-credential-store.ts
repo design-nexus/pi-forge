@@ -17,6 +17,7 @@ import {
 	isSqliteCorruptionError,
 	logger,
 	openSqliteDatabase,
+	readSqliteSnapshot,
 } from "@oh-my-pi/pi-utils";
 import type { AuthCredentialStore, CredentialRefreshLeaseFence } from "./store";
 import type {
@@ -507,6 +508,23 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 		this.#listUsageHistoryStmt = this.#db.prepare(
 			"SELECT recorded_at, provider, account_key, email, account_id, limit_id, label, window_label, used_fraction, status, resets_at FROM usage_history WHERE recorded_at >= ? AND (? IS NULL OR provider = ?) ORDER BY recorded_at ASC",
 		);
+	}
+
+	/** Read active portable credentials without migrating or modifying the source store. */
+	static readSnapshot(dbPath: string): StoredAuthCredential[] {
+		return readSqliteSnapshot(dbPath, db => {
+			const table = db
+				.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth_credentials'")
+				.get();
+			if (!table) return [];
+			const rows = db
+				.query("SELECT * FROM auth_credentials WHERE disabled_cause IS NULL ORDER BY id")
+				.all() as AuthRow[];
+			return rows.flatMap(row => {
+				const credential = deserializeCredential(row);
+				return credential ? [toStoredAuthCredential(row, credential)] : [];
+			});
+		});
 	}
 
 	/** Opens credential storage with bounded busy retries and one-shot corruption recovery. */

@@ -37,8 +37,8 @@ import {
 } from "./helpers";
 
 const PROVIDER_ID = "native";
-const DISPLAY_NAME = "OMP";
-const DESCRIPTION = "Native OMP configuration from ~/.omp and .omp/";
+const DISPLAY_NAME = "Pi Forge";
+const DESCRIPTION = "Native Pi Forge configuration from ~/.pi-forge and .pi-forge/";
 const PRIORITY = 100;
 
 const PATHS = SOURCE_PATHS.native;
@@ -58,7 +58,7 @@ async function ifNonEmptyDir(...seg: string[]): Promise<string | null> {
 async function getConfigDirs(ctx: LoadContext): Promise<Array<{ dir: string; level: "user" | "project" }>> {
 	const result: Array<{ dir: string; level: "user" | "project" }> = [];
 
-	const projectDir = await ifNonEmptyDir(ctx.cwd, PATHS.projectDir);
+	const projectDir = (await ifNonEmptyDir(ctx.cwd, PATHS.projectDir)) ?? (await ifNonEmptyDir(ctx.cwd, ".omp"));
 	if (projectDir) {
 		result.push({ dir: projectDir, level: "project" });
 	}
@@ -92,7 +92,8 @@ async function findNearestProjectConfigDir(
 	repoRoot?: string | null,
 ): Promise<{ dir: string; depth: number } | null> {
 	for (const ancestor of getAncestorDirs(cwd, repoRoot)) {
-		const configDir = await ifNonEmptyDir(ancestor.dir, PATHS.projectDir);
+		const configDir =
+			(await ifNonEmptyDir(ancestor.dir, PATHS.projectDir)) ?? (await ifNonEmptyDir(ancestor.dir, ".omp"));
 		if (configDir) return { dir: configDir, depth: ancestor.depth };
 	}
 	return null;
@@ -211,9 +212,10 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 	// User scope tracks the active profile via getAgentDir() (not ctx.home), so it
 	// stays in sync with getMCPConfigPath("user") and the /mcp config writer.
 	const userAgentDir = getAgentDir();
+	const projectDir = (await ifNonEmptyDir(ctx.cwd, PATHS.projectDir)) ?? path.join(ctx.cwd, ".omp");
 	const paths = [
-		{ path: path.join(ctx.cwd, PATHS.projectDir, "mcp.json"), level: "project" as const },
-		{ path: path.join(ctx.cwd, PATHS.projectDir, ".mcp.json"), level: "project" as const },
+		{ path: path.join(projectDir, "mcp.json"), level: "project" as const },
+		{ path: path.join(projectDir, ".mcp.json"), level: "project" as const },
 		{ path: path.join(userAgentDir, "mcp.json"), level: "user" as const },
 		{ path: path.join(userAgentDir, ".mcp.json"), level: "user" as const },
 	];
@@ -286,9 +288,9 @@ registerProvider<SystemPrompt>(systemPromptCapability.id, {
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	// Walk up from cwd finding .omp/skills/ in ancestors (closest first)
 	const ancestors = getAncestorDirs(ctx.cwd, ctx.repoRoot ?? ctx.home);
-	const projectScans = ancestors.map(({ dir }) =>
+	const projectScans = ancestors.map(async ({ dir }) =>
 		scanSkillsFromDir(ctx, {
-			dir: path.join(dir, PATHS.projectDir, "skills"),
+			dir: (await ifNonEmptyDir(dir, PATHS.projectDir, "skills")) ?? path.join(dir, ".omp", "skills"),
 			providerId: PROVIDER_ID,
 			level: "project",
 			requireDescription: true,

@@ -272,3 +272,13 @@ export function isSqliteCorruptionError(err: unknown): boolean {
 	const code = err.code;
 	return typeof code === "string" && (code.startsWith("SQLITE_CORRUPT") || code === "SQLITE_NOTADB");
 }
+
+/** Read an existing database without migrations, recovery, or writable access. */
+export function readSqliteSnapshot<T>(dbPath: string, read: (db: Database) => T): T {
+	const db = new Database(dbPath, { readonly: true, create: false, strict: true });
+	try {
+		return read(db);
+	} finally {
+		db.close();
+	}
+}

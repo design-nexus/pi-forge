@@ -32,6 +32,9 @@ export interface SetupHost extends SetupUiHost {
 	saveComposerShape(shape: ComposerShape): Promise<void>;
 	saveSymbolPreset(preset: SymbolPreset): void;
 	saveColorBlindMode(enabled: boolean): void;
+	previewOmpImport?(): Promise<{ copied: number; skipped: number; warnings: string[] }>;
+	importOmp?(): Promise<void>;
+	saveThemeSource?(source: "terminal" | "omarchy"): void;
 	saveTheme(mode: "dark" | "light", name: string): void;
 	isSearchProviderAvailable(id: SearchProviderId): Promise<boolean>;
 	saveSearchProvider(id: SearchProviderId | "auto"): void;

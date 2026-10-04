@@ -37,12 +37,12 @@ export default class Ps extends Command {
 	};
 
 	static examples = [
-		"omp ps",
-		"omp ps --all",
-		"omp ps logs web --follow",
-		"omp ps stop web",
-		"omp ps kill web",
-		"omp ps info relay --global browser-relay",
+		"pi-forge ps",
+		"pi-forge ps --all",
+		"pi-forge ps logs web --follow",
+		"pi-forge ps stop web",
+		"pi-forge ps kill web",
+		"pi-forge ps info relay --global browser-relay",
 	];
 
 	async run(): Promise<void> {

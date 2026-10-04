@@ -457,6 +457,14 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 // =============================================================================
 
 if (import.meta.main) {
+	const manifest = await Bun.file(new URL("../package.json", import.meta.url)).json();
+	if (manifest.name === "pi-forge") {
+		console.error(
+			"Pi Forge releases use the Pi Forge draft release workflow. Update packages/utils/src/app-identity.json, commit the release, then run gh workflow run pi-forge-release.yml --repo design-nexus/pi-forge --ref <branch>.",
+		);
+		process.exit(1);
+	}
+
 	const arg = process.argv[2];
 
 	if (!arg) {

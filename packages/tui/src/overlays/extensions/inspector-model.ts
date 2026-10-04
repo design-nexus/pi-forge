@@ -6,7 +6,7 @@
  */
 import * as path from "node:path";
 import { arkToWireSchema, isArkSchema } from "@oh-my-pi/pi-ai/utils/schema";
-import { normalizePathForComparison, parseFrontmatter } from "@oh-my-pi/pi-utils";
+import { getConfigDirName, normalizePathForComparison, parseFrontmatter } from "@oh-my-pi/pi-utils";
 import {
 	sanitizeDisplayField,
 	sanitizeDisplayLine,
@@ -257,7 +257,8 @@ function pathSegments(filePath: string): string[] {
 export function projectListHint(ext: Extension): string | undefined {
 	if (ext.source.level !== "project") return undefined;
 	const parts = pathSegments(ext.path);
-	const ompIndex = parts.lastIndexOf(".omp");
+	const nativeIndex = parts.lastIndexOf(getConfigDirName());
+	const ompIndex = nativeIndex >= 0 ? nativeIndex : parts.lastIndexOf(".omp");
 	if (ompIndex <= 0) return undefined;
 	const parent = parts[ompIndex - 1];
 	return parent && parent !== "." ? parent : undefined;

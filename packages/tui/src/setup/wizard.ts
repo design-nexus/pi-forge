@@ -1,5 +1,6 @@
 import { CURRENT_SETUP_VERSION } from "./setup-version";
 import type { SetupHost } from "./scenes/types";
+import { importOmpSetupScene } from "./scenes/import-omp";
 import { composerSetupScene } from "./scenes/composer";
 import { glyphSetupScene } from "./scenes/glyph";
 import { modelSetupScene } from "./scenes/model";
@@ -15,6 +16,7 @@ export { CURRENT_SETUP_VERSION };
 
 /** Ordered onboarding scenes with independent version gates. */
 export const ALL_SCENES = [
+	importOmpSetupScene,
 	providersSetupScene,
 	modelSetupScene,
 	glyphSetupScene,

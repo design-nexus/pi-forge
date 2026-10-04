@@ -10,22 +10,25 @@
 		"llm",
 		"tui"
 	],
-	"homepage": "https://omp.sh",
+	"homepage": "https://github.com/design-nexus/pi-forge",
 	"bugs": {
-		"url": "https://github.com/can1357/oh-my-pi/issues"
+		"url": "https://github.com/design-nexus/pi-forge/issues"
 	},
 	"license": "MIT",
-	"author": { "name": "Stencil Labs, Inc.", "url": "https://stencil.so" },
+	"author": {
+		"name": "Stencil Labs, Inc.",
+		"url": "https://stencil.so"
+	},
 	"contributors": [
 		"Mario Zechner"
 	],
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/can1357/oh-my-pi.git",
+		"url": "git+https://github.com/design-nexus/pi-forge.git",
 		"directory": "packages/coding-agent"
 	},
 	"bin": {
-		"omp": "src/cli.ts"
+		"pi-forge": "src/cli.ts"
 	},
 	"files": [
 		"src",

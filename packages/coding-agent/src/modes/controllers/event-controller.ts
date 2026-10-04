@@ -1,3 +1,4 @@
+import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
 import type { AssistantMessage, ImageContent } from "@oh-my-pi/pi-ai";
 import * as AIError from "@oh-my-pi/pi-ai/error";
 import { getStreamingPartialJson } from "@oh-my-pi/pi-ai/utils/block-symbols";
@@ -2575,7 +2576,7 @@ export class EventController {
 
 		const sessionName = this.ctx.sessionManager.getSessionName();
 		TERMINAL.sendNotification({
-			title: sessionName || "omp",
+			title: sessionName || APP_NAME,
 			body: "Stopped with error",
 			type: "error",
 			actions: "focus",
@@ -2600,7 +2601,7 @@ export class EventController {
 
 		const sessionName = this.ctx.sessionManager.getSessionName();
 		TERMINAL.sendNotification({
-			title: sessionName || "omp",
+			title: sessionName || APP_NAME,
 			body: "Complete",
 			type: "completion",
 			actions: "focus",

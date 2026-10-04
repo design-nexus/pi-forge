@@ -1,3 +1,4 @@
+import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
 import * as path from "node:path";
 import * as timers from "node:timers/promises";
 import { logger, ptree, untilAborted } from "@oh-my-pi/pi-utils";
@@ -1462,8 +1463,8 @@ export class DapSessionManager {
 
 	#buildInitializeArguments(adapter: DapResolvedAdapter): DapInitializeArguments {
 		return {
-			clientID: "omp",
-			clientName: "omp",
+			clientID: APP_NAME,
+			clientName: APP_NAME,
 			adapterID: adapter.name,
 			locale: "en-US",
 			linesStartAt1: true,

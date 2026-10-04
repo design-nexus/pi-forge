@@ -1,3 +1,4 @@
+import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { AgentBusyError, type AgentToolResult } from "@oh-my-pi/pi-agent-core";
@@ -645,7 +646,7 @@ export class AcpAgent implements Agent {
 			authMethods.push({
 				type: "terminal",
 				id: "terminal",
-				name: "Set up omp in terminal",
+				name: "Set up Pi Forge in terminal",
 				description: "Launch the omp TUI to add provider keys and select models.",
 				args: [ACP_TERMINAL_AUTH_FLAG],
 			});
@@ -653,8 +654,8 @@ export class AcpAgent implements Agent {
 		return {
 			protocolVersion: PROTOCOL_VERSION,
 			agentInfo: {
-				name: "oh-my-pi",
-				title: "omp",
+				name: APP_NAME,
+				title: APP_NAME,
 				version: VERSION,
 			},
 			authMethods,

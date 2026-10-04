@@ -10,6 +10,7 @@ export * from "./config/config-file";
 
 const priorityList = [
 	{ dir: CONFIG_DIR_NAME, globalAgentDir: getConfigAgentDirName },
+	{ dir: ".omp" },
 	{ dir: ".claude" },
 	{ dir: ".codex" },
 	{ dir: ".gemini" },
@@ -81,11 +82,13 @@ export function getChangelogPath(): string | undefined {
  * User-level: ~/.omp/agent, Claude's active config directory, ~/.codex, ~/.gemini
  * Project-level: .omp, .claude, .codex, .gemini
  */
-const USER_CONFIG_BASES = priorityList.map(({ dir, globalAgentDir }) => ({
-	base: () =>
-		dir === ".claude" ? resolveClaudePaths().configDir : path.join(os.homedir(), globalAgentDir?.() ?? dir),
-	name: dir,
-}));
+const USER_CONFIG_BASES = priorityList
+	.filter(({ dir }) => dir !== ".omp")
+	.map(({ dir, globalAgentDir }) => ({
+		base: () =>
+			dir === ".claude" ? resolveClaudePaths().configDir : path.join(os.homedir(), globalAgentDir?.() ?? dir),
+		name: dir,
+	}));
 
 const PROJECT_CONFIG_BASES = priorityList.map(({ dir }) => ({
 	base: dir,

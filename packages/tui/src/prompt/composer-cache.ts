@@ -10,6 +10,7 @@ const CACHE_VERSION = 1;
 const STATUS_CACHE_VERSION = 3;
 /** Theme inputs cached from the last resolved settings load for stable prepaint colors. */
 export interface ComposerThemePreferences {
+	readonly source?: "terminal" | "omarchy";
 	readonly symbolPreset?: SymbolPreset;
 	readonly colorBlindMode?: boolean;
 	readonly darkTheme?: string;
@@ -211,6 +212,7 @@ function readUiState(file: string): { preferences: ComposerPreferences; theme: C
 	}
 	const symbolPreset = field(rawTheme, "symbolPreset");
 	const colorBlindMode = field(rawTheme, "colorBlindMode");
+	const source = field(rawTheme, "source");
 	const darkTheme = field(rawTheme, "darkTheme");
 	const lightTheme = field(rawTheme, "lightTheme");
 	if (
@@ -220,7 +222,8 @@ function readUiState(file: string): { preferences: ComposerPreferences; theme: C
 			symbolPreset !== "ascii") ||
 		(colorBlindMode !== undefined && typeof colorBlindMode !== "boolean") ||
 		(darkTheme !== undefined && typeof darkTheme !== "string") ||
-		(lightTheme !== undefined && typeof lightTheme !== "string")
+		(lightTheme !== undefined && typeof lightTheme !== "string") ||
+		(source !== undefined && source !== "terminal" && source !== "omarchy")
 	) {
 		return undefined;
 	}
@@ -240,7 +243,7 @@ function readUiState(file: string): { preferences: ComposerPreferences; theme: C
 			spellingAutocomplete,
 			spellingAutocorrect,
 		},
-		theme: { symbolPreset, colorBlindMode, darkTheme, lightTheme },
+		theme: { symbolPreset, colorBlindMode, darkTheme, lightTheme, source },
 	};
 }
 

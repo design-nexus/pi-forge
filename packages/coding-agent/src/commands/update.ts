@@ -20,10 +20,10 @@ export default class Update extends Command {
 	};
 
 	static examples = [
-		"omp update",
-		"omp update --check",
-		"omp update --canary",
-		"# If GitHub rate-limits release metadata, set GITHUB_TOKEN or GH_TOKEN\n  GITHUB_TOKEN=... omp update",
+		"pi-forge update",
+		"pi-forge update --check",
+		"pi-forge update --canary",
+		"# If GitHub rate-limits release metadata, set GITHUB_TOKEN or GH_TOKEN\n  GITHUB_TOKEN=... pi-forge update",
 	];
 
 	async run(): Promise<void> {

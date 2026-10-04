@@ -1,3 +1,4 @@
+import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
 /**
  * Debug command handler with interactive menu.
  *
@@ -471,7 +472,7 @@ export class DebugSelectorComponent extends OverlayPanel {
 		if (!suppressed) {
 			const sessionName = this.ctx.sessionManager.getSessionName();
 			const notification: TerminalNotification = {
-				title: sessionName || "omp",
+				title: sessionName || APP_NAME,
 				body: "Terminal protocol test",
 				type: "test",
 				actions: "focus",

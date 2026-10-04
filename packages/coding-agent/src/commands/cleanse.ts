@@ -36,13 +36,13 @@ export default class Cleanse extends Command {
 	};
 
 	static examples = [
-		"omp cleanse",
-		"omp cleanse --all",
-		'omp cleanse "ts errors"',
-		"omp cleanse -n 8",
-		"omp cleanse -m opus",
-		"omp cleanse -t",
-		"omp cleanse --agents 12 --model anthropic/claude-opus-4-6",
+		"pi-forge cleanse",
+		"pi-forge cleanse --all",
+		'pi-forge cleanse "ts errors"',
+		"pi-forge cleanse -n 8",
+		"pi-forge cleanse -m opus",
+		"pi-forge cleanse -t",
+		"pi-forge cleanse --agents 12 --model anthropic/claude-opus-4-6",
 	];
 
 	async run(): Promise<void> {

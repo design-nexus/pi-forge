@@ -1,3 +1,4 @@
+import { APP_URL } from "@oh-my-pi/pi-utils";
 import { pathToFileURL } from "node:url";
 import type { SecurityFinding, SecurityScanBundle } from "./contracts";
 
@@ -29,7 +30,7 @@ export function exportSecurityBundleToSarif(bundle: SecurityScanBundle): Record<
 					driver: {
 						name: bundle.scan.producer.name,
 						version: bundle.scan.producer.version,
-						informationUri: "https://omp.sh",
+						informationUri: APP_URL,
 						rules: [...rules.values()].map(finding => ({
 							id: finding.ruleId,
 							name: finding.ruleId,

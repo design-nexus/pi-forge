@@ -40,8 +40,8 @@ import {
 	TERMINAL_OUTPUT_WORKER_ARG,
 } from "./cli/worker-selectors";
 
-const CLI_BIN = "pi-forge";
-const CLI_VERSION = "0.1.0";
+const CLI_BIN = APP_NAME;
+const CLI_VERSION = VERSION;
 import type * as JsProcessEntry from "./eval/js/process-entry";
 import type { WorkerInbound as JsWorkerInbound, WorkerOutbound as JsWorkerOutbound } from "./eval/js/worker-protocol";
 
@@ -489,7 +489,7 @@ export async function runCli(argv: string[]): Promise<void> {
 			// validation here turns `OMP_PROFILE=.. omp --version` into a clean error;
 			// calling setProfile keeps every later path helper on the env-selected
 			// profile instead of the default agent directory.
-			setProfile(resolveProfileEnv(process.env.OMP_PROFILE, process.env.PI_PROFILE));
+			setProfile(resolveProfileEnv(process.env.PI_FORGE_PROFILE ?? process.env.OMP_PROFILE, process.env.PI_PROFILE));
 		}
 		if (extracted.aliasName !== undefined) {
 			// Command boundary: shell/path setup is used only by --alias.
