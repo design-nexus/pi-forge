@@ -1,0 +1,29 @@
+{
+  "id": "governor-repository-maintenance-v1",
+  "category": "real repository optional-delegation maintenance",
+  "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+  "taskFile": "TASK.md",
+  "acceptanceCommand": [
+    "bun",
+    "test",
+    "packages/coding-agent/test/tools/browser-attach-bench.test.ts",
+    "packages/coding-agent/test/bash-verification-bench.test.ts",
+    "packages/coding-agent/test/bash-background-audit.test.ts",
+    "packages/coding-agent/test/bash-verification-boundaries.test.ts"
+  ],
+  "expectedChangedFiles": [
+    "packages/coding-agent/src/tools/browser/attach.ts",
+    "packages/coding-agent/src/tools/bash.ts"
+  ],
+  "repeatCount": 1,
+  "notes": "Two independent real repository tool contracts with optional execution strategy. One auto-only Luna Low calibration; no required task call, worker count, or harness token/time cutoff. Browser test requires Linux and cc. Not a matched efficiency comparison. The first hosted run used the original five-check manifest; subsequent offline patch audit adds explicit-false boundaries. Future runs include all seven checks.",
+  "configFile": "benchmark.yml",
+  "supportFiles": {
+    "TASK.md": "TASK.md",
+    "benchmark.yml": "benchmark.yml",
+    "packages/coding-agent/test/tools/browser-attach-bench.test.ts": "browser-attach-bench.test.ts",
+    "packages/coding-agent/test/bash-verification-bench.test.ts": "bash-verification-bench.test.ts",
+    "packages/coding-agent/test/bash-background-audit.test.ts": "bash-background-audit.test.ts",
+    "packages/coding-agent/test/bash-verification-boundaries.test.ts": "bash-verification-boundaries.test.ts"
+  }
+}

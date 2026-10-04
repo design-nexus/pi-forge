@@ -1,0 +1,26 @@
+{
+  "id": "governor-isolated-notes-v1",
+  "category": "live isolated patch integration",
+  "sourceCommit": "8600f17c9f1a64ed041f6e846cd3a44939a77a29",
+  "taskFile": "TASK.md",
+  "acceptanceCommand": [
+    "bun",
+    "test",
+    "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts"
+  ],
+  "expectedChangedFiles": [
+    "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts",
+    "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts"
+  ],
+  "repeatCount": 1,
+  "notes": "One auto-mode run with two explicit isolated workers and the host integration gate. Uses the six frozen compact-notes checks in a repository worktree. All roles pinned to Luna Low; no harness token/time cutoff. Default repair budgets remain the product policy. No upstream or off-mode performance comparison.",
+  "configFile": "benchmark.yml",
+  "supportFiles": {
+    "TASK.md": "TASK.md",
+    "benchmark.yml": "benchmark.yml"
+  },
+  "requiredIntegrationGate": {
+    "status": "verified",
+    "minimumRepairAttempts": 0
+  }
+}

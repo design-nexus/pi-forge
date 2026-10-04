@@ -204,6 +204,44 @@ describe("runSubprocess result acceptance", () => {
 		expect(settled?.createdAt).toBe(ref.createdAt);
 	});
 
+	it("releases a completed one-shot agent id so the next repair generation can run", async () => {
+		vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async () => {
+			const harness = createHarness();
+			const ref = AgentRegistry.global().registerIfAvailable(
+				{
+					id: AGENT_ID,
+					displayName: AGENT_ID,
+					kind: "sub",
+					session: harness.session,
+					sessionFile: null,
+					status: "running",
+				},
+				null,
+			);
+			if (!ref) throw new Error("Agent is already owned by another session generation");
+			return {
+				session: harness.session,
+				extensionsResult: {} as unknown as LoadExtensionsResult,
+				setToolUIContext: () => {},
+				eventBus: new EventBus(),
+			} as CreateAgentSessionResult;
+		});
+		const options = {
+			cwd: "/tmp",
+			agent: baseAgent,
+			task: "verify the repair",
+			index: 0,
+			id: AGENT_ID,
+			keepAlive: false,
+		};
+		const first = await runSubprocess(options);
+		expect(first.exitCode).toBe(0);
+		const retry = await runSubprocess(options);
+		expect(retry.exitCode).toBe(0);
+		expect(retry.error).toBeUndefined();
+		expect(AgentRegistry.global().get(AGENT_ID)).toBeUndefined();
+	});
+
 	it("settles the owning task job when Agent Hub tombstones a running subagent", async () => {
 		const harness = createHarness({ hangPrompt: true });
 		const ref = registerRunning(harness.session);

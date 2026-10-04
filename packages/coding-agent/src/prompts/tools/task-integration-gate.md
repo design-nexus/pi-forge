@@ -17,6 +17,8 @@ Verification levels:
 
 Run relevant deterministic checks before expensive or nondeterministic checks. Choose checks from repository scripts and instructions; do not invent commands. A higher ceiling permits deeper checks when risk and available evidence warrant them, but does not require unrelated checks. Include every attempted command and its outcome in `checks`.
 
+Use the exact executed command in each `command` field. Put labels such as “initial” or “after repair” in `result`, never in `command`. For a rerun, repeat the same command text and list outcomes in execution order. The host uses the latest executed outcome for each command; a passed rerun resolves its earlier failure, while skipping a rerun does not resolve it.
+
 Shared task context:
 {{{context}}}
 

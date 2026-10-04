@@ -39,6 +39,18 @@ function normalizedFailure(value: string): string {
 	return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/** A skipped rerun cannot clear a prior execution; successful reruns can. */
+function latestExecutedChecks(checks: readonly unknown[]): Record<string, unknown>[] {
+	const latest = new Map<string, Record<string, unknown>>();
+	for (const check of checks) {
+		if (!isRecord(check) || typeof check.command !== "string") continue;
+		const command = check.command.trim();
+		if (check.status === "skipped" && latest.has(command)) continue;
+		latest.set(command, check);
+	}
+	return [...latest.values()];
+}
+
 /** Tracks repair attempts and stops retries on repeated failures or exhausted resources. */
 export class IntegrationRepairBudget {
 	#limits: RepairBudgetLimits;
@@ -78,7 +90,7 @@ export class IntegrationRepairBudget {
 	record(result: SingleResult, failure?: string): RepairAttemptRecord {
 		const data = isRecord(result.structuredOutput?.data) ? result.structuredOutput.data : undefined;
 		const checks = Array.isArray(data?.checks) ? data.checks : [];
-		const failedChecks = checks.filter(check => isRecord(check) && check.status === "failed");
+		const failedChecks = latestExecutedChecks(checks).filter(check => check.status === "failed");
 		const failures = failedChecks
 			.map(check => `${String(check.command ?? "")}: ${String(check.result ?? "")}`)
 			.map(normalizedFailure)
@@ -167,7 +179,7 @@ export function integrationGateFailure(result: SingleResult, policy?: GovernorVe
 			return `Integration verification level ${verificationLevel} is outside the selected ${policy.floor}–${policy.ceiling} range.`;
 		}
 	}
-	const invalidCheck = checks.find(
+	const invalidCheck = checks.some(
 		check =>
 			!isRecord(check) ||
 			typeof check.command !== "string" ||
@@ -175,10 +187,11 @@ export function integrationGateFailure(result: SingleResult, policy?: GovernorVe
 			typeof check.result !== "string",
 	);
 	if (invalidCheck) return "Integration verification returned malformed check evidence.";
-	if (checks.some(check => isRecord(check) && check.status === "failed")) {
+	const latestChecks = latestExecutedChecks(checks);
+	if (latestChecks.some(check => check.status === "failed")) {
 		return `Integration verification remains unresolved: ${structured.data.summary}`;
 	}
-	if (!checks.some(check => isRecord(check) && check.status === "passed")) {
+	if (!latestChecks.some(check => check.status === "passed")) {
 		return "Integration verification did not report a passing unified check.";
 	}
 	if (status === "unresolved") {

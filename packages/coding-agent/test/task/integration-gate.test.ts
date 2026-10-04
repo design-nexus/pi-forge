@@ -209,6 +209,44 @@ describe("task integration gate", () => {
 		).toBeUndefined();
 	});
 
+	it("rejects a successful report that mixes passing checks with null evidence", () => {
+		expect(
+			integrationGateFailure(
+				result("valid", {
+					status: "verified",
+					summary: "checks pass",
+					verificationLevel: "V1",
+					checks: [{ command: "bun test", status: "passed", result: "passed" }, null],
+					files: [],
+					repairAttempts: 0,
+				}),
+			),
+		).toContain("malformed check evidence");
+	});
+
+	it.each([
+		{ outcome: "passed rerun", command: "bun test", status: "passed", accepted: true },
+		{ outcome: "unrelated passing command", command: "bun check", status: "passed", accepted: false },
+		{ outcome: "skipped rerun", command: "bun test", status: "skipped", accepted: false },
+	])("uses executed reruns without hiding unresolved failures ($outcome)", ({ command, status, accepted }) => {
+		const repaired = result("valid", {
+			status: "reconciled",
+			summary: "repair attempted",
+			verificationLevel: "V1",
+			checks: [
+				{ command: "bun test", status: "failed", result: "assertion failed" },
+				{ command, status, result: "later outcome" },
+			],
+			files: ["src/a.ts"],
+			repairAttempts: 1,
+		});
+		const failure = integrationGateFailure(repaired);
+		if (accepted) expect(failure).toBeUndefined();
+		else expect(failure).toContain("remains unresolved");
+		const budget = new IntegrationRepairBudget();
+		expect(budget.record(repaired, failure).failureCount).toBe(accepted ? 0 : 1);
+	});
+
 	it("rejects a reported level outside the Governor-selected operator range", () => {
 		const policy = { strategy: "targeted_checks", floor: "V2", ceiling: "V3" } as const;
 		expect(
