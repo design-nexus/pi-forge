@@ -1,0 +1,10 @@
+{
+	"id": "decomposable-migration-v1",
+	"category": "decomposable migration",
+	"sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": ["bun", "test"],
+	"expectedChangedFiles": ["src/storage.ts", "src/cache.ts", "src/history.ts", "src/project.ts"],
+	"repeatCount": 3,
+	"notes": "Frozen massive-scope packet. Migrate three independent consumers and their shared storage contract together."
+}

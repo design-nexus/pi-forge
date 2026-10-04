@@ -1,0 +1,10 @@
+{
+	"id": "cross-package-contract-v1",
+	"category": "cross-package contract",
+	"sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": ["bun", "test"],
+	"expectedChangedFiles": ["src/client.ts"],
+	"repeatCount": 3,
+	"notes": "Frozen complex-scope packet. Provider retry defaults must reach the consumer while explicit per-client settings retain precedence."
+}

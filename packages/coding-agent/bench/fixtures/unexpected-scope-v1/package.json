@@ -1,0 +1,6 @@
+{
+	"name": "pi-forge-bench-unexpected-scope-v1",
+	"private": true,
+	"type": "module",
+	"scripts": { "test": "bun test" }
+}

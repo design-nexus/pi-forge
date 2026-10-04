@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isRecord } from "@oh-my-pi/pi-utils";
+import * as vcs from "@oh-my-pi/pi-natives/vcs";
 
 export interface PacketManifest {
 	id: string;
@@ -11,6 +12,10 @@ export interface PacketManifest {
 	expectedChangedFiles: string[];
 	repeatCount: number;
 	notes: string;
+	/** Optional path allowlist for tasks whose correct implementation touches a variable subset. */
+	allowedChangedFiles?: string[];
+	/** Repository-relative destination to source-file overlays used as benchmark support files. */
+	supportFiles?: Record<string, string>;
 }
 
 export interface RunSummary {
@@ -154,11 +159,36 @@ export async function runSystem(
 	outputDir: string,
 	repeat: number,
 	packetFiles: Map<string, string>,
+	repositoryPath?: string,
 ): Promise<RunSummary> {
 	const artifactDir = await fs.mkdtemp(path.join(outputDir, `${system}-${repeat}-`));
 	const runDir = path.join(artifactDir, "workspace");
 	const sessionDirectory = path.join(artifactDir, "sessions");
-	await fs.cp(packetDir, runDir, { recursive: true, force: true });
+	const sourceRepo = repositoryPath ? vcs.requireGit(repositoryPath) : null;
+	let worktreeRepo = sourceRepo;
+	if (repositoryPath) {
+		if (!sourceRepo) throw new Error(`No git repository at ${repositoryPath}`);
+		await sourceRepo.worktreeAdd(runDir, manifest.sourceCommit, { detach: true, clone: false });
+		worktreeRepo = vcs.requireGit(runDir);
+		const dependencies = path.join(repositoryPath, "node_modules");
+		for (const ignored of ["node_modules", "target"])
+			await fs.rm(path.join(runDir, ignored), { recursive: true, force: true });
+		if (await Bun.file(dependencies).exists())
+			await fs.symlink(dependencies, path.join(runDir, "node_modules"), "dir");
+		const nativeDirectory = path.join(repositoryPath, "packages/natives/native");
+		for (const filename of await fs.readdir(nativeDirectory)) {
+			if (!filename.endsWith(".node")) continue;
+			await fs.symlink(path.join(nativeDirectory, filename), path.join(runDir, "packages/natives/native", filename));
+		}
+	} else {
+		await fs.cp(packetDir, runDir, { recursive: true, force: true });
+	}
+	for (const [destination, source] of Object.entries(manifest.supportFiles ?? {})) {
+		const target = path.join(runDir, destination);
+		await fs.mkdir(path.dirname(target), { recursive: true });
+		await fs.copyFile(path.resolve(packetDir, source), target);
+	}
+	await fs.mkdir(sessionDirectory, { recursive: true });
 	const prompt = `@${manifest.taskFile}`;
 	const startedAt = performance.now();
 	const { exitCode, output: transcript } = await runCommand(
@@ -186,23 +216,44 @@ export async function runSystem(
 	await Bun.write(transcriptPath, transcript);
 	const telemetry = await readRunTelemetry(sessionDirectory);
 	const test = await runCommand(manifest.acceptanceCommand, runDir);
-	const runFiles = await fileSnapshot(runDir);
-	const changed = [...new Set([...packetFiles.keys(), ...runFiles.keys()])].filter(
-		relative => packetFiles.get(relative) !== runFiles.get(relative),
-	);
-	const expectedChanges = new Set(manifest.expectedChangedFiles);
-	const changedOutsideScope = changed.filter(relative => !expectedChanges.has(relative));
+	let changed: string[];
+	if (worktreeRepo) {
+		if (!sourceRepo) throw new Error(`No source git repository at ${repositoryPath ?? ""}`);
+		for (const [destination, source] of Object.entries(manifest.supportFiles ?? {})) {
+			const actual = await Bun.file(path.join(runDir, destination)).text();
+			if (actual !== (await Bun.file(path.resolve(packetDir, source)).text())) {
+				changed = [destination];
+				throw new Error(`Benchmark agent modified support file ${destination}`);
+			}
+			await fs.rm(path.join(runDir, destination), { force: true });
+		}
+		changed = [
+			...new Set([...(await worktreeRepo.changedFiles({})), ...(await worktreeRepo.lsFiles(true, true))]),
+		].sort();
+		await Bun.write(
+			path.join(artifactDir, "final.diff"),
+			await worktreeRepo.diffText({ binary: true, maxBytes: 20_000_000 }),
+		);
+		await sourceRepo.worktreeRemove(runDir, true);
+	} else {
+		const runFiles = await fileSnapshot(runDir);
+		changed = [...new Set([...packetFiles.keys(), ...runFiles.keys()])].filter(
+			relative => packetFiles.get(relative) !== runFiles.get(relative),
+		);
+	}
+	const allowedChanges = manifest.allowedChangedFiles ?? manifest.expectedChangedFiles;
+	const allowedChangeSet = new Set(allowedChanges);
+	const changedOutsideScope = changed.filter(relative => !allowedChangeSet.has(relative));
+	const changedSetMatches = manifest.allowedChangedFiles
+		? changed.length > 0
+		: changed.length === manifest.expectedChangedFiles.length && changedOutsideScope.length === 0;
 	return {
 		system,
 		cliPath: path.resolve(cliPath),
 		model,
 		exitCode,
 		testExitCode: test.exitCode,
-		passed:
-			exitCode === 0 &&
-			test.exitCode === 0 &&
-			changed.length === manifest.expectedChangedFiles.length &&
-			changedOutsideScope.length === 0,
+		passed: exitCode === 0 && test.exitCode === 0 && changedSetMatches && changedOutsideScope.length === 0,
 		changedFiles: changed,
 		filesWithinScope: changedOutsideScope.length === 0,
 		...telemetry,
@@ -252,7 +303,12 @@ async function main(): Promise<void> {
 	const piforgeCli = required(args, "--piforge-cli");
 	const ompRevision = args.get("--omp-revision");
 	const piforgeRevision = args.get("--piforge-revision");
+	const repository = args.get("--repository");
+	const repositoryPath = repository ? path.resolve(repository) : undefined;
 	const model = args.get("--model") ?? "openai-codex/gpt-5.5";
+	const selectedSystem = args.get("--system") ?? "both";
+	if (selectedSystem !== "both" && selectedSystem !== "omp" && selectedSystem !== "piforge")
+		throw new Error("--system must be both, omp, or piforge");
 	const manifest = (await Bun.file(path.join(packetDir, "manifest.json")).json()) as PacketManifest;
 	const taskText = await Bun.file(path.join(packetDir, manifest.taskFile)).text();
 	if (!taskText.trim() || manifest.repeatCount < 1)
@@ -261,7 +317,7 @@ async function main(): Promise<void> {
 	const packetFiles = await fileSnapshot(packetDir);
 	const runs: RunSummary[] = [];
 	for (let repeat = 1; repeat <= manifest.repeatCount; repeat++) {
-		const systems =
+		const pairedSystems =
 			repeat % 2 === 1
 				? ([
 						["omp", ompCli],
@@ -271,15 +327,33 @@ async function main(): Promise<void> {
 						["piforge", piforgeCli],
 						["omp", ompCli],
 					] as const);
+		const systems = pairedSystems.filter(([system]) => selectedSystem === "both" || system === selectedSystem);
 		for (const [system, cliPath] of systems) {
-			runs.push(await runSystem(system, cliPath, model, packetDir, manifest, outputDir, repeat, packetFiles));
+			runs.push(
+				await runSystem(
+					system,
+					cliPath,
+					model,
+					packetDir,
+					manifest,
+					outputDir,
+					repeat,
+					packetFiles,
+					repositoryPath,
+				),
+			);
 		}
 	}
 	const report = {
 		packet: manifest,
 		model,
 		createdAt: new Date().toISOString(),
-		conditions: { autoApprove: true, sessionPersistence: true, taskPrompt: manifest.taskFile },
+		conditions: {
+			autoApprove: true,
+			sessionPersistence: true,
+			taskPrompt: manifest.taskFile,
+			selectedSystem,
+		},
 		sources: {
 			omp: { cliPath: path.resolve(ompCli), revision: ompRevision ?? null },
 			piforge: { cliPath: path.resolve(piforgeCli), revision: piforgeRevision ?? null },

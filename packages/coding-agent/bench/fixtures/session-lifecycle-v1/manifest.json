@@ -1,0 +1,10 @@
+{
+	"id": "session-lifecycle-v1",
+	"category": "session lifecycle",
+	"sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": ["bun", "test"],
+	"expectedChangedFiles": ["src/session.ts"],
+	"repeatCount": 3,
+	"notes": "Frozen normal-scope packet. A capability transition requested during streaming must commit its tool and prompt state together at the next safe boundary."
+}
