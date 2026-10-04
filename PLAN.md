@@ -1754,3 +1754,15 @@ Closed the harness false-positive exposed by controlled repair: isolated packets
 ### Repository optional-strategy calibration (2026-10-04)
 
 Completed one Luna Low auto-only maintenance run against two independent repository tool fixes. The agent chooses direct execution, recovers from an initial browser test failure, and passes five original checks within scope. Governor reassesses Normal/V1 to Complex/V3 while retaining Low effort. Offline patch audit exposes two explicit-false Bash contract failures; strengthened acceptance is 5/7, while the existing development implementation passes 7/7. Future packet checks include those boundaries. Recorded source/packet hashes, usage, decisions, failures, diff, and local audits. No autonomous delegation or efficiency benefit is established; remaining evaluation should prioritize contract quality and interaction overhead before more hosted repetitions.
+
+### Edit recovery guidance (2026-10-04)
+
+Committed the integration fixes, acceptance hardening, and repository evidence as `0fce7a9bbf`. Offline maintenance audit identifies five unseen-anchor refusals and one stale-tag refusal among eight failed tool results. Aligned full and compact static edit instructions with existing safe response reuse and exact ranged-read recovery. Safeguards remain enforced. Focused edit contracts passed locally. The matched hosted measurement below subsequently rejects and reverts this candidate.
+
+### Edit instruction performance measured and candidate rejected (2026-10-04)
+
+Completed an original/revised Luna Low pair with identical runtime/addon/task/seven-check acceptance and auto settings. Both pass 7/7 within scope. Revised instructions leave total edit failures unchanged (8 each) and use 116% more reported tokens, 110% more reported cost, and 147% more time; browser repair iterations dominate. Retained exact prompts, hashes, driver, usage, decisions, errors, diffs, and acceptance. Reverted the unvalidated recovery expansion and retained the committed production prompts. This replaces the previous unmeasured status for this candidate; it does not establish broader prompt or Governor performance.
+
+### Next: normal development observations (2026-10-04)
+
+Hosted benchmarks are paused by user agreement. Keep the current implementation and production prompts. Follow [the real-work observation workflow](docs/real-work-observation.md): Luna Low first, separate persisted task logs, offline usage summaries, independent acceptance, active-time notes, and recorded interventions. Governor remains explicitly off for the ordinary-use baseline; deliberate auto observations are labeled separately. Fix recurring problems found during useful work, then measure specific fixes rather than repeating broad benchmark packets. No new hosted run is authorized by this workflow alone.

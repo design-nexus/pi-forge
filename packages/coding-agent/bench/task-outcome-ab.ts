@@ -253,7 +253,7 @@ export async function fileSnapshot(root: string): Promise<Map<string, string>> {
 	return files;
 }
 
-async function linkRepositoryDependencies(repositoryPath: string, runDir: string): Promise<void> {
+export async function linkRepositoryDependencies(repositoryPath: string, runDir: string): Promise<void> {
 	const sourceNodeModules = path.join(repositoryPath, "node_modules");
 	const targetNodeModules = path.join(runDir, "node_modules");
 	await fs.mkdir(targetNodeModules, { recursive: true });
