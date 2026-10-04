@@ -1,0 +1,531 @@
+{
+  "sourceHead": "9b60b27931c03553a4f2fa29e3e8d89b13949a54",
+  "sourceHasUncommittedChanges": true,
+  "sourceSha256": {
+    "packages/ai/src/providers/openai-codex-responses.ts": "09373a6cb9fec084e5ec8d75e6adf7cf360ffcc9218ffd4e904fb56e907ee573",
+    "packages/agent/src/agent-loop.ts": "a82195ace08f13743cc11ca36fb5d30c1e271f6e4f0b203c6fbb1862e9d15395",
+    "packages/agent/src/agent.ts": "757c20d11d105475074a7b78973c3142be0b43b4fcb799c3e1789ccd7a0a9407",
+    "packages/agent/src/types.ts": "10694237008bea4d9f100d96fffbd9cf069789e33164bf182230798ee0559f54",
+    "packages/coding-agent/src/session/agent-session.ts": "69f569c0b321feba76f31e3cd21ee3f95b4a07065a447580c62a477eaf55cc82",
+    "packages/coding-agent/bench/task-outcome-ab.ts": "02a442802fbed99ea15aaa01242843f3b45c1c1e8e319b36a67f41f5120e4551"
+  },
+  "matchedPacketSha256": {
+    "manifest.json": "7f62b3af471db04d56cb419b26c3bbac381b049238764e68c12b8947de50c6cf",
+    "package.json": "176d846383bb88a9e6bf94e9fb2d69662792bbdf21f11ec363feca6db6d094ca",
+    "TASK.md": "846bfbe202ac4b32b79ea7d1a8a63221d64227eb649e8589f3bbfd6230d2cb16",
+    "benchmark.yml": "8cf93c482117281148b95ef718b3211a4ae0eeaaea43f00ecc555212c01ae379",
+    "test/storage.test.ts": "2e09a1cc5f2b0a245e85551aca7559f2e31521efe4eed7ee755e808330b8427e",
+    "src/storage.ts": "68fca5fa007a2b706bcd3c7607113e4aeaaca24e0e679a77c199c71075b962a4",
+    "src/cache.ts": "efa4b473984380fe3f145403c16d8ddabfa35f1afa9dc6b3c3305ecf6b230611",
+    "src/history.ts": "363a1e36c99a641663903c0064876bee24a03f2e2a16bc0c9191eb06fab2dd0f",
+    "src/project.ts": "f01bc37bc40e927af66f9c0fc11adfb89cd8a088dd776bbaec97c5deb12d0d62",
+    "src/audit.ts": "c480a260724f471057c484aabc2361ae4438ece9b3abdfdd941cc931f9c75767"
+  },
+  "reports": {
+    "off": {
+      "packet": {
+        "id": "governor-four-consumer-migration-medium-v1",
+        "category": "default Governor parallel policy",
+        "sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+        "taskFile": "TASK.md",
+        "acceptanceCommand": [
+          "bun",
+          "test",
+          "test/storage.test.ts"
+        ],
+        "expectedChangedFiles": [
+          "src/storage.ts",
+          "src/cache.ts",
+          "src/history.ts",
+          "src/project.ts",
+          "src/audit.ts"
+        ],
+        "repeatCount": 1,
+        "notes": "Shared API changed by parent followed by a declared batch of four independent consumers. No band, worker-count, concurrency, risk, or threshold overrides. Default policy can recommend four parallel workers. Measures policy selection and dispatch, not the autonomous decision to delegate. Tests remain frozen; root and generic workers use GPT-6 Luna Medium. Medium variant after a Low root streamed a malformed periodic argument loop.",
+        "configFile": "benchmark.yml"
+      },
+      "model": "openai-codex/gpt-6-luna",
+      "thinkingLevel": "medium",
+      "createdAt": "2026-10-04T16:25:37.646Z",
+      "conditions": {
+        "autoApprove": true,
+        "sessionPersistence": true,
+        "taskPrompt": "TASK.md",
+        "selectedSystem": "piforge",
+        "budget": null,
+        "adaptiveMode": "off",
+        "thinkingLevel": "medium",
+        "repeatCount": 1
+      },
+      "sources": {
+        "omp": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        },
+        "piforge": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": "9b60b27931c03553a4f2fa29e3e8d89b13949a54-dirty"
+        }
+      },
+      "runs": [
+        {
+          "system": "piforge",
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "model": "openai-codex/gpt-6-luna",
+          "thinkingLevel": "medium",
+          "exitCode": 0,
+          "testExitCode": 0,
+          "passed": true,
+          "budgetStopReason": null,
+          "adaptiveMode": "off",
+          "governorDecisions": [],
+          "changedFiles": [
+            "src/storage.ts",
+            "src/cache.ts",
+            "src/history.ts",
+            "src/project.ts",
+            "src/audit.ts"
+          ],
+          "filesWithinScope": true,
+          "toolCalls": [
+            "todo",
+            "read",
+            "edit",
+            "todo",
+            "task",
+            "wait",
+            "wait",
+            "wait",
+            "wait",
+            "todo",
+            "bash",
+            "todo",
+            "read",
+            "edit",
+            "yield",
+            "glob",
+            "read",
+            "edit",
+            "yield",
+            "glob",
+            "grep",
+            "read",
+            "edit",
+            "yield",
+            "read",
+            "edit",
+            "yield"
+          ],
+          "assistantTurns": 28,
+          "inputTokens": 53535,
+          "outputTokens": 1818,
+          "cacheReadTokens": 156672,
+          "cacheWriteTokens": 0,
+          "totalTokens": 212025,
+          "costUsd": 0.007829220000000001,
+          "wallTimeMs": 43613.450205,
+          "humanInterventions": 0,
+          "transcriptPath": "/tmp/pi-forge-four-consumer-medium-off/piforge-1-Gma8rb/transcript.jsonl",
+          "sessionDirectory": "/tmp/pi-forge-four-consumer-medium-off/piforge-1-Gma8rb/sessions",
+          "workspacePath": "/tmp/pi-forge-four-consumer-medium-off/piforge-1-Gma8rb/workspace",
+          "testOutput": "bun test v1.4.2 (744846f84)\n\n\ntest/storage.test.ts:\n(pass) migrated storage contract > preserves write access and paths for cache and project storage [0.10ms]\n(pass) migrated storage contract > keeps history storage read-only under the new mode contract [0.02ms]\n(pass) migrated storage contract > keeps audit storage read-only and preserves its path [0.02ms]\n\n 3 pass\n 0 fail\n 4 expect() calls\nRan 3 tests across 1 file. [3.00ms]"
+        }
+      ]
+    },
+    "auto": {
+      "packet": {
+        "id": "governor-four-consumer-migration-medium-v1",
+        "category": "default Governor parallel policy",
+        "sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+        "taskFile": "TASK.md",
+        "acceptanceCommand": [
+          "bun",
+          "test",
+          "test/storage.test.ts"
+        ],
+        "expectedChangedFiles": [
+          "src/storage.ts",
+          "src/cache.ts",
+          "src/history.ts",
+          "src/project.ts",
+          "src/audit.ts"
+        ],
+        "repeatCount": 1,
+        "notes": "Shared API changed by parent followed by a declared batch of four independent consumers. No band, worker-count, concurrency, risk, or threshold overrides. Default policy can recommend four parallel workers. Measures policy selection and dispatch, not the autonomous decision to delegate. Tests remain frozen; root and generic workers use GPT-6 Luna Medium. Medium variant after a Low root streamed a malformed periodic argument loop.",
+        "configFile": "benchmark.yml"
+      },
+      "model": "openai-codex/gpt-6-luna",
+      "thinkingLevel": "medium",
+      "createdAt": "2026-10-04T16:26:41.674Z",
+      "conditions": {
+        "autoApprove": true,
+        "sessionPersistence": true,
+        "taskPrompt": "TASK.md",
+        "selectedSystem": "piforge",
+        "budget": null,
+        "adaptiveMode": "auto",
+        "thinkingLevel": "medium",
+        "repeatCount": 1
+      },
+      "sources": {
+        "omp": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        },
+        "piforge": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": "9b60b27931c03553a4f2fa29e3e8d89b13949a54-dirty"
+        }
+      },
+      "runs": [
+        {
+          "system": "piforge",
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "model": "openai-codex/gpt-6-luna",
+          "thinkingLevel": "medium",
+          "exitCode": 0,
+          "testExitCode": 0,
+          "passed": true,
+          "budgetStopReason": null,
+          "adaptiveMode": "auto",
+          "governorDecisions": [
+            {
+              "trigger": "initial",
+              "band": "normal",
+              "workerCount": 0,
+              "verificationFloor": "V1"
+            },
+            {
+              "trigger": "scope",
+              "band": "normal",
+              "workerCount": 0,
+              "verificationFloor": "V1"
+            },
+            {
+              "trigger": "scope",
+              "band": "massive",
+              "workerCount": 4,
+              "verificationFloor": "V2"
+            }
+          ],
+          "changedFiles": [
+            "src/storage.ts",
+            "src/cache.ts",
+            "src/history.ts",
+            "src/project.ts",
+            "src/audit.ts"
+          ],
+          "filesWithinScope": true,
+          "toolCalls": [
+            "todo",
+            "read",
+            "edit",
+            "todo",
+            "task",
+            "wait",
+            "wait",
+            "wait",
+            "todo",
+            "bash",
+            "todo",
+            "bash",
+            "glob",
+            "read",
+            "bash",
+            "grep",
+            "edit",
+            "yield",
+            "read",
+            "edit",
+            "yield",
+            "read",
+            "edit",
+            "yield",
+            "glob",
+            "read",
+            "edit",
+            "yield"
+          ],
+          "assistantTurns": 30,
+          "inputTokens": 68042,
+          "outputTokens": 1973,
+          "cacheReadTokens": 158720,
+          "cacheWriteTokens": 0,
+          "totalTokens": 228735,
+          "costUsd": 0.009377900000000002,
+          "wallTimeMs": 48958.572545999996,
+          "humanInterventions": 0,
+          "transcriptPath": "/tmp/pi-forge-four-consumer-medium-auto/piforge-1-1EcqLj/transcript.jsonl",
+          "sessionDirectory": "/tmp/pi-forge-four-consumer-medium-auto/piforge-1-1EcqLj/sessions",
+          "workspacePath": "/tmp/pi-forge-four-consumer-medium-auto/piforge-1-1EcqLj/workspace",
+          "testOutput": "bun test v1.4.2 (744846f84)\n\n\ntest/storage.test.ts:\n(pass) migrated storage contract > preserves write access and paths for cache and project storage [0.09ms]\n(pass) migrated storage contract > keeps history storage read-only under the new mode contract [0.02ms]\n(pass) migrated storage contract > keeps audit storage read-only and preserves its path [0.02ms]\n\n 3 pass\n 0 fail\n 4 expect() calls\nRan 3 tests across 1 file. [3.00ms]"
+        }
+      ]
+    }
+  },
+  "execution": {
+    "off": {
+      "peakRunning": 4,
+      "workerSessions": 4,
+      "implementationWorkers": 4,
+      "reviewSessions": 0,
+      "models": [
+        "openai-codex/gpt-6-luna"
+      ],
+      "thinkingLevels": [
+        "medium"
+      ],
+      "governorSnapshots": []
+    },
+    "auto": {
+      "peakRunning": 4,
+      "workerSessions": 5,
+      "implementationWorkers": 4,
+      "reviewSessions": 1,
+      "models": [
+        "openai-codex/gpt-6-luna"
+      ],
+      "thinkingLevels": [
+        "medium"
+      ],
+      "governorSnapshots": [
+        {
+          "version": 1,
+          "revision": 1,
+          "trigger": "initial",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 3,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6
+          },
+          "decision": {
+            "version": 1,
+            "band": "normal",
+            "confidence": 0.6,
+            "executionMode": "direct",
+            "planningDepth": "brief",
+            "verification": "targeted_checks",
+            "verificationFloor": "V1",
+            "verificationCeiling": "V2",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "medium",
+            "contextBudgetTokens": 54400,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "version": 1,
+          "revision": 2,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 2,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6
+          },
+          "decision": {
+            "version": 1,
+            "band": "normal",
+            "confidence": 0.6,
+            "executionMode": "direct",
+            "planningDepth": "brief",
+            "verification": "targeted_checks",
+            "verificationFloor": "V1",
+            "verificationCeiling": "V2",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "medium",
+            "contextBudgetTokens": 54400,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "version": 1,
+          "revision": 3,
+          "trigger": "scope",
+          "signalSource": "task_batch",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 4,
+            "independentTasks": 4,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.9,
+            "runtime": {
+              "completedCalls": 2,
+              "explorationCalls": 1,
+              "failedCalls": 0,
+              "editedFiles": 1,
+              "verificationFailures": 0,
+              "failedWorkers": 0,
+              "failedMutations": 0,
+              "stalledToolMs": 0,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "massive",
+            "confidence": 0.9,
+            "executionMode": "parallel",
+            "planningDepth": "dependency_graph",
+            "verification": "integration_checks",
+            "verificationFloor": "V2",
+            "verificationCeiling": "V4",
+            "reviewer": "independent",
+            "workerCount": 4,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "medium",
+            "contextBudgetTokens": 136000,
+            "capabilityIds": [
+              "subagents"
+            ],
+            "evidence": [
+              "large or separable scope"
+            ],
+            "clamps": []
+          }
+        }
+      ]
+    }
+  },
+  "exploratoryThreeConsumerLow": {
+    "packet": {
+      "id": "governor-parallel-migration-v1",
+      "category": "small Governor concurrency selection",
+      "sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+      "taskFile": "TASK.md",
+      "acceptanceCommand": [
+        "bun",
+        "test"
+      ],
+      "expectedChangedFiles": [
+        "src/storage.ts",
+        "src/cache.ts",
+        "src/history.ts",
+        "src/project.ts"
+      ],
+      "repeatCount": 1,
+      "notes": "Shared storage API changed by parent, followed by one declared batch of three independent consumer tasks. No band, worker-count, or concurrency override. Measures Governor-selected parallel concurrency, not the autonomous choice to delegate. Frozen tests remain read-only; root and generic workers pinned to GPT-6 Luna Low.",
+      "configFile": "benchmark.yml"
+    },
+    "model": "openai-codex/gpt-6-luna",
+    "thinkingLevel": "low",
+    "createdAt": "2026-10-04T16:19:39.825Z",
+    "conditions": {
+      "autoApprove": true,
+      "sessionPersistence": true,
+      "taskPrompt": "TASK.md",
+      "selectedSystem": "piforge",
+      "budget": null,
+      "adaptiveMode": "off",
+      "thinkingLevel": "low",
+      "repeatCount": 1
+    },
+    "sources": {
+      "omp": {
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "revision": null
+      },
+      "piforge": {
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "revision": "9b60b27931c03553a4f2fa29e3e8d89b13949a54-dirty"
+      }
+    },
+    "runs": [
+      {
+        "system": "piforge",
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "model": "openai-codex/gpt-6-luna",
+        "thinkingLevel": "low",
+        "exitCode": 0,
+        "testExitCode": 0,
+        "passed": true,
+        "budgetStopReason": null,
+        "adaptiveMode": "off",
+        "governorDecisions": [],
+        "changedFiles": [
+          "src/storage.ts",
+          "src/cache.ts",
+          "src/history.ts",
+          "src/project.ts"
+        ],
+        "filesWithinScope": true,
+        "toolCalls": [
+          "todo",
+          "read",
+          "edit",
+          "todo",
+          "task",
+          "todo",
+          "wait",
+          "wait",
+          "bash",
+          "todo",
+          "grep",
+          "read",
+          "edit",
+          "yield",
+          "read",
+          "edit",
+          "yield",
+          "grep",
+          "edit",
+          "yield"
+        ],
+        "assistantTurns": 21,
+        "inputTokens": 26604,
+        "outputTokens": 1494,
+        "cacheReadTokens": 129536,
+        "cacheWriteTokens": 0,
+        "totalTokens": 157634,
+        "costUsd": 0.00470276,
+        "wallTimeMs": 42260.972194,
+        "humanInterventions": 0,
+        "transcriptPath": "/tmp/pi-forge-parallel-migration-low-off/piforge-1-zmrpR6/transcript.jsonl",
+        "sessionDirectory": "/tmp/pi-forge-parallel-migration-low-off/piforge-1-zmrpR6/sessions",
+        "workspacePath": "/tmp/pi-forge-parallel-migration-low-off/piforge-1-zmrpR6/workspace",
+        "testOutput": "bun test v1.4.2 (744846f84)\n\n\ntest/storage.test.ts:\n(pass) migrated storage contract > preserves write access and paths for cache and project storage [0.08ms]\n(pass) migrated storage contract > keeps history storage read-only under the new mode contract [0.02ms]\n\n 2 pass\n 0 fail\n 3 expect() calls\nRan 2 tests across 1 file. [3.00ms]"
+      }
+    ]
+  },
+  "excludedFourConsumerLow": {
+    "outcome": "Interrupted periodic malformed tool argument stream before any completed assistant response or tool execution. No session usage record available.",
+    "totalTokens": null,
+    "costUsd": null,
+    "transcriptPath": "/tmp/pi-forge-four-consumer-low-off/piforge-1-nJvAud/transcript.jsonl",
+    "streamedArgumentCharacters": 23640,
+    "argumentPrefix": "*** Begin Patch\n[functions.todo] Sorry, todo tool commentary not available via edit. Need use todo. Must task instructions each response advance. init and first work could parallel",
+    "argumentTail": " **.** **.** **.** **.** **.** **.** **.** **.** **.** **.** **.** **.** **.** **.** **.** **.** **."
+  }
+}

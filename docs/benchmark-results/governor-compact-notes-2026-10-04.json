@@ -1,0 +1,318 @@
+{
+  "sourceHead": "9b60b27931c03553a4f2fa29e3e8d89b13949a54",
+  "sourceHasUncommittedChanges": true,
+  "sourceSha256": {
+    "packages/agent/src/agent-loop.ts": "a82195ace08f13743cc11ca36fb5d30c1e271f6e4f0b203c6fbb1862e9d15395",
+    "packages/agent/src/agent.ts": "757c20d11d105475074a7b78973c3142be0b43b4fcb799c3e1789ccd7a0a9407",
+    "packages/agent/src/types.ts": "10694237008bea4d9f100d96fffbd9cf069789e33164bf182230798ee0559f54",
+    "packages/coding-agent/src/session/agent-session.ts": "69f569c0b321feba76f31e3cd21ee3f95b4a07065a447580c62a477eaf55cc82",
+    "packages/coding-agent/bench/task-outcome-ab.ts": "6d8b90d999ea72d1ea5288817499f58989c53e6a5a269691f77b952918034a70"
+  },
+  "matchedPacketSha256": {
+    "TASK.md": "30c17929d3ee713dcbbc004ef4f9d80d11bc65c0fdddf279ee464a15bda127ed",
+    "benchmark.yml": "526a071f0c2c2022b09f00326b61abfa5e988377b70bd0f453c47e0daf47174c",
+    "manifest.json": "9ad368fada7f3efc49cb8d0090afcf82350c3a0373ab41c5e5b7170381ef6d3d",
+    "package.json": "d0df4cc87a79631a6d3b0acd244d3673caff2ef8fb7b390f93b81db24ee836f5",
+    "src/history.ts": "73ad1d5e5fe860fea71dfbcc28d73c51fb2ce60255007b6a776fd32616d5f154",
+    "src/labels.ts": "60c2fcb45399ba63715d19109c3cf0386f47c14d7fddb3562bf61f026d005c20",
+    "src/preview.ts": "e0926cf76e0406ae5a4ad8f271a16d75b5197c1cd512139e4a1ef096d476f92d",
+    "test/notes.test.ts": "41ad6b7829f5dde9d4ee2338f8117f602dc5667a8e8de779174d643eec961bc5"
+  },
+  "excludedInitialReason": "Initial off attempt changed the protected acceptance test. Worker instructions were clarified before either matched run.",
+  "reports": {
+    "excluded_initial_off": {
+      "packet": {
+        "id": "governor-compact-notes-v1",
+        "category": "small delegated integration",
+        "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+        "taskFile": "TASK.md",
+        "configFile": "benchmark.yml",
+        "acceptanceCommand": [
+          "bun",
+          "test",
+          "test/notes.test.ts"
+        ],
+        "expectedChangedFiles": [
+          "src/labels.ts",
+          "src/history.ts"
+        ],
+        "repeatCount": 1,
+        "notes": "Isolated two-file repair with two ownership-scoped task items, six behavior checks, and an existing integration consumer. No repository checkout, installs, journal implementation, or large support tests. Measures task routing and integration; not full context-notes feature quality."
+      },
+      "model": "openai-codex/gpt-6-luna",
+      "thinkingLevel": "low",
+      "createdAt": "2026-10-04T15:45:49.594Z",
+      "conditions": {
+        "autoApprove": true,
+        "sessionPersistence": true,
+        "taskPrompt": "TASK.md",
+        "selectedSystem": "piforge",
+        "budget": null,
+        "adaptiveMode": "off",
+        "thinkingLevel": "low",
+        "repeatCount": 1
+      },
+      "sources": {
+        "omp": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        },
+        "piforge": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        }
+      },
+      "runs": [
+        {
+          "system": "piforge",
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "model": "openai-codex/gpt-6-luna",
+          "thinkingLevel": "low",
+          "exitCode": 0,
+          "testExitCode": 0,
+          "passed": false,
+          "budgetStopReason": null,
+          "adaptiveMode": "off",
+          "governorDecisions": [],
+          "changedFiles": [
+            "test/notes.test.ts",
+            "src/labels.ts",
+            "src/history.ts"
+          ],
+          "filesWithinScope": false,
+          "toolCalls": [
+            "todo",
+            "task",
+            "wait",
+            "wait",
+            "todo",
+            "todo",
+            "bash",
+            "todo",
+            "read",
+            "grep",
+            "read",
+            "edit",
+            "yield",
+            "read",
+            "grep",
+            "read",
+            "edit",
+            "yield"
+          ],
+          "assistantTurns": 19,
+          "inputTokens": 41130,
+          "outputTokens": 1439,
+          "cacheReadTokens": 98816,
+          "cacheWriteTokens": 0,
+          "totalTokens": 141385,
+          "costUsd": 0.005820660000000001,
+          "wallTimeMs": 37586.284823,
+          "humanInterventions": 0,
+          "transcriptPath": "/tmp/pi-forge-compact-notes-off/piforge-1-IExqEN/transcript.jsonl",
+          "sessionDirectory": "/tmp/pi-forge-compact-notes-off/piforge-1-IExqEN/sessions",
+          "workspacePath": "/tmp/pi-forge-compact-notes-off/piforge-1-IExqEN/workspace",
+          "testOutput": "bun test v1.4.2 (744846f84)\n\n\ntest/notes.test.ts:\n(pass) canonicalizes labels and keeps the first occurrence without changing input [0.20ms]\n(pass) returns no labels for empty input [0.01ms]\n(pass) returns the newest entries in chronological order without changing input [0.11ms]\n(pass) hides all history when the requested limit is zero or negative [0.01ms]\n(pass) returns all history in order as an independent copy when the limit exceeds it [0.02ms]\n(pass) combines canonical labels and hidden history through the existing consumer [0.04ms]\n\n 6 pass\n 0 fail\n 8 expect() calls\nRan 6 tests across 1 file. [3.00ms]"
+        }
+      ]
+    },
+    "off": {
+      "packet": {
+        "id": "governor-compact-notes-v1",
+        "category": "small delegated integration",
+        "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+        "taskFile": "TASK.md",
+        "configFile": "benchmark.yml",
+        "acceptanceCommand": [
+          "bun",
+          "test",
+          "test/notes.test.ts"
+        ],
+        "expectedChangedFiles": [
+          "src/labels.ts",
+          "src/history.ts"
+        ],
+        "repeatCount": 1,
+        "notes": "Isolated two-file repair with two ownership-scoped task items, six behavior checks, and an existing integration consumer. No repository checkout, installs, journal implementation, or large support tests. Measures task routing and integration; not full context-notes feature quality."
+      },
+      "model": "openai-codex/gpt-6-luna",
+      "thinkingLevel": "low",
+      "createdAt": "2026-10-04T15:47:18.273Z",
+      "conditions": {
+        "autoApprove": true,
+        "sessionPersistence": true,
+        "taskPrompt": "TASK.md",
+        "selectedSystem": "piforge",
+        "budget": null,
+        "adaptiveMode": "off",
+        "thinkingLevel": "low",
+        "repeatCount": 1
+      },
+      "sources": {
+        "omp": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        },
+        "piforge": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        }
+      },
+      "runs": [
+        {
+          "system": "piforge",
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "model": "openai-codex/gpt-6-luna",
+          "thinkingLevel": "low",
+          "exitCode": 0,
+          "testExitCode": 0,
+          "passed": true,
+          "budgetStopReason": null,
+          "adaptiveMode": "off",
+          "governorDecisions": [],
+          "changedFiles": [
+            "src/labels.ts",
+            "src/history.ts"
+          ],
+          "filesWithinScope": true,
+          "toolCalls": [
+            "todo",
+            "task",
+            "wait",
+            "wait",
+            "todo",
+            "bash",
+            "todo",
+            "read",
+            "read",
+            "edit",
+            "yield",
+            "read",
+            "read",
+            "edit",
+            "yield"
+          ],
+          "assistantTurns": 16,
+          "inputTokens": 26276,
+          "outputTokens": 1030,
+          "cacheReadTokens": 90112,
+          "cacheWriteTokens": 0,
+          "totalTokens": 117418,
+          "costUsd": 0.004043720000000001,
+          "wallTimeMs": 34204.072548000004,
+          "humanInterventions": 0,
+          "transcriptPath": "/tmp/pi-forge-compact-notes-off-reviewed/piforge-1-Zwnmka/transcript.jsonl",
+          "sessionDirectory": "/tmp/pi-forge-compact-notes-off-reviewed/piforge-1-Zwnmka/sessions",
+          "workspacePath": "/tmp/pi-forge-compact-notes-off-reviewed/piforge-1-Zwnmka/workspace",
+          "testOutput": "bun test v1.4.2 (744846f84)\n\n\ntest/notes.test.ts:\n(pass) canonicalizes labels and keeps the first occurrence without changing input [0.14ms]\n(pass) returns no labels for empty input [0.02ms]\n(pass) returns the newest entries in chronological order without changing input [0.03ms]\n(pass) hides all history when the requested limit is zero or negative [0.02ms]\n(pass) returns an independent copy when the limit exceeds available history [0.02ms]\n(pass) combines canonical labels and hidden history through the existing consumer [0.03ms]\n\n 6 pass\n 0 fail\n 8 expect() calls\nRan 6 tests across 1 file. [4.00ms]"
+        }
+      ]
+    },
+    "auto": {
+      "packet": {
+        "id": "governor-compact-notes-v1",
+        "category": "small delegated integration",
+        "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+        "taskFile": "TASK.md",
+        "configFile": "benchmark.yml",
+        "acceptanceCommand": [
+          "bun",
+          "test",
+          "test/notes.test.ts"
+        ],
+        "expectedChangedFiles": [
+          "src/labels.ts",
+          "src/history.ts"
+        ],
+        "repeatCount": 1,
+        "notes": "Isolated two-file repair with two ownership-scoped task items, six behavior checks, and an existing integration consumer. No repository checkout, installs, journal implementation, or large support tests. Measures task routing and integration; not full context-notes feature quality."
+      },
+      "model": "openai-codex/gpt-6-luna",
+      "thinkingLevel": "low",
+      "createdAt": "2026-10-04T15:48:12.003Z",
+      "conditions": {
+        "autoApprove": true,
+        "sessionPersistence": true,
+        "taskPrompt": "TASK.md",
+        "selectedSystem": "piforge",
+        "budget": null,
+        "adaptiveMode": "auto",
+        "thinkingLevel": "low",
+        "repeatCount": 1
+      },
+      "sources": {
+        "omp": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        },
+        "piforge": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        }
+      },
+      "runs": [
+        {
+          "system": "piforge",
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "model": "openai-codex/gpt-6-luna",
+          "thinkingLevel": "low",
+          "exitCode": 0,
+          "testExitCode": 0,
+          "passed": true,
+          "budgetStopReason": null,
+          "adaptiveMode": "auto",
+          "governorDecisions": [
+            {
+              "trigger": "initial",
+              "band": "normal",
+              "workerCount": 0,
+              "verificationFloor": "V1"
+            },
+            {
+              "trigger": "scope",
+              "band": "normal",
+              "workerCount": 0,
+              "verificationFloor": "V1"
+            }
+          ],
+          "changedFiles": [
+            "src/labels.ts",
+            "src/history.ts"
+          ],
+          "filesWithinScope": true,
+          "toolCalls": [
+            "todo",
+            "task",
+            "todo",
+            "wait",
+            "wait",
+            "todo",
+            "bash",
+            "todo",
+            "read",
+            "read",
+            "write",
+            "yield",
+            "read",
+            "read",
+            "edit",
+            "yield"
+          ],
+          "assistantTurns": 18,
+          "inputTokens": 40284,
+          "outputTokens": 1232,
+          "cacheReadTokens": 99328,
+          "cacheWriteTokens": 0,
+          "totalTokens": 140844,
+          "costUsd": 0.005637680000000001,
+          "wallTimeMs": 31540.461137,
+          "humanInterventions": 0,
+          "transcriptPath": "/tmp/pi-forge-compact-notes-auto-reviewed/piforge-1-6XcWNR/transcript.jsonl",
+          "sessionDirectory": "/tmp/pi-forge-compact-notes-auto-reviewed/piforge-1-6XcWNR/sessions",
+          "workspacePath": "/tmp/pi-forge-compact-notes-auto-reviewed/piforge-1-6XcWNR/workspace",
+          "testOutput": "bun test v1.4.2 (744846f84)\n\n\ntest/notes.test.ts:\n(pass) canonicalizes labels and keeps the first occurrence without changing input [0.14ms]\n(pass) returns no labels for empty input [0.01ms]\n(pass) returns the newest entries in chronological order without changing input [0.03ms]\n(pass) hides all history when the requested limit is zero or negative [0.01ms]\n(pass) returns an independent copy when the limit exceeds available history [0.01ms]\n(pass) combines canonical labels and hidden history through the existing consumer [0.03ms]\n\n 6 pass\n 0 fail\n 8 expect() calls\nRan 6 tests across 1 file. [3.00ms]"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+	"id": "governor-compact-notes-v1",
+	"category": "small delegated integration",
+	"sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+	"taskFile": "TASK.md",
+	"configFile": "benchmark.yml",
+	"acceptanceCommand": ["bun", "test", "test/notes.test.ts"],
+	"expectedChangedFiles": ["src/labels.ts", "src/history.ts"],
+	"repeatCount": 1,
+	"notes": "Isolated two-file repair with two ownership-scoped task items, six behavior checks, and an existing integration consumer. No repository checkout, installs, journal implementation, or large support tests. Measures task routing and integration; not full context-notes feature quality."
+}

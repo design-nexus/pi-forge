@@ -26,6 +26,41 @@ describe("Agent", () => {
 		expect(agent.state.messages).not.toContainEqual(message);
 	});
 
+	it("reports ordinary tool execution while the tool is running", async () => {
+		const toolSchema = type({ value: "string" });
+		let executingDuringCall = false;
+		const agentRef: { current?: Agent } = {};
+		const tool: AgentTool<typeof toolSchema, { value: string }> = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo tool",
+			parameters: toolSchema,
+			async execute(_toolCallId, params) {
+				executingDuringCall = agentRef.current?.isExecutingTools === true;
+				return {
+					content: [{ type: "text", text: "done" }],
+					details: { value: params.value },
+				};
+			},
+		};
+		const mock = createMockModel({
+			responses: [
+				{ content: [{ type: "toolCall", id: "tool-state", name: "echo", arguments: { value: "hello" } }] },
+				{ content: ["done"] },
+			],
+		});
+		const agent = new Agent({
+			initialState: { model: mock.model, systemPrompt: ["Test"], tools: [tool], messages: [] },
+			streamFn: mock.stream,
+		});
+		agentRef.current = agent;
+
+		expect(agent.isExecutingTools).toBe(false);
+		await agent.prompt("echo something");
+		expect(executingDuringCall).toBe(true);
+		expect(agent.isExecutingTools).toBe(false);
+	});
+
 	it("classifies agent-authored steering as a parent steering message", async () => {
 		const toolSchema = type({ value: type("string") });
 		const executed: string[] = [];

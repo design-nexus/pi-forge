@@ -1,0 +1,21 @@
+{
+	"id": "governor-autonomous-migration-v1",
+	"category": "autonomous migration strategy",
+	"sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": [
+		"bun",
+		"test",
+		"test/storage.test.ts"
+	],
+	"expectedChangedFiles": [
+		"src/storage.ts",
+		"src/cache.ts",
+		"src/history.ts",
+		"src/project.ts",
+		"src/audit.ts"
+	],
+	"repeatCount": 1,
+	"notes": "Shared API migration and four consumers with execution strategy left open. No required delegation, band, worker-count, concurrency, risk, or threshold overrides. Frozen acceptance and five-file scope; root and generic workers use GPT-6 Luna Low.",
+	"configFile": "benchmark.yml"
+}

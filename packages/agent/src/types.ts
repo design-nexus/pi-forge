@@ -357,6 +357,8 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * handed to the tool as-is.
 	 */
 	getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
+	/** Synchronous ordinary-tool execution boundary, after the provider response settles. */
+	onToolExecutionStateChange?: (toolCallId: string, executing: boolean) => void;
 
 	/**
 	 * Refreshes prompt/tool context from live session state before each model call.

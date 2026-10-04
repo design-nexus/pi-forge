@@ -1,0 +1,18 @@
+{
+	"id": "governor-autonomous-notes-v1",
+	"category": "small autonomous execution choice",
+	"sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+	"taskFile": "TASK.md",
+	"configFile": "benchmark.yml",
+	"acceptanceCommand": [
+		"bun",
+		"test",
+		"test/notes.test.ts"
+	],
+	"expectedChangedFiles": [
+		"src/labels.ts",
+		"src/history.ts"
+	],
+	"repeatCount": 1,
+	"notes": "Same frozen source and acceptance contract as compact-notes, with a neutral task that leaves direct execution or delegation to the agent and Governor. No required task call, worker count, orchestration mode, or risk override. Standalone fixture; six behavior checks; one run per condition."
+}

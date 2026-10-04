@@ -1,0 +1,229 @@
+{
+  "sourceHead": "9b60b27931c03553a4f2fa29e3e8d89b13949a54",
+  "sourceHasUncommittedChanges": true,
+  "sourceSha256": {
+    "packages/agent/src/agent-loop.ts": "a82195ace08f13743cc11ca36fb5d30c1e271f6e4f0b203c6fbb1862e9d15395",
+    "packages/agent/src/agent.ts": "757c20d11d105475074a7b78973c3142be0b43b4fcb799c3e1789ccd7a0a9407",
+    "packages/agent/src/types.ts": "10694237008bea4d9f100d96fffbd9cf069789e33164bf182230798ee0559f54",
+    "packages/coding-agent/src/session/agent-session.ts": "69f569c0b321feba76f31e3cd21ee3f95b4a07065a447580c62a477eaf55cc82",
+    "packages/coding-agent/bench/task-outcome-ab.ts": "02a442802fbed99ea15aaa01242843f3b45c1c1e8e319b36a67f41f5120e4551"
+  },
+  "matchedPacketSha256": {
+    "TASK.md": "607be07e24d53a3a73ba37186e633d43462cc889ddc4bba9dfa6b2809ae72e22",
+    "benchmark.yml": "8cf93c482117281148b95ef718b3211a4ae0eeaaea43f00ecc555212c01ae379",
+    "manifest.json": "c56be2ea08267b803614036f66a7af56d39f5ce846bf26bd58bafa6d49de393f",
+    "package.json": "d0df4cc87a79631a6d3b0acd244d3673caff2ef8fb7b390f93b81db24ee836f5",
+    "src/history.ts": "73ad1d5e5fe860fea71dfbcc28d73c51fb2ce60255007b6a776fd32616d5f154",
+    "src/labels.ts": "60c2fcb45399ba63715d19109c3cf0386f47c14d7fddb3562bf61f026d005c20",
+    "src/preview.ts": "e0926cf76e0406ae5a4ad8f271a16d75b5197c1cd512139e4a1ef096d476f92d",
+    "test/notes.test.ts": "41ad6b7829f5dde9d4ee2338f8117f602dc5667a8e8de779174d643eec961bc5"
+  },
+  "excludedLowAttempt": {
+    "mode": "off",
+    "model": "openai-codex/gpt-6-luna",
+    "thinkingLevel": "low",
+    "outcome": "Interrupted malformed tool-call stream before a completed assistant response; no tools executed, no source changes, no persisted session usage. Runner wrote partial transcript, then rejected missing telemetry.",
+    "totalTokens": null,
+    "costUsd": null,
+    "transcriptPath": "/tmp/pi-forge-autonomous-notes-off/piforge-1-k1SUog/transcript.jsonl",
+    "transcriptSha256": "2af4d92a823410b9d1edcf84a8823fca5ab5984b37d66aa7dd3633be5f44c7d4",
+    "streamedToolArgumentCharacters": 20478,
+    "repeatedSectionSignCount": 20314,
+    "argumentPrefix": "*** Begin Patch\n[functions.todo] Invalid tool format? We don't need todo trivial. Read two files and test perhaps parallel read. Use multi? read tools can parallel."
+  },
+  "reports": {
+    "off": {
+      "packet": {
+        "id": "governor-autonomous-notes-medium-v1",
+        "category": "small autonomous execution choice",
+        "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+        "taskFile": "TASK.md",
+        "configFile": "benchmark.yml",
+        "acceptanceCommand": [
+          "bun",
+          "test",
+          "test/notes.test.ts"
+        ],
+        "expectedChangedFiles": [
+          "src/labels.ts",
+          "src/history.ts"
+        ],
+        "repeatCount": 1,
+        "notes": "Same frozen source and acceptance contract as compact-notes, with a neutral task that leaves direct execution or delegation to the agent and Governor. No required task call, worker count, orchestration mode, or risk override. Standalone fixture; six behavior checks; one run per condition. Medium effort variant after a Low attempt streamed a malformed tool call without completion; both conditions use identical Medium settings."
+      },
+      "model": "openai-codex/gpt-6-luna",
+      "thinkingLevel": "medium",
+      "createdAt": "2026-10-04T16:01:29.636Z",
+      "conditions": {
+        "autoApprove": true,
+        "sessionPersistence": true,
+        "taskPrompt": "TASK.md",
+        "selectedSystem": "piforge",
+        "budget": null,
+        "adaptiveMode": "off",
+        "thinkingLevel": "medium",
+        "repeatCount": 1
+      },
+      "sources": {
+        "omp": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        },
+        "piforge": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": "9b60b27931c03553a4f2fa29e3e8d89b13949a54-dirty"
+        }
+      },
+      "runs": [
+        {
+          "system": "piforge",
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "model": "openai-codex/gpt-6-luna",
+          "thinkingLevel": "medium",
+          "exitCode": 0,
+          "testExitCode": 0,
+          "passed": true,
+          "budgetStopReason": null,
+          "adaptiveMode": "off",
+          "governorDecisions": [],
+          "changedFiles": [
+            "src/labels.ts",
+            "src/history.ts"
+          ],
+          "filesWithinScope": true,
+          "toolCalls": [
+            "edit",
+            "read",
+            "read",
+            "edit",
+            "read",
+            "edit",
+            "bash"
+          ],
+          "assistantTurns": 8,
+          "inputTokens": 12271,
+          "outputTokens": 520,
+          "cacheReadTokens": 45568,
+          "cacheWriteTokens": 0,
+          "totalTokens": 58359,
+          "costUsd": 0.00194278,
+          "wallTimeMs": 25261.913088,
+          "humanInterventions": 0,
+          "transcriptPath": "/tmp/pi-forge-autonomous-notes-medium-off/piforge-1-RlQcHX/transcript.jsonl",
+          "sessionDirectory": "/tmp/pi-forge-autonomous-notes-medium-off/piforge-1-RlQcHX/sessions",
+          "workspacePath": "/tmp/pi-forge-autonomous-notes-medium-off/piforge-1-RlQcHX/workspace",
+          "testOutput": "bun test v1.4.2 (744846f84)\n\n\ntest/notes.test.ts:\n(pass) canonicalizes labels and keeps the first occurrence without changing input [0.21ms]\n(pass) returns no labels for empty input [0.02ms]\n(pass) returns the newest entries in chronological order without changing input [0.11ms]\n(pass) hides all history when the requested limit is zero or negative [0.01ms]\n(pass) returns an independent copy when the limit exceeds available history [0.02ms]\n(pass) combines canonical labels and hidden history through the existing consumer [0.04ms]\n\n 6 pass\n 0 fail\n 8 expect() calls\nRan 6 tests across 1 file. [4.00ms]"
+        }
+      ]
+    },
+    "auto": {
+      "packet": {
+        "id": "governor-autonomous-notes-medium-v1",
+        "category": "small autonomous execution choice",
+        "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+        "taskFile": "TASK.md",
+        "configFile": "benchmark.yml",
+        "acceptanceCommand": [
+          "bun",
+          "test",
+          "test/notes.test.ts"
+        ],
+        "expectedChangedFiles": [
+          "src/labels.ts",
+          "src/history.ts"
+        ],
+        "repeatCount": 1,
+        "notes": "Same frozen source and acceptance contract as compact-notes, with a neutral task that leaves direct execution or delegation to the agent and Governor. No required task call, worker count, orchestration mode, or risk override. Standalone fixture; six behavior checks; one run per condition. Medium effort variant after a Low attempt streamed a malformed tool call without completion; both conditions use identical Medium settings."
+      },
+      "model": "openai-codex/gpt-6-luna",
+      "thinkingLevel": "medium",
+      "createdAt": "2026-10-04T16:02:11.258Z",
+      "conditions": {
+        "autoApprove": true,
+        "sessionPersistence": true,
+        "taskPrompt": "TASK.md",
+        "selectedSystem": "piforge",
+        "budget": null,
+        "adaptiveMode": "auto",
+        "thinkingLevel": "medium",
+        "repeatCount": 1
+      },
+      "sources": {
+        "omp": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": null
+        },
+        "piforge": {
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "revision": "9b60b27931c03553a4f2fa29e3e8d89b13949a54-dirty"
+        }
+      },
+      "runs": [
+        {
+          "system": "piforge",
+          "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+          "model": "openai-codex/gpt-6-luna",
+          "thinkingLevel": "medium",
+          "exitCode": 0,
+          "testExitCode": 0,
+          "passed": true,
+          "budgetStopReason": null,
+          "adaptiveMode": "auto",
+          "governorDecisions": [
+            {
+              "trigger": "initial",
+              "band": "normal",
+              "workerCount": 0,
+              "verificationFloor": "V1"
+            },
+            {
+              "trigger": "scope",
+              "band": "normal",
+              "workerCount": 0,
+              "verificationFloor": "V1"
+            },
+            {
+              "trigger": "scope",
+              "band": "trivial",
+              "workerCount": 0,
+              "verificationFloor": "V0"
+            },
+            {
+              "trigger": "scope",
+              "band": "trivial",
+              "workerCount": 0,
+              "verificationFloor": "V0"
+            }
+          ],
+          "changedFiles": [
+            "src/labels.ts",
+            "src/history.ts"
+          ],
+          "filesWithinScope": true,
+          "toolCalls": [
+            "todo",
+            "read",
+            "edit",
+            "todo",
+            "todo",
+            "bash",
+            "todo"
+          ],
+          "assistantTurns": 8,
+          "inputTokens": 13171,
+          "outputTokens": 553,
+          "cacheReadTokens": 49664,
+          "cacheWriteTokens": 0,
+          "totalTokens": 63388,
+          "costUsd": 0.00209024,
+          "wallTimeMs": 21439.344393,
+          "humanInterventions": 0,
+          "transcriptPath": "/tmp/pi-forge-autonomous-notes-medium-auto/piforge-1-wENG68/transcript.jsonl",
+          "sessionDirectory": "/tmp/pi-forge-autonomous-notes-medium-auto/piforge-1-wENG68/sessions",
+          "workspacePath": "/tmp/pi-forge-autonomous-notes-medium-auto/piforge-1-wENG68/workspace",
+          "testOutput": "bun test v1.4.2 (744846f84)\n\n\ntest/notes.test.ts:\n(pass) canonicalizes labels and keeps the first occurrence without changing input [0.15ms]\n(pass) returns no labels for empty input [0.02ms]\n(pass) returns the newest entries in chronological order without changing input [0.10ms]\n(pass) hides all history when the requested limit is zero or negative [0.01ms]\n(pass) returns an independent copy when the limit exceeds available history [0.02ms]\n(pass) combines canonical labels and hidden history through the existing consumer [0.03ms]\n\n 6 pass\n 0 fail\n 8 expect() calls\nRan 6 tests across 1 file. [3.00ms]"
+        }
+      ]
+    }
+  }
+}

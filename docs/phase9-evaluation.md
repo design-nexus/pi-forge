@@ -111,3 +111,123 @@ The latest successful repeat pair compares OMP's successful repeat with the Pi F
 The original manifest required an exact 12-file set, which incorrectly marked the first runs out of scope: OMP touched two related session-statistics files omitted from that list, while Pi Forge changed only three files. We preserved the raw summary and revalidated both changed-file sets against the corrected `allowedChangedFiles` scope; all paths are allowed. The corrected scope behavior is covered by the runner integration test. The successful first-run artifacts and scope re-evaluation are under `/tmp/pi-forge-context-notes`; the failed OMP repeat is under `/tmp/pi-forge-context-notes-repeat`; the Pi Forge rerun is under `/tmp/pi-forge-context-notes-piforge-repeat`.
 
 A separate matched-repeat attempt remained inconclusive. OMP failed three relevance-ordering tests. Pi Forge could not start because the provider returned `usage_limit_reached`; its acceptance command then reported unresolved workspace aliases, so it produced no code outcome. After quota was restored, Pi Forge passed the task, followed by the successful OMP counterpart reported above.
+
+## Bounded Governor calibration first pass (2026-10-04)
+
+This first pass compares the same Pi Forge revision (`9b60b27931`) with `adaptive.mode=off` and `adaptive.mode=auto` on three frozen synthetic tasks: a tiny edit, a normal session lifecycle change, and a four-file migration. Each condition ran once using `openai-codex/gpt-5.5`. Each run had a 180-second wall-time cap and a 250,000 reported-token cap. None reached either cap. The six runs used 390,197 reported tokens, cost $0.671483, and took 183.42 seconds in total.
+
+| Task | Mode | Result | Governor decisions | Reported tokens | Cost (USD) | Wall time (s) |
+| --- | --- | --- | --- | ---: | ---: | ---: |
+| Tiny retry-delay edit | Off | Pass; 2 tests; scoped | None | 35,866 | 0.071418 | 19.56 |
+| Tiny retry-delay edit | Auto | Pass; 2 tests; scoped | None | 43,097 | 0.086391 | 18.04 |
+| Session lifecycle | Off | Pass; 4 tests; scoped | None | 60,762 | 0.096098 | 31.06 |
+| Session lifecycle | Auto | Pass; 4 tests; scoped | None | 78,227 | 0.148405 | 39.59 |
+| Four-file migration | Off | Pass; 2 tests; scoped | None | 75,859 | 0.121961 | 39.10 |
+| Four-file migration | Auto | Pass; 2 tests; scoped | Initial complex decision, later scope revisions; zero workers | 96,386 | 0.147210 | 36.08 |
+
+All six runs passed their acceptance tests and changed only the expected files. Auto mode used more tokens and cost more in all three pairs. It was faster on the tiny edit and migration, and slower on the lifecycle task. The migration recorded a complex decision with a V2 verification floor, then later scope revisions; every decision selected zero workers. No run invoked the task tool, so this pass did not exercise adaptive delegation, reviewer dispatch, or worker verification. These small synthetic tasks show the Governor settings are read and decisions are recorded, but do not show a quality benefit. Raw summaries are under `/tmp/pi-forge-governor-calibration`.
+
+The benchmark runner now accepts `--adaptive-mode`, `--token-cap`, `--time-cap-seconds`, and `--repeat-count`, and records Governor decision snapshots plus cap termination. Its focused tests verify that the temporary settings overlay is applied and removed, and that a run stops when accumulated persisted token usage reaches its cap.
+
+## Real-repository Governor delegation attempt (2026-10-04)
+
+This attempt reused the frozen 43-test context-notes feature task and asked for four ownership-scoped implementation tasks. The task described journal persistence and private notes as high risk and set `highRisk: true` when the field was available. Both Pi Forge runs used `openai-codex/gpt-5.5`, the same pinned source commit (`7853b4e499936f9dcc13c9b64adb55f6b342aabf`), and 250,000 reported-token / 180-second caps.
+
+| Mode | Outcome | Governor decision | Reported tokens | Cost (USD) | Wall time (s) |
+| --- | --- | --- | ---: | ---: | ---: |
+| Off | Stopped at token cap before implementation; acceptance could not resolve workspace aliases | None | 272,500 | 0.744993 | 52.28 |
+| Auto | Stopped at token cap; high-risk task call was deferred, no worker results or code changes | Normal, 0 workers, V1 floor | 284,671 | 0.487147 | 97.75 |
+
+The auto transcript shows the four-item batch and high-risk flag reached the task tool. The task call returned “Task routing is waiting for the current provider turn to finish” and produced no worker results. This is a concrete blocker to measuring Governor-selected delegation in this path. The token cap was exceeded by 9–14% because persisted usage arrives in model-response chunks and the runner can only stop after the next usage record is written.
+
+The acceptance failures exposed a separate runner setup bug: `Bun.file(...).exists()` did not detect the repository's `node_modules` directory, so the pinned worktree received no dependency links. The runner now builds worktree-local package links and its focused four-test suite passes, including a runtime import check from a pinned worktree. The two model runs above predate that fix, so their acceptance results are invalid and are retained only as bounded orchestration telemetry. No code-quality or cost comparison can be drawn from this attempt. Raw run artifacts are under `/tmp/pi-forge-governor-real-context-notes-off` and `/tmp/pi-forge-governor-real-context-notes-auto`.
+
+The deferred route transition was traced to a timing gap: the session could still report provider streaming after the response had settled and an ordinary tool had begun executing, before the corresponding session state event updated pending tool-call state. The agent loop now reports ordinary tool execution synchronously, and the session permits routing during that execution window. The regression and related Prompt Engine, task-spawn, workpool, runner, and context-notes suites pass together (284 tests). A completed provider run has not yet verified the fix.
+
+### Uncapped LM Studio attempts (2026-10-04)
+
+These exploratory runs do not count as implementation or outcome results. The Ternary Bonsai `off` run and Qwopus `off` run were manually stopped while model generation was still active; neither reached acceptance testing. Gemma 4 12B `off` and `auto` attempts, and the Qwopus `auto` attempt, failed before tool use because LM Studio's `llama-server` aborted while loading the model. The harness then ran the acceptance command against the unchanged starting worktree, where 17 of 43 tests fail by design. No code-quality or Governor comparison can be drawn. The current checkout's supplied acceptance suite passes independently (43/43). Run artifacts are under `/tmp/pi-forge-governor-local-context-notes-off`, `/tmp/pi-forge-governor-gemma-context-notes-off`, `/tmp/pi-forge-governor-gemma-context-notes-auto`, `/tmp/pi-forge-governor-qwopus-context-notes-off`, and `/tmp/pi-forge-governor-qwopus-context-notes-auto`.
+
+### Hosted Governor retry after routing fix (2026-10-04)
+
+The same real-repository packet was retried with `openai-codex/gpt-5.5`, a 10-minute wall-time ceiling, and a 5-million-token ceiling. Governor `auto` advanced from its initial normal/zero-worker decision to massive/four-worker decisions at V3 and then V2. This confirms the task transition was no longer deferred and the high-risk batch reached worker dispatch. The run stopped at the token ceiling after 220.07 seconds with 5,077,321 reported tokens and $5.192157 in reported cost; it had made no workspace changes when stopped. The harness ran the acceptance command on the unchanged starting snapshot, where 17 of 43 tests fail. This is routing telemetry only, not a coding outcome. An `off` attempt with a 1-million-token ceiling also stopped before edits (1,029,527 reported tokens, 70.01 seconds, $1.634030). A larger `off` attempt was started, but its summary was not retained, so no figures are reported for it. The auto run summary is under `/tmp/pi-forge-governor-hosted-context-notes-auto-full`; the first off run is under `/tmp/pi-forge-governor-hosted-context-notes-off`.
+
+### Compact Luna Low Governor check (2026-10-04)
+
+The `governor-compact-notes-v1` packet tests two independent source fixes and their existing integration consumer in a standalone fixture. Both matched runs used the same clarified task, GPT-6 Luna Low, one repetition, and no token or time cutoff. Persisted parent and both worker sessions show only `openai-codex/gpt-6-luna` and Low thinking. The harness ran from working HEAD `9b60b27931c03553a4f2fa29e3e8d89b13949a54` with the uncommitted routing fix; this was not a pinned clean harness revision. Source and packet hashes and all three attempt summaries are retained in [the evidence file](benchmark-results/governor-compact-notes-2026-10-04.json).
+
+| Mode | Acceptance / scope | Actual worker sessions | Reported tokens | Cached input tokens | Cost (USD) | Wall time (s) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Off | 6/6; only two allowed source files changed | 2 | 117,418 | 90,112 | 0.004044 | 34.20 |
+| Auto | 6/6; only two allowed source files changed | 2 | 140,844 | 99,328 | 0.005638 | 31.54 |
+
+Auto recorded initial and scope decisions at Normal, zero suggested workers, and V1. The explicit two-item delegation was still honored and both workers completed; suggested worker count is not actual dispatch count. No deferred-routing error occurred. This verifies successful execution through the repaired task-routing path, including worker results and final integration. It does not demonstrate Governor-selected parallelism or large-task calibration.
+
+In this single pair, auto used 20.0% more reported tokens and 39.4% more reported cost, while finishing 7.8% sooner. Most reported tokens were cached input; totals include root and worker usage. These rates are telemetry reported by the harness, not measurements of subscription quota consumption. One small pair is insufficient to conclude that auto improves performance.
+
+The first exploratory off run is excluded because a worker changed the protected acceptance test, even though the modified suite passed. It used 141,385 reported tokens, $0.005821, and 37.59 seconds. The read-only test restriction was repeated in each worker assignment before both matched runs. All three attempts together used 399,647 reported tokens and $0.015502. The two matched workspace artifacts are under `/tmp/pi-forge-compact-notes-off-reviewed` and `/tmp/pi-forge-compact-notes-auto-reviewed`; the excluded attempt is under `/tmp/pi-forge-compact-notes-off`.
+
+### Optional delegation and de-escalation check (2026-10-04)
+
+The next packet retains the same starting source files and six acceptance checks, but removes the required delegation batch. It asks for the two fixes and leaves execution strategy open. A Low attempt streamed a malformed custom tool call beginning with `*** Begin Patch`, followed by 20,314 repeated section-sign characters, without completing a single assistant response or executing a tool. It was manually interrupted. No session usage record was produced, so its token count and cost are unknown, not zero. The partial stream remains under `/tmp/pi-forge-autonomous-notes-off/piforge-1-k1SUog/transcript.jsonl` and its diagnostic counts are retained with the results.
+
+Both matched conditions then used the identical `governor-autonomous-notes-medium-v1` task and settings at **GPT-6 Luna Medium**, with one repetition and no token or time cutoff. All persisted assistant messages identify that model; the persisted thinking selector is Medium in both sessions. The runner now writes stdout to the transcript file while the child is active, allowing malformed streams to be inspected before completion. Its regression test requires the child to read its own emitted progress from the artifact before exiting. All six runner tests and `bun check` pass.
+
+| Mode | Acceptance / scope | Actual workers | Reported tokens | Cached input tokens | Cost (USD) | Wall time (s) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Off | 6/6; only two allowed source files changed | 0 | 58,359 | 45,568 | 0.001943 | 25.26 |
+| Auto | 6/6; only two allowed source files changed | 0 | 63,388 | 49,664 | 0.002090 | 21.44 |
+
+Auto recorded Normal/V1, then de-escalated to Trivial/V0 as the todo scope shrank; every decision suggested zero workers, and none were dispatched. Off also completed directly. This demonstrates the conservative zero-worker policy and a scope-based de-escalation on a completed task. It does not prove the Governor caused the choice to avoid delegation, because the baseline made the same choice, or measure Governor-selected parallelism.
+
+Auto used 8.6% more reported tokens and 7.6% more reported cost, while finishing 15.1% sooner. Off had one rejected edit using an invented file hash and then recovered by reading the file; auto had no error tool results. That difference and ordinary run variance prevent attributing the timing difference to the Governor. The matched pair totals 121,747 reported tokens and $0.004033, excluding the interrupted Low attempt whose usage is unavailable. The cost figures are harness telemetry, not subscription quota measurements.
+
+The source remained working HEAD `9b60b27931c03553a4f2fa29e3e8d89b13949a54` plus uncommitted changes, including the live-transcript runner fix. [The evidence file](benchmark-results/governor-autonomous-notes-2026-10-04.json) records source/packet hashes, both summaries, and the excluded Low diagnostic. Raw matched artifacts are under `/tmp/pi-forge-autonomous-notes-medium-off` and `/tmp/pi-forge-autonomous-notes-medium-auto`. At the time of these runs, the Codex degeneracy guard handled whitespace loops but did not interrupt this repeated non-whitespace sequence.
+
+### Repeated-character stream recovery (2026-10-04)
+
+The transport guard now also detects a consecutive run of one non-whitespace character across at least 256 tool-input delta events and 1,024 UTF-16 code units. Both conditions must hold; a large repeated payload in one frame is allowed. A change of character, tool item, output index, or ordinary mixed-content delta resets the run. This is a malformed-stream safeguard, not a total token or time cutoff. Intentionally homogeneous content streamed in hundreds of tiny frames can also reach this boundary and be interrupted.
+
+The existing recovery path drops the incomplete tool call, clears stale response state, and retries at most twice. It refuses replay when completed tool calls or visible text have already been delivered, preserving completed calls and surfacing the error instead of executing them again. The implementation uses the existing centralized loop-error class.
+
+Four additional local regressions verify recovery from the malformed custom-tool prefix and section-sign flood seen in the Low attempt over SSE, bounded exhaustion for function arguments over WebSocket, successful delivery of a large single-frame payload followed by varied characters, and refusal to replay a later custom-tool flood after a completed tool call. The streaming and usage suites pass together (132 tests), and `bun check` passes. These checks use synthetic transport frames and zero provider requests; no new hosted benchmark result or subscription usage measurement is claimed.
+
+### Default four-worker policy check (2026-10-04)
+
+The frozen `governor-four-consumer-migration-medium-v1` packet changes a shared storage API and four independent consumers. It explicitly requests a four-item implementation batch, while leaving Governor thresholds, worker ceilings, verification bands, risk, and task concurrency at their defaults. Both matched conditions use GPT-6 Luna Medium, one repetition, and no token or time cutoff. The parent, implementation workers, and reviewer all record that model and effort.
+
+| Mode | Acceptance / scope | Implementation workers / peak running | Review sessions | Reported tokens | Cost (USD) | Wall time (s) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Off | 3/3; five allowed source files | 4 / 4 | 0 | 212,025 | 0.007829 | 43.61 |
+| Auto | 3/3; five allowed source files | 4 / 4 | 1 | 228,735 | 0.009378 | 48.96 |
+
+Auto transitions from Normal/zero suggested workers/V1 to Massive/four suggested workers/V2. Worker progress marks a task running only after acquiring its concurrency slot; the recorded peak of four demonstrates concurrent execution. Auto also dispatches the independent Governor reviewer. Both conditions complete the migration within scope and pass the unchanged acceptance tests. This validates the default Governor parallel policy and review path on completed work. Because the task requests delegation and off also runs four workers, it does not demonstrate autonomous delegation or a performance improvement caused by parallelism.
+
+Auto uses 7.9% more reported tokens, costs 19.8% more, and takes 12.3% longer in this single pair. The extra review is part of its overhead. The pair totals 440,760 reported tokens and $0.017207 in harness-reported cost; these figures do not measure subscription quota consumption. Larger repository calibration and repeat measurements remain open.
+
+Two earlier Low attempts are retained separately. A three-consumer exploratory off run passes 2/2 checks but does not exercise the default four-independent-task threshold. The four-consumer Low attempt produces an unfinished custom tool input repeating ` **.**` across thousands of frames and is manually interrupted. It has no persisted usage record, so tokens and cost are unknown. Source and packet hashes, matched summaries, execution telemetry, and both exploratory diagnostics are in [the evidence file](benchmark-results/governor-four-consumer-2026-10-04.json). Matched raw artifacts are under `/tmp/pi-forge-four-consumer-medium-off` and `/tmp/pi-forge-four-consumer-medium-auto`.
+
+### Periodic custom-tool stream recovery (2026-10-04)
+
+The newly observed punctuation cycle extends the malformed-stream fix. Custom tool input now uses the existing exact-cycle detector with a maximum 32-character cycle, at least 1,024 repeated UTF-16 code units, and at least 256 input frames for the same tool item. Punctuation cycles are included. Function-call JSON retains the narrower repeated-character guard. This safeguard uses the existing two-retry recovery and refuses unsafe replay after completed tools or visible text; it imposes no total token or time cutoff.
+
+Local SSE and WebSocket regressions verify recovery and bounded exhaustion for the periodic sequence. A valid large single-frame patch followed by hundreds of distinct lines is delivered intact. The streaming, usage, and existing thinking-loop suites pass together (176 tests). All transport frames are synthetic and make no provider requests. Intentionally repetitive custom input streamed in many small frames can reach this guard; the matched hosted results above predate this extension and do not verify its recovery against the live provider.
+
+### Optional migration strategy at Luna Low (2026-10-04)
+
+The `governor-autonomous-migration-v1` packet keeps the four-consumer source and three acceptance checks but leaves execution strategy open. Both modes use GPT-6 Luna Low, one repetition, and no token or time cutoff. The settings pin workers to Low if invoked; neither run invokes them. Every persisted assistant message identifies Luna, and both session thinking selectors remain Low.
+
+| Mode | Acceptance / scope | Workers | Reported tokens | Cached input tokens | Cost (USD) | Wall time (s) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Off | 3/3; five allowed source files | 0 | 82,432 | 58,368 | 0.003354 | 31.43 |
+| Auto | 3/3; five allowed source files | 0 | 53,383 | 41,984 | 0.001805 | 30.11 |
+
+Auto starts Normal/V1, then reassesses to Complex/V2 after five files have been edited. Its evidence records that edits widened the task scope; it still suggests zero workers because no independent batch is declared. The explicit Low effort ceiling remains authoritative. Both runs execute directly, pass the unchanged checks, stay in scope, and finish with no human intervention or error tool results. Neither exhibits the malformed stream from the earlier Low attempts.
+
+Auto uses 35.2% fewer reported tokens, costs 46.2% less, and finishes 4.2% sooner in this single pair. Off uses ten assistant turns and thirteen tool calls; auto uses seven turns and ten tool calls. This is a successful Low comparison and observed runtime reassessment, not proof of a causal Governor benefit or autonomous delegation. These tiny migrations can be completed directly, so further forced or optional variants of the same task would add little evidence. Autonomous delegation on representative repository work remains unmeasured.
+
+The pair totals 135,815 reported tokens and $0.005159 in harness-reported cost. Cost is not subscription quota usage. [The evidence file](benchmark-results/governor-autonomous-migration-2026-10-04.json) retains source/packet hashes, both summaries, resolved model/effort, and complete Governor records. Raw artifacts are under `/tmp/pi-forge-autonomous-migration-low-off` and `/tmp/pi-forge-autonomous-migration-low-auto`. Runtime hashes describe the implementation before the subsequent guard boundary correction.
+
+### Complete-delta boundary for periodic recovery
+
+A local regression exposed a false interruption: after hundreds of ordinary custom-input frames, one large repeated payload could satisfy the total frame count. The exact-cycle detector now requires its repeated suffix to cover the last 256 complete nonempty deltas, as well as the 1,024-character minimum. Ordinary earlier frames cannot qualify a later single-frame payload. The regression first failed with three requests instead of one; after correction, a valid patch with its large payload either before or after 600 distinct streamed lines is delivered byte-for-byte with one request. Persistent periodic floods still recover or exhaust their bounded retry allowance. The combined streaming, usage, and thinking-loop suites pass (177 tests); these checks use synthetic transports without provider requests.

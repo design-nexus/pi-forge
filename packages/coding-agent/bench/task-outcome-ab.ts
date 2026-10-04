@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isRecord } from "@oh-my-pi/pi-utils";
+import { CLI_THINKING_LEVELS } from "@oh-my-pi/pi-tui/thinking";
 import * as vcs from "@oh-my-pi/pi-natives/vcs";
 
 export interface PacketManifest {
@@ -16,15 +17,26 @@ export interface PacketManifest {
 	allowedChangedFiles?: string[];
 	/** Repository-relative destination to source-file overlays used as benchmark support files. */
 	supportFiles?: Record<string, string>;
+	/** Frozen settings overlay copied with the packet, applied to the benchmark CLI. */
+	configFile?: string;
 }
 
 export interface RunSummary {
 	system: "omp" | "piforge";
 	cliPath: string;
 	model: string;
+	thinkingLevel: string;
 	exitCode: number;
 	testExitCode: number;
 	passed: boolean;
+	budgetStopReason: "token_cap" | "time_cap" | null;
+	adaptiveMode: "off" | "auto" | null;
+	governorDecisions: Array<{
+		trigger: string;
+		band: string;
+		workerCount: number;
+		verificationFloor?: string;
+	}>;
 	changedFiles: string[];
 	filesWithinScope: boolean;
 	toolCalls: string[];
@@ -41,6 +53,11 @@ export interface RunSummary {
 	sessionDirectory: string;
 	workspacePath: string;
 	testOutput: string;
+}
+
+export interface RunBudget {
+	maxTimeMs: number;
+	maxTotalTokens: number;
 }
 
 function parseArgs(args: string[]): Map<string, string> {
@@ -140,6 +157,88 @@ async function runCommand(
 	};
 }
 
+async function runBudgetedCommand(
+	command: string[],
+	cwd: string,
+	sessionDirectory: string,
+	budget: RunBudget | null,
+	transcriptPath: string,
+): Promise<{ exitCode: number; output: string; durationMs: number; stopReason: RunSummary["budgetStopReason"] }> {
+	const startedAt = performance.now();
+	const child = Bun.spawn(command, { cwd, stdout: Bun.file(transcriptPath), stderr: "pipe" });
+	const stderrPromise = new Response(child.stderr).text();
+	let stopReason: RunSummary["budgetStopReason"] = null;
+	if (budget) {
+		while (child.exitCode === null) {
+			const elapsedMs = performance.now() - startedAt;
+			if (elapsedMs >= budget.maxTimeMs) {
+				stopReason = "time_cap";
+				child.kill();
+				break;
+			}
+			if ((await readTokenUsage(sessionDirectory)) >= budget.maxTotalTokens) {
+				stopReason = "token_cap";
+				child.kill();
+				break;
+			}
+			await Bun.sleep(Math.min(500, Math.max(1, budget.maxTimeMs - elapsedMs)));
+		}
+	}
+	const [stderr, exitCode] = await Promise.all([stderrPromise, child.exited]);
+	const stdout = await Bun.file(transcriptPath).text();
+	return {
+		exitCode,
+		output: `${stdout}${stderr ? `\n${stderr}` : ""}`.trim(),
+		durationMs: performance.now() - startedAt,
+		stopReason,
+	};
+}
+
+async function readTokenUsage(sessionDirectory: string): Promise<number> {
+	let totalTokens = 0;
+	const glob = new Bun.Glob("**/*.jsonl");
+	for await (const relative of glob.scan({ cwd: sessionDirectory, onlyFiles: true })) {
+		totalTokens += parseTranscript(await Bun.file(path.join(sessionDirectory, relative)).text()).totalTokens;
+	}
+	return totalTokens;
+}
+
+async function readGovernorDecisions(sessionDirectory: string): Promise<RunSummary["governorDecisions"]> {
+	const decisions: RunSummary["governorDecisions"] = [];
+	const glob = new Bun.Glob("**/*.jsonl");
+	for await (const relative of glob.scan({ cwd: sessionDirectory, onlyFiles: true })) {
+		const transcript = await Bun.file(path.join(sessionDirectory, relative)).text();
+		for (const line of transcript.split("\n")) {
+			if (!line) continue;
+			let event: unknown;
+			try {
+				event = JSON.parse(line);
+			} catch {
+				continue;
+			}
+			if (!isRecord(event) || event.type !== "custom" || event.customType !== "adaptive-governor-decision") continue;
+			const data = event.data;
+			if (!isRecord(data) || !isRecord(data.decision)) continue;
+			const decision = data.decision;
+			if (
+				typeof data.trigger !== "string" ||
+				typeof decision.band !== "string" ||
+				typeof decision.workerCount !== "number"
+			)
+				continue;
+			decisions.push({
+				trigger: data.trigger,
+				band: decision.band,
+				workerCount: decision.workerCount,
+				...(typeof decision.verificationFloor === "string"
+					? { verificationFloor: decision.verificationFloor }
+					: {}),
+			});
+		}
+	}
+	return decisions;
+}
+
 export async function fileSnapshot(root: string): Promise<Map<string, string>> {
 	const files = new Map<string, string>();
 	const glob = new Bun.Glob("**/*");
@@ -148,6 +247,42 @@ export async function fileSnapshot(root: string): Promise<Map<string, string>> {
 		files.set(relative, await Bun.file(path.join(root, relative)).text());
 	}
 	return files;
+}
+
+async function linkRepositoryDependencies(repositoryPath: string, runDir: string): Promise<void> {
+	const sourceNodeModules = path.join(repositoryPath, "node_modules");
+	const targetNodeModules = path.join(runDir, "node_modules");
+	await fs.mkdir(targetNodeModules, { recursive: true });
+	const sourceEntries = await fs.readdir(sourceNodeModules, { withFileTypes: true });
+	for (const entry of sourceEntries) {
+		const source = path.join(sourceNodeModules, entry.name);
+		const target = path.join(targetNodeModules, entry.name);
+		if (entry.name === "@oh-my-pi") {
+			await fs.mkdir(target, { recursive: true });
+			for (const packageDir of await fs.readdir(path.join(runDir, "packages"), { withFileTypes: true })) {
+				if (!packageDir.isDirectory()) continue;
+				const packagePath = path.join(runDir, "packages", packageDir.name);
+				let packageName: unknown;
+				try {
+					packageName = (await Bun.file(path.join(packagePath, "package.json")).json()).name;
+				} catch {
+					continue;
+				}
+				if (typeof packageName !== "string" || !packageName.startsWith("@oh-my-pi/")) continue;
+				const packageTarget = path.join(target, packageName.slice("@oh-my-pi/".length));
+				await fs.symlink(packagePath, packageTarget, "dir");
+			}
+			continue;
+		}
+		if (entry.name.startsWith("@") && entry.isDirectory()) {
+			await fs.mkdir(target, { recursive: true });
+			for (const scopedEntry of await fs.readdir(source, { withFileTypes: true })) {
+				await fs.symlink(path.join(source, scopedEntry.name), path.join(target, scopedEntry.name), "dir");
+			}
+			continue;
+		}
+		await fs.symlink(source, target, entry.isDirectory() ? "dir" : undefined);
+	}
 }
 
 export async function runSystem(
@@ -160,7 +295,12 @@ export async function runSystem(
 	repeat: number,
 	packetFiles: Map<string, string>,
 	repositoryPath?: string,
+	adaptiveMode: "off" | "auto" | null = null,
+	budget: RunBudget | null = null,
+	thinkingLevel = "low",
 ): Promise<RunSummary> {
+	if (!CLI_THINKING_LEVELS.includes(thinkingLevel))
+		throw new Error(`--thinking must be one of: ${CLI_THINKING_LEVELS.join(", ")}`);
 	const artifactDir = await fs.mkdtemp(path.join(outputDir, `${system}-${repeat}-`));
 	const runDir = path.join(artifactDir, "workspace");
 	const sessionDirectory = path.join(artifactDir, "sessions");
@@ -170,11 +310,15 @@ export async function runSystem(
 		if (!sourceRepo) throw new Error(`No git repository at ${repositoryPath}`);
 		await sourceRepo.worktreeAdd(runDir, manifest.sourceCommit, { detach: true, clone: false });
 		worktreeRepo = vcs.requireGit(runDir);
-		const dependencies = path.join(repositoryPath, "node_modules");
 		for (const ignored of ["node_modules", "target"])
 			await fs.rm(path.join(runDir, ignored), { recursive: true, force: true });
-		if (await Bun.file(dependencies).exists())
-			await fs.symlink(dependencies, path.join(runDir, "node_modules"), "dir");
+		if (
+			await fs
+				.stat(path.join(repositoryPath, "node_modules"))
+				.then(info => info.isDirectory())
+				.catch(() => false)
+		)
+			await linkRepositoryDependencies(repositoryPath, runDir);
 		const nativeDirectory = path.join(repositoryPath, "packages/natives/native");
 		for (const filename of await fs.readdir(nativeDirectory)) {
 			if (!filename.endsWith(".node")) continue;
@@ -189,9 +333,21 @@ export async function runSystem(
 		await fs.copyFile(path.resolve(packetDir, source), target);
 	}
 	await fs.mkdir(sessionDirectory, { recursive: true });
+	const adaptiveConfigPath = adaptiveMode ? path.join(runDir, ".omp/config.yml") : undefined;
+	if (adaptiveConfigPath) {
+		if (await Bun.file(adaptiveConfigPath).exists())
+			throw new Error(`Cannot apply Governor benchmark setting over existing ${adaptiveConfigPath}`);
+		await fs.mkdir(path.dirname(adaptiveConfigPath), { recursive: true });
+		await Bun.write(adaptiveConfigPath, `adaptive:\n  mode: ${adaptiveMode}\n`);
+	}
 	const prompt = `@${manifest.taskFile}`;
-	const startedAt = performance.now();
-	const { exitCode, output: transcript } = await runCommand(
+	const transcriptPath = path.join(artifactDir, "transcript.jsonl");
+	const {
+		exitCode,
+		output: transcript,
+		durationMs: wallTimeMs,
+		stopReason,
+	} = await runBudgetedCommand(
 		[
 			process.execPath,
 			path.resolve(cliPath),
@@ -201,22 +357,33 @@ export async function runSystem(
 			"--auto-approve",
 			"--model",
 			model,
+			"--thinking",
+			thinkingLevel,
 			"--cwd",
 			runDir,
 			"--session-dir",
 			sessionDirectory,
-			"--max-time",
-			"10m",
+			...(manifest.configFile ? ["--config", path.resolve(runDir, manifest.configFile)] : []),
+			...(budget ? ["--max-time", `${Math.floor(budget.maxTimeMs / 1000)}s`] : []),
 			prompt,
 		],
 		runDir,
+		sessionDirectory,
+		budget,
+		transcriptPath,
 	);
-	const wallTimeMs = performance.now() - startedAt;
-	const transcriptPath = path.join(artifactDir, "transcript.jsonl");
 	await Bun.write(transcriptPath, transcript);
 	const telemetry = await readRunTelemetry(sessionDirectory);
+	const governorDecisions = await readGovernorDecisions(sessionDirectory);
 	const test = await runCommand(manifest.acceptanceCommand, runDir);
 	let changed: string[];
+	if (adaptiveConfigPath) {
+		const config = await Bun.file(adaptiveConfigPath).text();
+		if (config !== `adaptive:\n  mode: ${adaptiveMode}\n`)
+			throw new Error("Benchmark agent modified the temporary Governor settings overlay");
+		await fs.rm(adaptiveConfigPath, { force: true });
+		await fs.rm(path.dirname(adaptiveConfigPath), { recursive: false }).catch(() => {});
+	}
 	if (worktreeRepo) {
 		if (!sourceRepo) throw new Error(`No source git repository at ${repositoryPath ?? ""}`);
 		for (const [destination, source] of Object.entries(manifest.supportFiles ?? {})) {
@@ -251,9 +418,13 @@ export async function runSystem(
 		system,
 		cliPath: path.resolve(cliPath),
 		model,
+		thinkingLevel,
 		exitCode,
 		testExitCode: test.exitCode,
 		passed: exitCode === 0 && test.exitCode === 0 && changedSetMatches && changedOutsideScope.length === 0,
+		budgetStopReason: stopReason,
+		adaptiveMode,
+		governorDecisions,
 		changedFiles: changed,
 		filesWithinScope: changedOutsideScope.length === 0,
 		...telemetry,
@@ -305,18 +476,33 @@ async function main(): Promise<void> {
 	const piforgeRevision = args.get("--piforge-revision");
 	const repository = args.get("--repository");
 	const repositoryPath = repository ? path.resolve(repository) : undefined;
-	const model = args.get("--model") ?? "openai-codex/gpt-5.5";
+	const model = args.get("--model") ?? "openai-codex/gpt-6-luna";
+	const thinkingLevel = args.get("--thinking") ?? "low";
+	if (!CLI_THINKING_LEVELS.includes(thinkingLevel))
+		throw new Error(`--thinking must be one of: ${CLI_THINKING_LEVELS.join(", ")}`);
 	const selectedSystem = args.get("--system") ?? "both";
 	if (selectedSystem !== "both" && selectedSystem !== "omp" && selectedSystem !== "piforge")
 		throw new Error("--system must be both, omp, or piforge");
+	const adaptiveMode = args.get("--adaptive-mode") ?? "off";
+	if (adaptiveMode !== "off" && adaptiveMode !== "auto") throw new Error("--adaptive-mode must be off or auto");
+	const maxTimeMs = Number(args.get("--time-cap-seconds") ?? 600) * 1000;
+	const maxTotalTokens = Number(args.get("--token-cap") ?? 1_000_000);
+	const budgetMode = args.get("--budget") ?? "unbounded";
+	if (budgetMode !== "capped" && budgetMode !== "unbounded") throw new Error("--budget must be capped or unbounded");
+	if (budgetMode === "capped" && (!Number.isSafeInteger(maxTimeMs) || maxTimeMs < 1_000))
+		throw new Error("--time-cap-seconds must be >= 1");
+	if (budgetMode === "capped" && (!Number.isSafeInteger(maxTotalTokens) || maxTotalTokens < 1))
+		throw new Error("--token-cap must be a positive integer");
+	const budget: RunBudget | null = budgetMode === "unbounded" ? null : { maxTimeMs, maxTotalTokens };
 	const manifest = (await Bun.file(path.join(packetDir, "manifest.json")).json()) as PacketManifest;
+	const repeatCount = Number(args.get("--repeat-count") ?? 1);
 	const taskText = await Bun.file(path.join(packetDir, manifest.taskFile)).text();
-	if (!taskText.trim() || manifest.repeatCount < 1)
+	if (!taskText.trim() || !Number.isSafeInteger(repeatCount) || repeatCount < 1 || repeatCount > manifest.repeatCount)
 		throw new Error("The benchmark packet is missing a task or repeat count.");
 	await fs.mkdir(outputDir, { recursive: true });
 	const packetFiles = await fileSnapshot(packetDir);
 	const runs: RunSummary[] = [];
-	for (let repeat = 1; repeat <= manifest.repeatCount; repeat++) {
+	for (let repeat = 1; repeat <= repeatCount; repeat++) {
 		const pairedSystems =
 			repeat % 2 === 1
 				? ([
@@ -340,6 +526,9 @@ async function main(): Promise<void> {
 					repeat,
 					packetFiles,
 					repositoryPath,
+					selectedSystem === "piforge" ? adaptiveMode : null,
+					budget,
+					thinkingLevel,
 				),
 			);
 		}
@@ -347,12 +536,17 @@ async function main(): Promise<void> {
 	const report = {
 		packet: manifest,
 		model,
+		thinkingLevel,
 		createdAt: new Date().toISOString(),
 		conditions: {
 			autoApprove: true,
 			sessionPersistence: true,
 			taskPrompt: manifest.taskFile,
 			selectedSystem,
+			budget: budget ? { maxTimeMs: budget.maxTimeMs, maxTotalTokens: budget.maxTotalTokens } : null,
+			adaptiveMode: selectedSystem === "piforge" ? adaptiveMode : null,
+			thinkingLevel,
+			repeatCount,
 		},
 		sources: {
 			omp: { cliPath: path.resolve(ompCli), revision: ompRevision ?? null },

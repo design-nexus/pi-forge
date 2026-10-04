@@ -5664,7 +5664,9 @@ export class AgentSession implements SettingsScope {
 	/** Tool presentation can change between provider responses, including inside a task call. */
 	get canRoutePromptTools(): boolean {
 		return (
-			!this.isStreaming || (this.agent.state.pendingToolCalls.size > 0 && this.agent.state.streamMessage === null)
+			!this.isStreaming ||
+			this.agent.isExecutingTools ||
+			(this.agent.state.pendingToolCalls.size > 0 && this.agent.state.streamMessage === null)
 		);
 	}
 

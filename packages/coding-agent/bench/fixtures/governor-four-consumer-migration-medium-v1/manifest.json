@@ -1,0 +1,21 @@
+{
+	"id": "governor-four-consumer-migration-medium-v1",
+	"category": "default Governor parallel policy",
+	"sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": [
+		"bun",
+		"test",
+		"test/storage.test.ts"
+	],
+	"expectedChangedFiles": [
+		"src/storage.ts",
+		"src/cache.ts",
+		"src/history.ts",
+		"src/project.ts",
+		"src/audit.ts"
+	],
+	"repeatCount": 1,
+	"notes": "Shared API changed by parent followed by a declared batch of four independent consumers. No band, worker-count, concurrency, risk, or threshold overrides. Default policy can recommend four parallel workers. Measures policy selection and dispatch, not the autonomous decision to delegate. Tests remain frozen; root and generic workers use GPT-6 Luna Medium. Medium variant after a Low root streamed a malformed periodic argument loop.",
+	"configFile": "benchmark.yml"
+}

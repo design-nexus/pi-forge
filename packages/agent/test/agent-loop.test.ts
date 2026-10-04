@@ -525,6 +525,45 @@ describe("agentLoop with AgentMessage", () => {
 		expect(contexts[1]?.index).toBe(1);
 	});
 
+	it("reports ordinary tool execution synchronously around the tool call", async () => {
+		const toolSchema = type({ value: "string" });
+		const transitions: Array<{ toolCallId: string; executing: boolean }> = [];
+		let executingDuringCall = false;
+		const tool: AgentTool<typeof toolSchema, { value: string }> = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo tool",
+			parameters: toolSchema,
+			async execute(_toolCallId, params) {
+				executingDuringCall = transitions.at(-1)?.executing === true;
+				return {
+					content: [{ type: "text", text: "done" }],
+					details: { value: params.value },
+				};
+			},
+		};
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [tool] };
+		const mock = createMockModel({
+			responses: [
+				{ content: [{ type: "toolCall", id: "tool-1", name: "echo", arguments: { value: "hello" } }] },
+				{ content: ["done"] },
+			],
+		});
+		const config: AgentLoopConfig = {
+			model: mock.model,
+			convertToLlm: identityConverter,
+			onToolExecutionStateChange: (toolCallId, executing) => transitions.push({ toolCallId, executing }),
+		};
+
+		await agentLoop([createUserMessage("echo something")], context, config, undefined, mock.stream).result();
+
+		expect(executingDuringCall).toBe(true);
+		expect(transitions).toEqual([
+			{ toolCallId: "tool-1", executing: true },
+			{ toolCallId: "tool-1", executing: false },
+		]);
+	});
+
 	it("should handle tool calls and results", async () => {
 		const toolSchema = type({ value: "string" });
 		const executed: string[] = [];
