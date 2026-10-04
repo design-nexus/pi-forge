@@ -98,15 +98,16 @@ Pi Forge averaged about 5.5% fewer tokens, 7.0% lower reported cost, and 18.2% l
 
 The context-notes feature task exercised session-journal persistence, branch and compaction behavior, context assembly, tool permissions and results, and context usage reporting across coding-agent and TUI. Each system had a 10-minute limit and received the same frozen suite: 43 tests and 121 assertions across the two packages.
 
-| Run | Result | Total tokens | Cost (USD) | Wall time (s) | Assistant turns |
-| --- | --- | ---: | ---: | ---: | ---: |
-| OMP first run | Pass; 43 tests; scoped after review | 7,163,604 | 5.405497 | 600.70 | 91 |
-| Pi Forge first run | Pass; 43 tests; scoped after review | 2,862,785 | 2.227969 | 374.58 | 53 |
-| OMP attempted repeat | Fail; 40/43 tests | 3,860,271 | 3.359850 | 308.71 | 67 |
-| Pi Forge rerun | Pass; 43 tests; scoped | 3,212,514 | 3.034080 | 419.77 | 56 |
+| Run | Result | Input + output | Cache read | Reported total tokens | Cost (USD) | Wall time (s) | Assistant turns |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| OMP first run | Pass; 43 tests; scoped after review | 258,260 | 6,905,344 | 7,163,604 | 5.405497 | 600.70 | 91 |
+| Pi Forge first run | Pass; 43 tests; scoped after review | 116,417 | 2,746,368 | 2,862,785 | 2.227969 | 374.58 | 53 |
+| OMP attempted repeat | Fail; 40/43 tests | 214,831 | 3,645,440 | 3,860,271 | 3.359850 | 308.71 | 67 |
+| Pi Forge rerun | Pass; 43 tests; scoped | 212,194 | 3,000,320 | 3,212,514 | 3.034080 | 419.77 | 56 |
+| OMP successful repeat | Pass; 43 tests; scoped | 261,632 | 3,913,728 | 4,175,360 | 3.710949 | 433.72 | 74 |
 
-Comparing the latest passing Pi Forge run with OMP's passing first run, Pi Forge used 55% fewer tokens, cost 44% less, and finished 30% faster. The first passing Pi Forge run used 60% fewer tokens, cost 59% less, and finished 38% faster than that same OMP run. OMP reached the configured 10-minute limit; Pi Forge finished in about 6 minutes 15 seconds and 7 minutes. These are one successful OMP run and two successful Pi Forge runs, not repeated matched pairs, so they are suggestive rather than conclusive.
+The latest successful repeat pair compares OMP's successful repeat with the Pi Forge rerun: both passed 43 tests and stayed in scope. Pi Forge used 23% fewer reported total tokens, 19% fewer input-plus-output tokens, cost 18% less, and finished 3% faster. In the first successful pair, Pi Forge used 60% fewer reported total tokens, cost 59% less, and finished 38% faster than OMP. OMP's first run came close to its 10-minute limit; later successful runs finished in about 7 minutes. Cache reads account for most of the reported total in every run, so the table shows input-plus-output and cache-read tokens separately. These two pairs favor Pi Forge on this packet, but are too few to establish a general advantage.
 
 The original manifest required an exact 12-file set, which incorrectly marked the first runs out of scope: OMP touched two related session-statistics files omitted from that list, while Pi Forge changed only three files. We preserved the raw summary and revalidated both changed-file sets against the corrected `allowedChangedFiles` scope; all paths are allowed. The corrected scope behavior is covered by the runner integration test. The successful first-run artifacts and scope re-evaluation are under `/tmp/pi-forge-context-notes`; the failed OMP repeat is under `/tmp/pi-forge-context-notes-repeat`; the Pi Forge rerun is under `/tmp/pi-forge-context-notes-piforge-repeat`.
 
-A separate matched-repeat attempt remained inconclusive. OMP failed three relevance-ordering tests. Pi Forge could not start because the provider returned `usage_limit_reached`; its acceptance command then reported unresolved workspace aliases, so it produced no code outcome. After the quota reset, the Pi Forge-only rerun above passed. OMP still needs a successful counterpart rerun before these newer results form a matched repeat.
+A separate matched-repeat attempt remained inconclusive. OMP failed three relevance-ordering tests. Pi Forge could not start because the provider returned `usage_limit_reached`; its acceptance command then reported unresolved workspace aliases, so it produced no code outcome. After quota was restored, Pi Forge passed the task, followed by the successful OMP counterpart reported above.
