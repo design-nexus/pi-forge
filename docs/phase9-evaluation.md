@@ -312,3 +312,38 @@ The run reports 1,895,178 tokens: 94,206 input, 5,388 output, and 1,795,584 cach
 Patch review finds two untested Bash boundaries: explicit `verification: false` gains verification metadata, and explicit `async: false` rejects a foreground verification command. Offline replay with two additional contract checks confirms the generated implementation passes 5/7. The current development implementation passes the same seven checks as a positive control. The generated benchmark patch has not been applied to this checkout. Future packet acceptance includes all seven checks, and the task clarifies the explicit-false contract. No additional model calls were made for the audit or control.
 
 [Retained evidence](benchmark-results/governor-repository-maintenance-2026-10-04.json) includes original and strengthened packet hashes, original report, full final diff, per-session model/effort/usage, Governor records, tool failures and check output, offline audit, and production control. Raw artifacts are under `/tmp/pi-forge-repository-maintenance-low-auto`, `/tmp/pi-forge-maintenance-audit`, and `/tmp/pi-forge-maintenance-control`. This is a mixed-quality calibration outcome, not a fully correct implementation or matched performance result. Autonomous delegation and broader natural repair convergence remain open.
+
+### Edit retry audit and recovery guidance
+
+An offline audit of the maintenance transcript counts eight failed tool results across 47 tool calls: five unseen-anchor refusals, one stale-tag refusal, one missing-path read, and one failed verification command. [The audit](benchmark-results/governor-edit-retry-audit-2026-10-04.json) classifies recorded errors; it does not attribute tokens causally to them. The edit refusals enforce intended safety contracts.
+
+The compact edit prompt required a reread after every edit, while the full prompt already allowed response reuse. The candidate revision made both static prompts explain the existing safe recovery paths: take the latest response header and displayed numbers, use exact ranged reads for hidden anchors, retry a fully revealed unseen-anchor rejection only after checking its content, and reread truncated or unexpected content. No guard, snapshot validation, or edit policy is weakened. The full prompt is compiled into the native addon; the compact prompt is imported by the coding agent. Luna uses the full variant, so aligning the compact variant alone would not explain a future Luna improvement. At this preparation stage, hosted performance had not been measured. The completed comparison below rejects the candidate and restores the previous instructions.
+
+The native addon rebuild succeeds with the repository-pinned nightly on PATH. All 23 focused edit and prompt-selection checks pass against the rebuilt addon. The first rebuild attempt selected Arch stable Rust and failed at the nightly-only `portable_simd` dependency; using the installed rustup shims fixes the toolchain selection without repository configuration changes.
+
+### Matched edit-instruction measurement: revision rejected (2026-10-04)
+
+A completed original/revised pair measures the proposed edit-recovery instructions on `governor-repository-maintenance-v1` using the same strengthened seven checks. Both use runtime commit `0fce7a9bbf`, the same native addon, a frozen source checkout, Luna Low for all roles, auto mode, and no harness token/time cutoff. Both conditions deliver their full edit descriptions through the same temporary static Markdown adapter; rendered bytes are verified before each run. Only that full prompt differs. Compact model policy remains unchanged. The original runs first, so provider caching and latency can affect comparison.
+
+| Measurement | Original instructions | Revised instructions |
+| --- | ---: | ---: |
+| Acceptance / scope | 7/7; two allowed files | 7/7; two allowed files |
+| Assistant turns | 79 | 116 |
+| Tool calls | 78 | 113 |
+| Unseen-anchor refusals | 7 | 6 |
+| Total edit failures | 8 | 8 |
+| Failed declared verification commands | 3 | 11 |
+| Total failed tool results | 14 | 22 |
+| Reported total tokens | 3,251,474 | 7,033,755 |
+| Uncached input / output tokens | 103,338 / 7,528 | 213,934 / 12,269 |
+| Cached input tokens | 3,140,608 | 6,807,552 |
+| Reported cost (USD) | 0.045504 | 0.095603 |
+| Wall time (seconds) | 259.30 | 639.72 |
+
+The revision uses 116.3% more reported tokens, costs 110.1% more, and takes 146.7% longer. It reduces unseen-anchor refusals by only one and leaves total edit failures unchanged. Both runs complete directly without workers or human intervention. Both spend substantial effort implementing and repairing Chromium wrapper matching, with more failed verification commands in the revised run. These observations do not prove the prompt caused the additional coding failures, but provide no measured reason to adopt the change. The proposed full and compact recovery expansion is therefore reverted to the committed instructions.
+
+[Retained pair evidence](benchmark-results/edit-recovery-prompt-pair-2026-10-04.json) includes both prompt texts and hashes, identical native-addon hash, frozen packet hashes, runtime revision, reproduction driver, both summaries, per-session model/effort/usage, Governor records, failed tool outputs, verification output, final diffs, and the rejection decision. Raw artifacts are under `/tmp/pi-forge-edit-measurements`. One pair is an observed result, not a statistically reliable general claim. Reported cost and cached tokens do not measure subscription quota usage. The old production instructions are retained.
+
+### Evaluation decision
+
+Pause hosted benchmarks and use Pi Forge during normal development. Earlier repository comparisons favor Pi Forge in several tasks, but small-task and Governor outcomes are mixed. The revised edit prompt is rejected. Collect task outcomes and persisted telemetry using [the real-work workflow](real-work-observation.md), then prioritize recurring problems and focused comparisons for concrete fixes. No consistent overall performance advantage is claimed.

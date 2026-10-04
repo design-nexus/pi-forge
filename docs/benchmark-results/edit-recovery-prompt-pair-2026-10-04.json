@@ -1,0 +1,2547 @@
+{
+  "metadata": {
+    "runtimeRevision": "0fce7a9bbf03075daba6d83b04fc33d77bcc8277",
+    "runtimeAdapter": "Both conditions use the same static MD adapter for hashline descriptions, with the same rebuilt native addon and CLI. Only the delivered full edit prompt differs; compact prompt policy is unchanged.",
+    "model": "openai-codex/gpt-6-luna",
+    "thinking": "low",
+    "adaptiveMode": "auto",
+    "budget": "unbounded",
+    "repeatCount": 1,
+    "originalPrompt": "Hashline patches existing files; new files: `write`. Each file: `[PATH#TAG]`, `TAG` required 4-hex snapshot from latest `read`/`search`. Numbers: original `LINE:TEXT`, never hunk-shifted.\n\n<ops>\n`PUT N.=M:` replace inclusive N–M with `+` body (`N.=N` for one line); `PUT N*:` replace block N.\n`PUT <N:`/`PUT >N:` insert before/after N (`<1` head, `>$` tail). `PUT >N*:` insert after block N at sibling depth; inside, use `PUT >M:` at closer.\n`CUT N.=M`/`CUT N*` delete and capture, optionally as `@name`.\n`PUT <N @name`/`PUT >N @name` paste at gap (omit name for anonymous CUT); `PUT N.=M @name`/`PUT N* @name` paste over range/block (name REQUIRED). Register pastes have NO body; named registers persist across calls.\n`REM` delete file; `MV DEST` rename after prior edits (quote spaced paths).\n</ops>\n\n<rules>\n- `:` ops only: body rows `+TEXT` verbatim incl. indent; lone `+` blank. Literal `- item`/`+ item` → `+- item`/`++ item`. NEVER `-`/bare context. Body length independent of range; delete with CUT, not empty PUT.\n- Touch displayed changed lines only; `…`, `..`, collapsed `N-M:` and out-of-window lines UNSEEN. Re-read first. Tight ranges: split nonadjacent changes; NEVER include keepers or start/end mid-expression/block. Pure addition uses gap PUT.\n- `*` requires multi-line opener, NEVER closer/last/inner statement; use range/gap for one statement. Anchor first decorator/attribute/doc-comment to include it; standalone comments need explicit range.\n- Markdown heading blocks run through deeper headings until next same/higher; after section `PUT >N*:`, end body with blank line.\n- NEVER restyle unrelated code. After EVERY edit tag/numbers change: use edit response or fresh `read`; stale tag/surprise → STOP, re-read.\n</rules>\n\n<example>\n```\n[greet.py#A1B2]\nPUT 1*:\n+@cache\n+def greet(name):\n+    print(name)\n[PLAN.md#3C4D]\nPUT >2:\n+- task\n```\nCross-file move: `CUT 1* @fn` in source, then `PUT <1 @fn` in destination section.\n</example>\n",
+    "revisedPrompt": "Hashline patches existing files; new files: `write`. Each file: `[PATH#TAG]`, `TAG` required 4-hex snapshot from latest `read`/`search` or edit response. Numbers: original `LINE:TEXT`, never hunk-shifted.\n\n<ops>\n`PUT N.=M:` replace inclusive N–M with `+` body (`N.=N` for one line); `PUT N*:` replace block N.\n`PUT <N:`/`PUT >N:` insert before/after N (`<1` head, `>$` tail). `PUT >N*:` insert after block N at sibling depth; inside, use `PUT >M:` at closer.\n`CUT N.=M`/`CUT N*` delete and capture, optionally as `@name`.\n`PUT <N @name`/`PUT >N @name` paste at gap (omit name for anonymous CUT); `PUT N.=M @name`/`PUT N* @name` paste over range/block (name REQUIRED). Register pastes have NO body; named registers persist across calls.\n`REM` delete file; `MV DEST` rename after prior edits (quote spaced paths).\n</ops>\n\n<rules>\n- `:` ops only: body rows `+TEXT` verbatim incl. indent; lone `+` blank. Literal `- item`/`+ item` → `+- item`/`++ item`. NEVER `-`/bare context. Body length independent of range; delete with CUT, not empty PUT.\n- Touch displayed changed lines only; `…`, `..`, collapsed `N-M:` and out-of-window lines UNSEEN. Re-read first. Tight ranges: split nonadjacent changes; NEVER include keepers or start/end mid-expression/block. Pure addition uses gap PUT.\n- `*` requires multi-line opener, NEVER closer/last/inner statement; use range/gap for one statement. Anchor first decorator/attribute/doc-comment to include it; standalone comments need explicit range.\n- Markdown heading blocks run through deeper headings until next same/higher; after section `PUT >N*:`, end body with blank line.\n- NEVER restyle unrelated code. After EVERY edit use its new header and displayed numbers. If the next anchors are not displayed, read the exact `PATH:N-M` range; a whole-file read may fold them again. Never reuse the old tag or guess shifted numbers.\n- An unseen-line rejection may reveal complete anchors and permit the same patch again: verify the revealed content before retrying. Truncated previews require a ranged read. For stale tags, use the latest edit response header or a fresh ranged read; unexpected content → STOP, re-read.\n</rules>\n\n<example>\n```\n[greet.py#A1B2]\nPUT 1*:\n+@cache\n+def greet(name):\n+    print(name)\n[PLAN.md#3C4D]\nPUT >2:\n+- task\n```\nCross-file move: `CUT 1* @fn` in source, then `PUT <1 @fn` in destination section.\n</example>\n",
+    "originalPromptSha256": "8b2c1b0748a83a3786af40a484e5521a4fdee210cf7007bd162d2a7688ecd9f0",
+    "revisedPromptSha256": "1ef256b2293dd428b884441df8fae9b74ba74862a0c54e1ec6d3bf763bf89035",
+    "addonSha256": "8d679b60c93268eba30a8842b8db54a544590637aeaee43d926b0899a1fd7f00",
+    "packet": {
+      "id": "governor-repository-maintenance-v1",
+      "category": "real repository optional-delegation maintenance",
+      "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+      "taskFile": "TASK.md",
+      "acceptanceCommand": [
+        "bun",
+        "test",
+        "packages/coding-agent/test/tools/browser-attach-bench.test.ts",
+        "packages/coding-agent/test/bash-verification-bench.test.ts",
+        "packages/coding-agent/test/bash-background-audit.test.ts",
+        "packages/coding-agent/test/bash-verification-boundaries.test.ts"
+      ],
+      "expectedChangedFiles": [
+        "packages/coding-agent/src/tools/browser/attach.ts",
+        "packages/coding-agent/src/tools/bash.ts"
+      ],
+      "repeatCount": 1,
+      "notes": "Two independent real repository tool contracts with optional execution strategy. One auto-only Luna Low calibration; no required task call, worker count, or harness token/time cutoff. Browser test requires Linux and cc. Not a matched efficiency comparison. The first hosted run used the original five-check manifest; subsequent offline patch audit adds explicit-false boundaries. Future runs include all seven checks.",
+      "configFile": "benchmark.yml",
+      "supportFiles": {
+        "TASK.md": "TASK.md",
+        "benchmark.yml": "benchmark.yml",
+        "packages/coding-agent/test/tools/browser-attach-bench.test.ts": "browser-attach-bench.test.ts",
+        "packages/coding-agent/test/bash-verification-bench.test.ts": "bash-verification-bench.test.ts",
+        "packages/coding-agent/test/bash-background-audit.test.ts": "bash-background-audit.test.ts",
+        "packages/coding-agent/test/bash-verification-boundaries.test.ts": "bash-verification-boundaries.test.ts"
+      }
+    },
+    "packetSha256": {
+      "TASK.md": "b59802fa5a947de55e62d4d0cdb611ce24c1ae95f82d980d30cf29a92648d821",
+      "browser-attach-bench.test.ts": "f2063f3b06b376666d5e49b5d55df5688e4ce59b9130093bb2feff4a10af8057",
+      "bash-verification-bench.test.ts": "c6b300f8873892f6518247862d81903468f7dcbd5698460cc8f28830388a228b",
+      "bash-background-audit.test.ts": "b79b46d2f616aceafcf4a224c3736f4eee7dbf351b728774dcd516eac557408a",
+      "benchmark.yml": "526a071f0c2c2022b09f00326b61abfa5e988377b70bd0f453c47e0daf47174c",
+      "manifest.json": "03c47c7478eae26eb5117b72de1aedfd3b2f2ef9991f83b9556eaf64f87afe12",
+      "bash-verification-boundaries.test.ts": "f55c4db9ad2005c40c6fba717381dfaf26c41da0f26f03ec0294a3864b57f0b8"
+    }
+  },
+  "conditions": {
+    "original": {
+      "summary": {
+        "system": "piforge",
+        "cliPath": "/tmp/pi-forge-edit-measurements/runtime/packages/coding-agent/src/cli.ts",
+        "model": "openai-codex/gpt-6-luna",
+        "thinkingLevel": "low",
+        "exitCode": 0,
+        "testExitCode": 0,
+        "passed": true,
+        "orchestrationPassed": true,
+        "orchestrationFailure": null,
+        "budgetStopReason": null,
+        "adaptiveMode": "auto",
+        "governorDecisions": [
+          {
+            "trigger": "initial",
+            "band": "normal",
+            "workerCount": 0,
+            "verificationFloor": "V1"
+          },
+          {
+            "trigger": "scope",
+            "band": "normal",
+            "workerCount": 0,
+            "verificationFloor": "V1"
+          },
+          {
+            "trigger": "runtime",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V2"
+          },
+          {
+            "trigger": "scope",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V2"
+          },
+          {
+            "trigger": "verification_failure",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          },
+          {
+            "trigger": "runtime",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V2"
+          },
+          {
+            "trigger": "verification_failure",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          },
+          {
+            "trigger": "scope",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          }
+        ],
+        "changedFiles": [
+          "packages/coding-agent/src/tools/bash.ts",
+          "packages/coding-agent/src/tools/browser/attach.ts"
+        ],
+        "filesWithinScope": true,
+        "toolCalls": [
+          "todo",
+          "read",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "todo",
+          "grep",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "edit",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "read",
+          "edit",
+          "edit",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "todo",
+          "bash",
+          "read",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "bash",
+          "read",
+          "read",
+          "read",
+          "grep",
+          "todo",
+          "grep",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "glob",
+          "bash",
+          "read",
+          "read",
+          "edit",
+          "eval",
+          "bash",
+          "todo",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "bash",
+          "read",
+          "bash",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "bash",
+          "todo"
+        ],
+        "assistantTurns": 79,
+        "inputTokens": 103338,
+        "outputTokens": 7528,
+        "cacheReadTokens": 3140608,
+        "cacheWriteTokens": 0,
+        "totalTokens": 3251474,
+        "costUsd": 0.045503880000000024,
+        "wallTimeMs": 259303.111617,
+        "humanInterventions": 0,
+        "transcriptPath": "/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/transcript.jsonl",
+        "sessionDirectory": "/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/sessions",
+        "workspacePath": "/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/workspace",
+        "testOutput": "bun test v1.4.2 (744846f84)\n\n\npackages/coding-agent/test/bash-verification-boundaries.test.ts:\n(pass) does not add verification metadata to an ordinary command when verification is explicitly false [54.30ms]\n(pass) accepts a foreground verification command with async explicitly false [2.81ms]\n\npackages/coding-agent/test/bash-background-audit.test.ts:\n(pass) keeps ordinary foreground commands usable with auto-background enabled and no job manager [5.85ms]\n(pass) reports verification failure when a foreground command times out [1232.06ms]\n\npackages/coding-agent/test/bash-verification-bench.test.ts:\n(pass) reports verification success and failure while leaving ordinary results unmarked [10.59ms]\n(pass) rejects verification checks requested as asynchronous jobs or services [0.59ms]\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n(pass) reuses Chromium launched through a compiled distro wrapper [141.61ms]\n\n 7 pass\n 0 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.82s]"
+      },
+      "sessions": [
+        {
+          "path": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "models": [
+            "openai-codex/gpt-6-luna"
+          ],
+          "thinkingLevels": [
+            "low"
+          ],
+          "usage": {
+            "toolCalls": [
+              "todo",
+              "read",
+              "grep",
+              "read",
+              "read",
+              "read",
+              "edit",
+              "read",
+              "edit",
+              "todo",
+              "grep",
+              "grep",
+              "read",
+              "read",
+              "read",
+              "edit",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "read",
+              "read",
+              "edit",
+              "edit",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "todo",
+              "bash",
+              "read",
+              "read",
+              "edit",
+              "read",
+              "edit",
+              "bash",
+              "read",
+              "read",
+              "read",
+              "grep",
+              "todo",
+              "grep",
+              "read",
+              "read",
+              "read",
+              "read",
+              "read",
+              "glob",
+              "bash",
+              "read",
+              "read",
+              "edit",
+              "eval",
+              "bash",
+              "todo",
+              "read",
+              "edit",
+              "read",
+              "edit",
+              "bash",
+              "read",
+              "bash",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "bash",
+              "todo"
+            ],
+            "assistantTurns": 79,
+            "inputTokens": 103338,
+            "outputTokens": 7528,
+            "cacheReadTokens": 3140608,
+            "cacheWriteTokens": 0,
+            "totalTokens": 3251474,
+            "costUsd": 0.045503880000000024
+          },
+          "checkResults": [
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "23 | }\n24 | \n25 | it(\"does not add verification metadata to an ordinary command when verification is explicitly false\", async () => {\n26 | \tconst result = await makeTool().execute(\"ordinary\", { command: \"exit 0\", verification: false });\n27 | \texpect(result.isError).not.toBe(true);\n28 | \texpect(result.details).not.toHaveProperty(\"verification\");\n                                 ^\nerror: expect(received).not.toHaveProperty(path)\n\nExpected path: not \"verification\"\n\nReceived value: {\n  passed: false,\n}\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/workspace/packages/coding-agent/test/bash-verification-boundaries.test.ts:28:29)\n(fail) does not add verification metadata to an ordinary command when verification is explicitly false [40.51ms]\n\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:44541\",\n-   \"pid\": 1054049,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [84.12ms]\n\n 5 pass\n 2 fail\nRan 7 tests across 4 files. [1.66s]\n[raw output: artifact://1]\n\n\nWall time: 1.72 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1719.3336189999973,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:35973\",\n-   \"pid\": 1055405,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [90.65ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.87s]\n\n\nWall time: 1.91 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1909.0494440000039,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": false,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "/proc/1057801 /home/ken/.local/share/mise/installs/python/3.14.8/bin/python3.14 b'python3 -c import os,glob; [print(p,os.readlink(p+\"/exe\"),open(p+\"/cmdline\",\"rb\").read().replace(b\"\\\\0\",b\" \")) for p in glob.glob(\"/proc/[0-9]*\") if b\"--user-data-dir=/tmp/omp-browser-wrapper-bench-\" in open(p+\"/cmdline\",\"rb\").read()] '\n\n\nWall time: 0.03 seconds"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 30,
+                "wallTimeMs": 34.67837000000873
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "/tmp/tmpvjm8mfon/x.c:1:20: warning: extra tokens at end of ‘#include’ directive\n    1 | #include <stdlib.h>\\n#include <unistd.h>\\nint main(int c,char**v){setenv(\\\"CHROME_WRAPPER\\\",v[0],1);return execv(\\\"/usr/bin/sleep\\\",v);}\\n\n      |                    ^\n/usr/bin/ld: /usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib/Scrt1.o: in function `_start':\n(.text+0x1b): undefined reference to `main'\ncollect2: error: ld returned 1 exit status\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import os,tempfile,subprocess; d=tempfile.mkdtemp(); open(d+\"/x.c\",\"w\").write(\"#include <stdlib.h>\\\\n#include <unistd.h>\\\\nint main(int c,char**v){setenv(\\\\\\\"CHROME_WRAPPER\\\\\\\",v[0],1);return execv(\\\\\\\"/usr/bin/sleep\\\\\\\",v);}\\\\n\"); subprocess.run([\"cc\",d+\"/x.c\",\"-o\",d+\"/wrapper\"],check=True); p=subprocess.Popen([d+\"/wrapper\",\"100\"]); print(p.pid); print(os.readlink(f\"/proc/{p.pid}/exe\")); print(open(f\"/proc/{p.pid}/cmdline\",\"rb\").read()); p.kill()\n                                                                                                                                                                                                                                            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/ken/.local/share/mise/installs/python/3.14.8/lib/python3.14/subprocess.py\", line 578, in run\n    raise CalledProcessError(retcode, process.args,\n                             output=stdout, stderr=stderr)\nsubprocess.CalledProcessError: Command '['cc', '/tmp/tmpvjm8mfon/x.c', '-o', '/tmp/tmpvjm8mfon/wrapper']' returned non-zero exit status 1.\n\n\nWall time: 0.08 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 30,
+                "wallTimeMs": 79.36025399999926,
+                "exitCode": 1
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:35065\",\n-   \"pid\": 1060633,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [77.93ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.70 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1699.5084529999876,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "  File \"<string>\", line 1\n    import glob,os; p=glob.glob(\"/tmp/omp-browser-wrapper-bench-*/google-chrome\"); print([(x,os.path.getsize(x),open(x,\"rb\").read().find(b\"/tmp/omp-browser-wrapper-bench-\")) for x in p]\n                                                                                        ^\nSyntaxError: '(' was never closed\n\n\nWall time: 0.04 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 30,
+                "wallTimeMs": 44.51313800000935,
+                "exitCode": 1
+              }
+            },
+            {
+              "isError": false,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\n 7 pass\n 0 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.68s]\n\n\nWall time: 1.71 seconds"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1712.810129999998,
+                "verification": {
+                  "passed": true
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "taskCalls": [],
+      "governor": [
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "version": 1,
+          "revision": 1,
+          "trigger": "initial",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 3,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6
+          },
+          "decision": {
+            "version": 1,
+            "band": "normal",
+            "confidence": 0.6,
+            "executionMode": "direct",
+            "planningDepth": "brief",
+            "verification": "targeted_checks",
+            "verificationFloor": "V1",
+            "verificationCeiling": "V2",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 54400,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "version": 1,
+          "revision": 2,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 2,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6
+          },
+          "decision": {
+            "version": 1,
+            "band": "normal",
+            "confidence": 0.6,
+            "executionMode": "direct",
+            "planningDepth": "brief",
+            "verification": "targeted_checks",
+            "verificationFloor": "V1",
+            "verificationCeiling": "V2",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 54400,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "version": 1,
+          "revision": 3,
+          "trigger": "runtime",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 2,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 11,
+              "failedCalls": 1,
+              "editedFiles": 2,
+              "verificationFailures": 0,
+              "failedWorkers": 0,
+              "failedMutations": 1,
+              "stalledToolMs": 0,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V2",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "version": 1,
+          "revision": 4,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 1,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 11,
+              "failedCalls": 1,
+              "editedFiles": 2,
+              "verificationFailures": 0,
+              "failedWorkers": 0,
+              "failedMutations": 1,
+              "stalledToolMs": 0,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V2",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "small independent scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "version": 1,
+          "revision": 5,
+          "trigger": "verification_failure",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 1,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 5,
+              "failedCalls": 6,
+              "editedFiles": 1,
+              "verificationFailures": 1,
+              "failedWorkers": 0,
+              "failedMutations": 5,
+              "stalledToolMs": 1720,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V3",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "small independent scope",
+              "a declared verification failure raised effort",
+              "repeated edit or write failures raised effort"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "version": 1,
+          "revision": 6,
+          "trigger": "runtime",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 1,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 13,
+              "failedCalls": 1,
+              "editedFiles": 1,
+              "verificationFailures": 0,
+              "failedWorkers": 0,
+              "failedMutations": 0,
+              "stalledToolMs": 0,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V2",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "small independent scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "version": 1,
+          "revision": 7,
+          "trigger": "verification_failure",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 1,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 9,
+              "failedCalls": 2,
+              "editedFiles": 2,
+              "verificationFailures": 1,
+              "failedWorkers": 0,
+              "failedMutations": 0,
+              "stalledToolMs": 1700,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V3",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "small independent scope",
+              "a declared verification failure raised effort",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "version": 1,
+          "revision": 8,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 0,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 9,
+              "failedCalls": 2,
+              "editedFiles": 2,
+              "verificationFailures": 1,
+              "failedWorkers": 0,
+              "failedMutations": 0,
+              "stalledToolMs": 1700,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V3",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "small independent scope",
+              "a declared verification failure raised effort",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        }
+      ],
+      "failedToolResults": 14,
+      "failureCounts": {
+        "unseenEditAnchors": 7,
+        "staleEditTags": 0,
+        "otherEditFailures": 1,
+        "readFailures": 1,
+        "verificationFailures": 3,
+        "otherBashFailures": 2,
+        "otherFailures": 0
+      },
+      "failures": [
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 384-393 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#1EFF] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  384:\t| typeof bashSchemaWithService\n  385:\t| typeof bashSchemaWithAsyncAndService;\n  386:\n  387:export interface BashToolInput {\n  388:\tcommand: string;\n  389:\ttimeout?: number;\n  390:\tcwd?: string;\n  391:\tname?: string;\n  392:\tready?: ServiceReady;\n  393:\tenv?: Record<string, string>;\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "line 1: Invalid absolute range: start 668, end 667. The value after `.=` is an absolute source line, not a line count or replacement length. For one line use `PUT 668:`. For 667 lines starting at 668, use `PUT 668.=1334:`."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 662-666 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#2CE1] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  662:\n  663:\tasync #buildCompletedResult(\n  664:\t\tresult: BashResult | BashInteractiveResult,\n  665:\t\ttimeoutSec: number | undefined,\n  666:\t\toptions: {\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 692 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#418A] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  692:\t\t// uses a warning border instead of error red. Both interactive and\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 906 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#D5D4] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  906:\t\t\tstopUpdates: () => {\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 932 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#6DF8] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  932:\t\t}\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 1498 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#D09C] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  1498:\t\t\t\t\t? out\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "23 | }\n24 | \n25 | it(\"does not add verification metadata to an ordinary command when verification is explicitly false\", async () => {\n26 | \tconst result = await makeTool().execute(\"ordinary\", { command: \"exit 0\", verification: false });\n27 | \texpect(result.isError).not.toBe(true);\n28 | \texpect(result.details).not.toHaveProperty(\"verification\");\n                                 ^\nerror: expect(received).not.toHaveProperty(path)\n\nExpected path: not \"verification\"\n\nReceived value: {\n  passed: false,\n}\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/workspace/packages/coding-agent/test/bash-verification-boundaries.test.ts:28:29)\n(fail) does not add verification metadata to an ordinary command when verification is explicitly false [40.51ms]\n\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:44541\",\n-   \"pid\": 1054049,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [84.12ms]\n\n 5 pass\n 2 fail\nRan 7 tests across 4 files. [1.66s]\n[raw output: artifact://1]\n\n\nWall time: 1.72 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1719.3336189999973,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:35973\",\n-   \"pid\": 1055405,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [90.65ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.87s]\n\n\nWall time: 1.91 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1909.0494440000039,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "read",
+          "content": [
+            {
+              "type": "text",
+              "text": "Path 'packages/natives/src/process.ts' not found"
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "/tmp/tmpvjm8mfon/x.c:1:20: warning: extra tokens at end of ‘#include’ directive\n    1 | #include <stdlib.h>\\n#include <unistd.h>\\nint main(int c,char**v){setenv(\\\"CHROME_WRAPPER\\\",v[0],1);return execv(\\\"/usr/bin/sleep\\\",v);}\\n\n      |                    ^\n/usr/bin/ld: /usr/lib/gcc/x86_64-pc-linux-gnu/16/../../../../lib/Scrt1.o: in function `_start':\n(.text+0x1b): undefined reference to `main'\ncollect2: error: ld returned 1 exit status\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import os,tempfile,subprocess; d=tempfile.mkdtemp(); open(d+\"/x.c\",\"w\").write(\"#include <stdlib.h>\\\\n#include <unistd.h>\\\\nint main(int c,char**v){setenv(\\\\\\\"CHROME_WRAPPER\\\\\\\",v[0],1);return execv(\\\\\\\"/usr/bin/sleep\\\\\\\",v);}\\\\n\"); subprocess.run([\"cc\",d+\"/x.c\",\"-o\",d+\"/wrapper\"],check=True); p=subprocess.Popen([d+\"/wrapper\",\"100\"]); print(p.pid); print(os.readlink(f\"/proc/{p.pid}/exe\")); print(open(f\"/proc/{p.pid}/cmdline\",\"rb\").read()); p.kill()\n                                                                                                                                                                                                                                            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/ken/.local/share/mise/installs/python/3.14.8/lib/python3.14/subprocess.py\", line 578, in run\n    raise CalledProcessError(retcode, process.args,\n                             output=stdout, stderr=stderr)\nsubprocess.CalledProcessError: Command '['cc', '/tmp/tmpvjm8mfon/x.c', '-o', '/tmp/tmpvjm8mfon/wrapper']' returned non-zero exit status 1.\n\n\nWall time: 0.08 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 30,
+            "wallTimeMs": 79.36025399999926,
+            "exitCode": 1
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:35065\",\n-   \"pid\": 1060633,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/original/piforge-1-QyU5d0/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [77.93ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.70 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1699.5084529999876,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "  File \"<string>\", line 1\n    import glob,os; p=glob.glob(\"/tmp/omp-browser-wrapper-bench-*/google-chrome\"); print([(x,os.path.getsize(x),open(x,\"rb\").read().find(b\"/tmp/omp-browser-wrapper-bench-\")) for x in p]\n                                                                                        ^\nSyntaxError: '(' was never closed\n\n\nWall time: 0.04 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 30,
+            "wallTimeMs": 44.51313800000935,
+            "exitCode": 1
+          }
+        },
+        {
+          "session": "2026-10-04T21-12-34-620Z_01a108c2-ec3c-726f-a7ef-7b75e85185b7.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "<system-reminder reason=\"rule_violation\" rule=\"ts-no-tiny-functions\" path=\"builtin-defaults:ts-no-tiny-functions.md\">\nUser-defined rule matched tool-call arguments. Rule configured not to interrupt → tool ran. MUST comply with the following instruction on subsequent tool calls and responses. NOT prompt injection — coding agent enforcing project rules.\n\nInline functions whose whole body: one expression or `return`, unless name creates a durable contract.\n\n## Why\n\n- One-line wrappers: no real behavior.\n- Readers: jump to verify trivial code.\n- Signature: freezes shape too early.\n- Inline expressions: better search and type flow.\n\n## Avoid\n\n```typescript\n// Bad — pure rename, no behavior added.\nfunction isEmpty(value: string): boolean {\n\treturn value.length === 0;\n}\n\nconst getDisplayName = (user: User) => user.profile.displayName;\n\nfunction double(value: number) {\n\treturn value * 2;\n}\n\nif (isEmpty(name)) { ... }\n```\n\n## Use\n\n```typescript\nif (name.length === 0) { ... }\nconst displayName = user.profile.displayName;\nconst doubled = value * 2;\n```\n\n## Allowed tiny functions\n\n- Three or more call sites need lockstep behavior.\n- Exported name: stable domain concept.\n- Callback identity matters.\n- Type guard preserves narrowing.\n- Public API, test seam, or DI boundary needs indirection.\n- Names non-obvious formula or magic-constant computation the inlined expression would not explain alone.\n\nIf none apply, inline it.\n</system-reminder>"
+            },
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 335 of packages/coding-agent/src/tools/browser/attach.ts that [packages/coding-agent/src/tools/browser/attach.ts#BB08] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  335:\tconst split = word.trim().split(/\\s+/);\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        }
+      ],
+      "finalDiff": "diff --git a/packages/coding-agent/src/tools/bash.ts b/packages/coding-agent/src/tools/bash.ts\nindex 8bdd3bd..b75c192 100644\n--- a/packages/coding-agent/src/tools/bash.ts\n+++ b/packages/coding-agent/src/tools/bash.ts\n@@ -334,6 +334,7 @@ const bashSchemaBase = type({\n \t\"timeout?\": type(\"number\").describe(BASH_TIMEOUT_DESCRIPTION),\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n });\n \n const bashSchemaWithAsync = type({\n@@ -342,6 +343,7 @@ const bashSchemaWithAsync = type({\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n \t\"async?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n });\n \n const bashSchemaWithService = type({\n@@ -349,6 +351,7 @@ const bashSchemaWithService = type({\n \t\"timeout?\": type(\"number\").describe(BASH_TIMEOUT_DESCRIPTION),\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n \t\"name?\": \"string <= 48\",\n \t\"ready?\": type({\n \t\t\"log?\": \"string\",\n@@ -365,6 +368,7 @@ const bashSchemaWithAsyncAndService = type({\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n \t\"async?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n \t\"name?\": \"string <= 48\",\n \t\"ready?\": type({\n \t\t\"log?\": \"string\",\n@@ -389,7 +393,7 @@ export interface BashToolInput {\n \tready?: ServiceReady;\n \tenv?: Record<string, string>;\n \tasync?: boolean;\n-\tpty?: boolean;\n+\tverification?: boolean;\n }\n \n export interface BashToolOptions {}\n@@ -663,6 +667,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\trequestedTimeoutSec?: number;\n \t\t\tnotices?: readonly string[];\n \t\t\twallTimeMs?: number;\n+\t\t\tverification?: boolean;\n \t\t} = {},\n \t): Promise<AgentToolResult<BashToolDetails>> {\n \t\tconst exitCode = result.exitCode;\n@@ -690,6 +695,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\tconst isTimeout = result.timedOut === true;\n \n \t\tconst details: BashToolDetails = {};\n+\t\tif (options.verification === true) {\n+\t\t\tdetails.verification = { passed: !failedExit && !isTimeout };\n+\t\t}\n \t\tif (timeoutSec === undefined) {\n \t\t\tdetails.timeoutDisabled = true;\n \t\t} else {\n@@ -903,7 +911,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \n \tasync execute(\n \t\t_toolCallId: string,\n-\t\t{ command: rawCommand, timeout: rawTimeout, cwd, name, ready, env, async: asyncRequested, pty }: BashToolInput,\n+\t\t{ command: rawCommand, timeout: rawTimeout, cwd, name, ready, env, async: asyncRequested, verification, pty }: BashToolInput,\n \t\tsignal?: AbortSignal,\n \t\tonUpdate?: AgentToolUpdateCallback<BashToolDetails>,\n \t\tctx?: AgentToolContext,\n@@ -922,6 +930,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\t\tcommand = cd.rest;\n \t\t\t}\n \t\t}\n+\t\tif (verification && (asyncRequested === true || name !== undefined)) {\n+\t\t\tthrow new ToolError(\"Verification requires a foreground command; async execution and named services are not supported.\");\n+\t\t}\n \t\tif (name !== undefined) {\n \t\t\tif (!this.#launchEnabled) throw new ToolError(\"Service launch is disabled in this session.\");\n \t\t\tif (asyncRequested !== undefined || rawTimeout !== undefined)\n@@ -1499,6 +1510,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\trequestedTimeoutSec,\n \t\t\tnotices: pendingNotices,\n \t\t\twallTimeMs,\n+\t\t\tverification: verification === true ? true : undefined,\n \t\t});\n \t}\n }\ndiff --git a/packages/coding-agent/src/tools/browser/attach.ts b/packages/coding-agent/src/tools/browser/attach.ts\nindex 1e9b65b..46e350d 100644\n--- a/packages/coding-agent/src/tools/browser/attach.ts\n+++ b/packages/coding-agent/src/tools/browser/attach.ts\n@@ -305,19 +305,42 @@ async function resolveWrapperTarget(wrapperPath: string): Promise<string | null> {\n \tif (process.platform !== \"linux\") return null;\n \tconst stat = await fs.stat(wrapperPath).catch(() => null);\n \tif (!stat || !stat.isFile() || stat.size > 65_536) return null;\n-\tconst content = await Bun.file(wrapperPath)\n-\t\t.text()\n+\tconst bytes = await Bun.file(wrapperPath)\n+\t\t.arrayBuffer()\n \t\t.catch(() => null);\n-\tif (!content || content.charCodeAt(0) === 0x7f) return null;\n+\tif (!bytes) return null;\n+\tconst content = new TextDecoder().decode(bytes);\n \tlet target: string | null = null;\n \tconst execRegex = /^\\s*exec\\s+(?:-a\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?[\"']?\\$(?:HERE|\\{HERE\\})\\/([^\\s\"'`;}]+)/;\n \tfor (const line of content.split(\"\\n\")) {\n \t\tconst match = execRegex.exec(line);\n \t\tif (match?.[1]) target = match[1];\n \t}\n-\tif (!target) return null;\n-\tconst joined = path.join(path.dirname(wrapperPath), target);\n-\treturn fs.realpath(joined).catch(() => joined);\n+\tif (target) {\n+\t\tconst joined = path.join(path.dirname(wrapperPath), target);\n+\t\treturn fs.realpath(joined).catch(() => joined);\n+\t}\n+\treturn null;\n+}\n+\n+async function findChromeWrapperProcesses(wrapperPath: string): Promise<Process[]> {\n+\tlet entries: string[];\n+\ttry {\n+\t\tentries = await fs.readdir(\"/proc\");\n+\t} catch {\n+\t\treturn [];\n+\t}\n+\tconst matches: Process[] = [];\n+\tfor (const entry of entries) {\n+\t\tif (!/^\\d+$/.test(entry)) continue;\n+\t\ttry {\n+\t\t\tconst environment = await fs.readFile(`/proc/${entry}/environ`);\n+\t\t\tif (!environment.includes(Buffer.from(`CHROME_WRAPPER=${wrapperPath}\\0`))) continue;\n+\t\t\tconst process = Process.fromPid(Number(entry));\n+\t\t\tif (process) matches.push(process);\n+\t\t} catch {}\n+\t}\n+\treturn matches;\n }\n \n /**\n@@ -376,15 +399,18 @@ ): Promise<{ cdpUrl: string; pid: number } | null> {\n \t\t\t? normalizeUserDataDir(requestedUserDataDir)\n \t\t\t: null;\n \t// Process paths use the executable real path, not its launcher symlink. A distro\n-\t// wrapper script defeats realpath, so resolve through the wrapper exec target\n-\t// for Chromium-family browsers on Linux.\n+\t// wrapper sets CHROME_WRAPPER and execs the real browser, so the wrapper path is\n+\t// absent from argv; include those processes when the resolved exec target matches.\n \tconst executablePath = await fs.realpath(exe).catch(() => exe);\n \tconst base = path.basename(exe).replace(/\\.exe$/i, \"\");\n \tconst isChromium = CHROMIUM_BROWSER_BASENAME.test(base) || Object.hasOwn(CHROMIUM_FLATPAK_IDS, base);\n \tconst wrapperTarget = process.platform === \"linux\" && isChromium ? await resolveWrapperTarget(executablePath) : null;\n-\tconst candidates = Process.fromPath(wrapperTarget ?? executablePath).filter(\n-\t\tcandidate => candidate.status() === ProcessStatus.Running,\n-\t);\n+\tconst candidates = [\n+\t\t...Process.fromPath(wrapperTarget ?? executablePath),\n+\t\t...(wrapperTarget ? Process.fromPath(executablePath) : []),\n+\t\t...(process.platform === \"linux\" && isChromium ? await findChromeWrapperProcesses(executablePath) : []),\n+\t].filter((candidate, index, all) => all.findIndex(other => other.pid === candidate.pid) === index)\n+\t\t.filter(candidate => candidate.status() === ProcessStatus.Running);\n \tconst candidateArgs: string[][] = [];\n \tlet hasUnreadableCandidate = false;\n \tfor (const process of candidates) {\n"
+    },
+    "revised": {
+      "summary": {
+        "system": "piforge",
+        "cliPath": "/tmp/pi-forge-edit-measurements/runtime/packages/coding-agent/src/cli.ts",
+        "model": "openai-codex/gpt-6-luna",
+        "thinkingLevel": "low",
+        "exitCode": 0,
+        "testExitCode": 0,
+        "passed": true,
+        "orchestrationPassed": true,
+        "orchestrationFailure": null,
+        "budgetStopReason": null,
+        "adaptiveMode": "auto",
+        "governorDecisions": [
+          {
+            "trigger": "initial",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V2"
+          },
+          {
+            "trigger": "scope",
+            "band": "normal",
+            "workerCount": 0,
+            "verificationFloor": "V1"
+          },
+          {
+            "trigger": "runtime",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V2"
+          },
+          {
+            "trigger": "scope",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V2"
+          },
+          {
+            "trigger": "verification_failure",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          },
+          {
+            "trigger": "runtime",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V2"
+          },
+          {
+            "trigger": "verification_failure",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          },
+          {
+            "trigger": "scope",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          },
+          {
+            "trigger": "scope",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          },
+          {
+            "trigger": "scope",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          },
+          {
+            "trigger": "scope",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          }
+        ],
+        "changedFiles": [
+          "packages/coding-agent/src/tools/bash.ts",
+          "packages/coding-agent/src/tools/browser/attach.ts"
+        ],
+        "filesWithinScope": true,
+        "toolCalls": [
+          "todo",
+          "glob",
+          "grep",
+          "read",
+          "todo",
+          "read",
+          "edit",
+          "todo",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "todo",
+          "grep",
+          "read",
+          "todo",
+          "bash",
+          "read",
+          "read",
+          "edit",
+          "grep",
+          "read",
+          "write",
+          "grep",
+          "read",
+          "write",
+          "grep",
+          "edit",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "bash",
+          "bash",
+          "write",
+          "bash",
+          "read",
+          "edit",
+          "bash",
+          "edit",
+          "read",
+          "edit",
+          "bash",
+          "grep",
+          "read",
+          "edit",
+          "edit",
+          "bash",
+          "read",
+          "edit",
+          "bash",
+          "read",
+          "grep",
+          "read",
+          "edit",
+          "bash",
+          "read",
+          "todo",
+          "todo",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "bash",
+          "todo",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "bash",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "bash",
+          "bash",
+          "edit",
+          "edit",
+          "bash",
+          "grep",
+          "read",
+          "read",
+          "grep",
+          "edit",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "bash",
+          "todo",
+          "todo",
+          "todo"
+        ],
+        "assistantTurns": 116,
+        "inputTokens": 213934,
+        "outputTokens": 12269,
+        "cacheReadTokens": 6807552,
+        "cacheWriteTokens": 0,
+        "totalTokens": 7033755,
+        "costUsd": 0.09560342,
+        "wallTimeMs": 639723.025569,
+        "humanInterventions": 0,
+        "transcriptPath": "/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/transcript.jsonl",
+        "sessionDirectory": "/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/sessions",
+        "workspacePath": "/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace",
+        "testOutput": "bun test v1.4.2 (744846f84)\n\n\npackages/coding-agent/test/bash-verification-boundaries.test.ts:\n(pass) does not add verification metadata to an ordinary command when verification is explicitly false [46.95ms]\n(pass) accepts a foreground verification command with async explicitly false [2.42ms]\n\npackages/coding-agent/test/bash-background-audit.test.ts:\n(pass) keeps ordinary foreground commands usable with auto-background enabled and no job manager [2.54ms]\n(pass) reports verification failure when a foreground command times out [1228.57ms]\n\npackages/coding-agent/test/bash-verification-bench.test.ts:\n(pass) reports verification success and failure while leaving ordinary results unmarked [7.56ms]\n(pass) rejects verification checks requested as asynchronous jobs or services [0.29ms]\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n(pass) reuses Chromium launched through a compiled distro wrapper [80.09ms]\n\n 7 pass\n 0 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.67s]"
+      },
+      "sessions": [
+        {
+          "path": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "models": [
+            "openai-codex/gpt-6-luna"
+          ],
+          "thinkingLevels": [
+            "low"
+          ],
+          "usage": {
+            "toolCalls": [
+              "todo",
+              "glob",
+              "grep",
+              "read",
+              "todo",
+              "read",
+              "edit",
+              "todo",
+              "read",
+              "edit",
+              "read",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "todo",
+              "grep",
+              "read",
+              "todo",
+              "bash",
+              "read",
+              "read",
+              "edit",
+              "grep",
+              "read",
+              "write",
+              "grep",
+              "read",
+              "write",
+              "grep",
+              "edit",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "bash",
+              "bash",
+              "write",
+              "bash",
+              "read",
+              "edit",
+              "bash",
+              "edit",
+              "read",
+              "edit",
+              "bash",
+              "grep",
+              "read",
+              "edit",
+              "edit",
+              "bash",
+              "read",
+              "edit",
+              "bash",
+              "read",
+              "grep",
+              "read",
+              "edit",
+              "bash",
+              "read",
+              "todo",
+              "todo",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "bash",
+              "todo",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "bash",
+              "read",
+              "edit",
+              "read",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "edit",
+              "bash",
+              "bash",
+              "edit",
+              "edit",
+              "bash",
+              "grep",
+              "read",
+              "read",
+              "grep",
+              "edit",
+              "edit",
+              "edit",
+              "read",
+              "edit",
+              "bash",
+              "todo",
+              "todo",
+              "todo"
+            ],
+            "assistantTurns": 116,
+            "inputTokens": 213934,
+            "outputTokens": 12269,
+            "cacheReadTokens": 6807552,
+            "cacheWriteTokens": 0,
+            "totalTokens": 7033755,
+            "costUsd": 0.09560342
+          },
+          "checkResults": [
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "23 | }\n24 | \n25 | it(\"does not add verification metadata to an ordinary command when verification is explicitly false\", async () => {\n26 | \tconst result = await makeTool().execute(\"ordinary\", { command: \"exit 0\", verification: false });\n27 | \texpect(result.isError).not.toBe(true);\n28 | \texpect(result.details).not.toHaveProperty(\"verification\");\n                                 ^\nerror: expect(received).not.toHaveProperty(path)\n\nExpected path: not \"verification\"\n\nReceived value: {\n  passed: false,\n}\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/bash-verification-boundaries.test.ts:28:29)\n(fail) does not add verification metadata to an ordinary command when verification is explicitly false [37.90ms]\n\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:45823\",\n-   \"pid\": 1078902,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [85.53ms]\n\n 5 pass\n 2 fail\nRan 7 tests across 4 files. [1.71s]\n[raw output: artifact://1]\n\n\nWall time: 1.80 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1796.1399250000104,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:36861\",\n-   \"pid\": 1085478,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [73.38ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.65s]\n\n\nWall time: 1.68 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1677.898865999974,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": false,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  pid: 1086060,\n  env: \"GUM_WRITE_CURSOR_BACKGROUND=#1e1e2e\\u0000npm_config_yes=true\\u0000GUM_FILTER_HEADER_FOREGROUND=#cdd6f4\\u0000COLORTERM=truecolor\\u0000HYPRLAND_CMD=Hyprland --watchdog-fd 4\\u0000XDG_CONFIG_DIRS=/etc/xdg\\u0000PYTHONUNBUFFERED=1\\u0000PIP_NO_INPUT=1\\u0000GUM_FILE_FILE_SIZE_FOREGROUND=#585b70\\u0000LESS=FRX\\u0000XDG_SESSION_PATH=/org/freedesktop/DisplayManager/Session0\\u0000XDG_MENU_PREFIX=hyprland-\\u0000GUM_SPIN_SPINNER_BACKGROUND=#1e1e2e\\u0000GUM_CONFIRM_PROMPT_FOREGROUND=#89b4fa\\u0000FNM_ARCH=x64\\u0000COMPOSER_NO_INTERACTION=1\\u0000XDG_BACKEND=wayland\\u0000BACKGROUND=#1e1e2e\\u0000GUM_FILE_FILE_BACKGROUND=#1e1e2e\\u0000OMPCODE=1\\u0000GUM_FILTER_SELECTED_PREFIX_FOREGROUND=#cdd6f4\\u0000TF_IN_AUTOMATION=1\\u0000GUM_LOG_VALUE_BACKGROUND=#1e1e2e\\u0000GUM_FILT…\n  ps: [ \"1086059 bun -e const p=Bun.spawn([\\\"bash\\\",\\\"-c\\\",\\\"sleep 2\\\"],{env:{...Bun.env,CHROME_WRAPPER:\\\"/tmp/testwrap\\\"},stdout:\\\"ignore\\\",stderr:\\\"ignore\\\"}); await Bun.sleep(100); console.log({pid:p.pid, env:await Bun.file(`/proc/${p.pid}/environ`).text().catch(String), ps:(await Bun.$`ps -eo pid=,args=`.quiet()).text().split(\\\"\\\\n\\\").filter(x=>x.includes(\\\"sleep 2\\\"))}); p.kill();\",\n    \"1086060 sleep 2\"\n  ],\n}\n\n\nWall time: 0.14 seconds\n\n[Some lines truncated to 768 bytes. Read artifact://3 for full output]"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 10,
+                "wallTimeMs": 136.78595999997924,
+                "meta": {
+                  "limits": {
+                    "columnTruncated": {
+                      "maxColumn": 768,
+                      "unit": "bytes",
+                      "artifactId": "3"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "isError": false,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "[ \"CHROME_WRAPPER=/tmp/testwrap\" ]\n\n\nWall time: 0.13 seconds"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 10,
+                "wallTimeMs": 125.4178130000073
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:33419\",\n-   \"pid\": 1088424,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [74.11ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.64s]\n\n\nWall time: 1.67 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1671.505508000002,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:34081\",\n-   \"pid\": 1090801,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [76.42ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.65s]\n\n\nWall time: 1.71 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1713.438479000004,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "381 | \tconst executablePath = await fs.realpath(exe).catch(() => exe);\n382 | \tconst base = path.basename(exe).replace(/\\.exe$/i, \"\");\n383 | \tconst isChromium = CHROMIUM_BROWSER_BASENAME.test(base) || Object.hasOwn(CHROMIUM_FLATPAK_IDS, base);\n384 | \tconst wrapperTarget = process.platform === \"linux\" && isChromium ? await resolveWrapperTarget(executablePath) : null;\n385 | \tconst processPath = wrapperTarget ?? executablePath;\n386 | \tconst candidates = Process.fromPath(processPath).filter(candidate => candidate.status() === ProcessStatus.Running);\n                          ^\nReferenceError: Process is not defined\n      at findReusableCdp (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/src/tools/browser/attach.ts:386:21)\n      at async <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:17)\n(fail) reuses Chromium launched through a compiled distro wrapper [73.56ms]\n\n 6 pass\n 1 fail\nRan 7 tests across 4 files. [1.67s]\n[raw output: artifact://8]\n\n\nWall time: 1.73 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1731.2925799999502,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:43997\",\n-   \"pid\": 1092905,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [78.87ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.70 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1703.1437450000085,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:40389\",\n-   \"pid\": 1094610,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [78.28ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.69 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1691.1062159999856,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:44421\",\n-   \"pid\": 1098167,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [70.30ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.65s]\n\n\nWall time: 1.69 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1686.4336809999659,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:43039\",\n-   \"pid\": 1099973,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [79.83ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.72 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1717.661551999976,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:35133\",\n-   \"pid\": 1101810,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [74.73ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.70 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1696.5706459999783,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "/tmp/argv-1102439.c: In function ‘main’:\n/tmp/argv-1102439.c:3:155: error: stray ‘\\’ in program\n    3 | int main(int c,char**v){setenv(\"CHROME_WRAPPER\",\"/tmp/wrapper\",1);char*a[]={\"/proc/self/exe\",\"--eval\",\"process.stdout.write(JSON.stringify(process.argv)+\"\\n\"); await Bun.stdin.text()\",\"--user-data-dir=/tmp/p\",\"--remote-debugging-port=32123\",0};execv(a[0],a);}\n      |                                                                                                                                                           ^\n/tmp/argv-1102439.c:3:156: error: expected ‘}’ before ‘n’\n    3 | int main(int c,char**v){setenv(\"CHROME_WRAPPER\",\"/tmp/wrapper\",1);char*a[]={\"/proc/self/exe\",\"--eval\",\"process.stdout.write(JSON.stringify(process.argv)+\"\\n\"); await Bun.stdin.text()\",\"--user-data-dir=/tmp/p\",\"--remote-debugging-port=32123\",0};execv(a[0],a);}\n      |                                                                            ~                                                                               ^\n1 | const f=`/tmp/argv-${process.pid}.c`; await Bun.write(f,`#include <stdlib.h>\\n#include <unistd.h>\\nint main(int c,char**v){setenv(\"CHROME_WRAPPER\",\"/tmp/wrapper\",1);char*a[]={\"/proc/self/exe\",\"--eval\",\"process.stdout.write(JSON.stringify(process.argv)+\"\\\\n\"); await Bun.stdin.text()\",\"--user-data-dir=/tmp/p\",\"--remote-debugging-port=32123\",0};execv(a[0],a);}`); const r=await Bun.$`cc ${f} -o /tmp/wrapper`; const p=Bun.spawn([\"/tmp/wrapper\",\"--eval\",`process.stdout.write(JSON.stringify(process.argv)+\"\\\\n\"); await Bun.stdin.text()`,`--user-data-dir=/tmp/p`,`--remote-debugging-port=32123`],{stdin:\"pipe\",stdout:\"pipe\",stderr:\"ignore\"}); await Bun.sleep(100); console.log({pid:p.pid,cmd:await Bun.file(`/proc/${p.pid}/cmdline`).text(),env:(await Bun.file(`/pr…\n\nShellError: Failed with exit code 1\n exitCode: 1,\n   stdout: \"\",\n   stderr: \"/tmp/argv-1102439.c: In function ‘main’:\\n/tmp/argv-1102439.c:3:155: error: stray ‘\\\\’ in program\\n    3 | int main(int c,char**v){setenv(\\\"CHROME_WRAPPER\\\",\\\"/tmp/wrapper\\\",1);char*a[]={\\\"/proc/self/exe\\\",\\\"--eval\\\",\\\"process.stdout.write(JSON.stringify(process.argv)+\\\"\\\\n\\\"); await Bun.stdin.text()\\\",\\\"--user-data-dir=/tmp/p\\\",\\\"--remote-debugging-port=32123\\\",0};execv(a[0],a);}\\n      |                                                                                                                                                           ^\\n/tmp/argv-1102439.c:3:156: error: expected ‘}’ before ‘n’\\n    3 | int main(int c,char**v){setenv(\\\"CHROME_WRAPPER\\\",\\\"/tmp/wrapper\\\",1);char*a[]={\\\"/proc/self/exe\\\",\\\"--eval\\\",\\\"process.…\n\n      at new ShellPromise (75:16)\n      at BunShell (191:35)\n      at /tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/[eval]:1:382\n\nBun v1.4.2 (Linux x64)\n\n\nWall time: 0.04 seconds\n\nCommand exited with code 1\n\n[Some lines truncated to 768 bytes. Read artifact://14 for full output]"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 10,
+                "wallTimeMs": 44.192750999936834,
+                "exitCode": 1,
+                "meta": {
+                  "limits": {
+                    "columnTruncated": {
+                      "maxColumn": 768,
+                      "unit": "bytes",
+                      "artifactId": "14"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:46455\",\n-   \"pid\": 1103005,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [78.64ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.65s]\n\n\nWall time: 1.70 seconds\n\nCommand exited with code 1"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1695.9038249999285,
+                "exitCode": 1,
+                "verification": {
+                  "passed": false
+                }
+              }
+            },
+            {
+              "isError": false,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "bun test v1.4.2 (744846f84)\n\n 7 pass\n 0 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.70 seconds"
+                }
+              ],
+              "details": {
+                "timeoutSeconds": 3600,
+                "wallTimeMs": 1701.5201270000543,
+                "verification": {
+                  "passed": true
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "taskCalls": [],
+      "governor": [
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 1,
+          "trigger": "initial",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 4,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V2",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "scope, dependencies, or risk require milestones"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 2,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 3,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6
+          },
+          "decision": {
+            "version": 1,
+            "band": "normal",
+            "confidence": 0.6,
+            "executionMode": "direct",
+            "planningDepth": "brief",
+            "verification": "targeted_checks",
+            "verificationFloor": "V1",
+            "verificationCeiling": "V2",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 54400,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 3,
+          "trigger": "runtime",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 3,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 8,
+              "failedCalls": 2,
+              "editedFiles": 2,
+              "verificationFailures": 0,
+              "failedWorkers": 0,
+              "failedMutations": 2,
+              "stalledToolMs": 0,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V2",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 4,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 2,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 8,
+              "failedCalls": 2,
+              "editedFiles": 2,
+              "verificationFailures": 0,
+              "failedWorkers": 0,
+              "failedMutations": 2,
+              "stalledToolMs": 0,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V2",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 5,
+          "trigger": "verification_failure",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 2,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 7,
+              "failedCalls": 3,
+              "editedFiles": 2,
+              "verificationFailures": 1,
+              "failedWorkers": 0,
+              "failedMutations": 2,
+              "stalledToolMs": 1797,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V3",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 6,
+          "trigger": "runtime",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 2,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 8,
+              "failedCalls": 2,
+              "editedFiles": 2,
+              "verificationFailures": 0,
+              "failedWorkers": 0,
+              "failedMutations": 2,
+              "stalledToolMs": 0,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V2",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 7,
+          "trigger": "verification_failure",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 2,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 7,
+              "failedCalls": 3,
+              "editedFiles": 2,
+              "verificationFailures": 1,
+              "failedWorkers": 0,
+              "failedMutations": 2,
+              "stalledToolMs": 1678,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V3",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 8,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 3,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 7,
+              "failedCalls": 3,
+              "editedFiles": 2,
+              "verificationFailures": 1,
+              "failedWorkers": 0,
+              "failedMutations": 2,
+              "stalledToolMs": 1678,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V3",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 9,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 2,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 7,
+              "failedCalls": 3,
+              "editedFiles": 2,
+              "verificationFailures": 1,
+              "failedWorkers": 0,
+              "failedMutations": 2,
+              "stalledToolMs": 1678,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V3",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "moderate scope",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 10,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 1,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 7,
+              "failedCalls": 3,
+              "editedFiles": 2,
+              "verificationFailures": 1,
+              "failedWorkers": 0,
+              "failedMutations": 2,
+              "stalledToolMs": 1678,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V3",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "small independent scope",
+              "a declared verification failure raised effort",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "version": 1,
+          "revision": 11,
+          "trigger": "scope",
+          "signalSource": "todo",
+          "signals": {
+            "fileCount": 0,
+            "taskCount": 0,
+            "independentTasks": 0,
+            "dependencyEdges": 0,
+            "highRisk": false,
+            "confidence": 0.6,
+            "runtime": {
+              "completedCalls": 16,
+              "explorationCalls": 7,
+              "failedCalls": 3,
+              "editedFiles": 2,
+              "verificationFailures": 1,
+              "failedWorkers": 0,
+              "failedMutations": 2,
+              "stalledToolMs": 1678,
+              "stalledExplorationCalls": 0
+            }
+          },
+          "decision": {
+            "version": 1,
+            "band": "complex",
+            "confidence": 0.6,
+            "executionMode": "planned",
+            "planningDepth": "milestones",
+            "verification": "targeted_checks",
+            "verificationFloor": "V3",
+            "verificationCeiling": "V3",
+            "reviewer": "risk_based",
+            "workerCount": 0,
+            "modelRole": "task",
+            "model": {
+              "provider": "openai-codex",
+              "id": "gpt-6-luna"
+            },
+            "effort": "low",
+            "contextBudgetTokens": 95200,
+            "capabilityIds": [],
+            "evidence": [
+              "small independent scope",
+              "a declared verification failure raised effort",
+              "recent exploration and tool failures increased effort pressure"
+            ],
+            "clamps": []
+          }
+        }
+      ],
+      "failedToolResults": 22,
+      "failureCounts": {
+        "unseenEditAnchors": 6,
+        "staleEditTags": 0,
+        "otherEditFailures": 2,
+        "readFailures": 0,
+        "verificationFailures": 11,
+        "otherBashFailures": 1,
+        "otherFailures": 2
+      },
+      "failures": [
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "`PUT 1055.=1055:` rejected: a selected boundary row is required for the file to parse, but the body indentation does not establish whether it belongs before or after that row. Re-read the region and re-issue with a range that excludes every unchanged boundary row."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 1260 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#EF0B] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  1260:\t\t\t\tconst createRaced = await Promise.race([\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "23 | }\n24 | \n25 | it(\"does not add verification metadata to an ordinary command when verification is explicitly false\", async () => {\n26 | \tconst result = await makeTool().execute(\"ordinary\", { command: \"exit 0\", verification: false });\n27 | \texpect(result.isError).not.toBe(true);\n28 | \texpect(result.details).not.toHaveProperty(\"verification\");\n                                 ^\nerror: expect(received).not.toHaveProperty(path)\n\nExpected path: not \"verification\"\n\nReceived value: {\n  passed: false,\n}\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/bash-verification-boundaries.test.ts:28:29)\n(fail) does not add verification metadata to an ordinary command when verification is explicitly false [37.90ms]\n\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:45823\",\n-   \"pid\": 1078902,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [85.53ms]\n\n 5 pass\n 2 fail\nRan 7 tests across 4 files. [1.71s]\n[raw output: artifact://1]\n\n\nWall time: 1.80 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1796.1399250000104,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "Invalid args for xd://lsp: Validation failed for tool \"lsp\":\n  - action: action must be \"diagnostics\", \"definition\", \"references\", \"hover\", \"symbols\", \"rename\", \"rename_file\", \"code_actions\", \"type_definition\", \"implementation\", \"status\", \"reload\", \"capabilities\" or \"request\" (was missing)\n\nReceived arguments:\n{}\n\n# lsp — LSP\n\nSymbol-aware code intelligence from language servers — navigation, refactors, and diagnostics where text tools miss callsites.\n\n<operations>\n- Position-based: `file` + `line` + `symbol` (substring; `#N` for Nth match). `line` is 1-indexed.\n- `rename` — applies by default; `apply: false` previews. Project-aware lookups ERROR without `symbol` — no silent fallback on missing/ambiguous matches.\n- `code_actions` — lists by default; apply ONE with `apply: true` + `query` (title substring or index).\n- `rename_file` — moves file AND rewrites all imports/references; applies by default.\n- `diagnostics` — path, glob (`src/**/*.ts`), or `file: \"*\"` for workspace.\n- `symbols` — `file` lists file symbols; `file: \"*\"` + `query` searches workspace.\n- `reload` — restart one server (`file`) or all (`*`); `reload *` re-reads LSP config.\n- `request` — raw: `query` = method, `payload` = JSON params (else auto-built).\n</operations>\n\n<critical>\n- Symbol-aware work (rename, references, definition, code actions) MUST use `lsp` whenever a server is available.\n  It follows shadowing, re-exports, and cross-file usages text tools miss.\n- NEVER do a cross-file rename with `ast_edit`/`sed`/hand edits when `lsp` `rename`/`rename_file` can — text renames silently drop callsites.\n- Reach for `code_actions` on imports, quick-fixes, and server-known refactors before editing by hand.\n</critical>\n\n## Schema\n```ts\ntype Args = {\n  action: \"diagnostics\" | \"definition\" | \"references\" | \"hover\" | \"symbols\" | \"rename\" | \"rename_file\" | \"code_actions\" | \"type_definition\" | \"implementation\" | \"status\" | \"reload\" | \"capabilities\" | \"request\";\n  file?: string;\n  line?: number;\n  symbol?: string;\n  query?: string;\n  new_name?: string;\n  apply?: boolean;\n  /** Timeout in seconds (default 20; range 5–300). */\n  timeout?: number;\n  payload?: string;\n};\n```\nExecute by writing JSON to xd://lsp."
+            }
+          ],
+          "details": {
+            "xdev": {
+              "tool": "lsp",
+              "mode": "execute"
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 389-404 of packages/coding-agent/src/tools/browser/attach.ts that [packages/coding-agent/src/tools/browser/attach.ts#80BF] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  389:\t// Distro wrappers exec the browser after setting CHROME_WRAPPER. The wrapper\n  390:\t// path is therefore absent from argv; include only matching Chromium processes\n  391:\t// whose environment identifies this exact wrapper.\n  392:\tif (wrapperTarget && process.platform === \"linux\") {\n  393:\t\tfor (const candidate of Process.all()) {\n  394:\t\t\tif (candidate.status() !== ProcessStatus.Running || candidates.some(existing => existing.pid === candidate.pid))\n  395:\t\t\t\tcontinue;\n  396:\t\t\tlet environment: Record<string, string>;\n  397:\t\t\ttry {\n  398:\t\t\t\tenvironment = candidate.env();\n  399:\t\t\t} catch {\n  400:\t\t\t\tcontinue;\n  401:\t\t\t}\n  402:\t\t\tif (environment.CHROME_WRAPPER && (await fs.realpath(environment.CHROME_WRAPPER).catch(() => environment.CHROME_WRAPPER)) === executablePath) {\n  403:\t\t\t\tcandidates.push(candidate);\n  404:\t\t\t}\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:36861\",\n-   \"pid\": 1085478,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [73.38ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.65s]\n\n\nWall time: 1.68 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1677.898865999974,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "content is required for crates/pi-natives/src/ps.rs:145-190;packages/coding-agent/src/tools/browser/attach.ts:1-12,378-432."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:33419\",\n-   \"pid\": 1088424,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [74.11ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.64s]\n\n\nWall time: 1.67 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1671.505508000002,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 399, 401, 403-406 of packages/coding-agent/src/tools/browser/attach.ts that [packages/coding-agent/src/tools/browser/attach.ts#62B3] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  399:\t\t\t\tenv = await Bun.file(`/proc/${pid}/environ`).text();\n  401:\t\t\t\tcontinue;\n  403:\t\t\tconst wrapper = env.split(\"\\0\").find(entry => entry.startsWith(\"CHROME_WRAPPER=\"))?.slice(\"CHROME_WRAPPER=\".length);\n  404:\t\t\tif (!wrapper || (await fs.realpath(wrapper).catch(() => wrapper)) !== executablePath) continue;\n  405:\t\t\tconst candidate = Process.fromPid(pid);\n  406:\t\t\tif (candidate?.status() === ProcessStatus.Running) candidates.push(candidate);\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:34081\",\n-   \"pid\": 1090801,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [76.42ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.65s]\n\n\nWall time: 1.71 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1713.438479000004,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "381 | \tconst executablePath = await fs.realpath(exe).catch(() => exe);\n382 | \tconst base = path.basename(exe).replace(/\\.exe$/i, \"\");\n383 | \tconst isChromium = CHROMIUM_BROWSER_BASENAME.test(base) || Object.hasOwn(CHROMIUM_FLATPAK_IDS, base);\n384 | \tconst wrapperTarget = process.platform === \"linux\" && isChromium ? await resolveWrapperTarget(executablePath) : null;\n385 | \tconst processPath = wrapperTarget ?? executablePath;\n386 | \tconst candidates = Process.fromPath(processPath).filter(candidate => candidate.status() === ProcessStatus.Running);\n                          ^\nReferenceError: Process is not defined\n      at findReusableCdp (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/src/tools/browser/attach.ts:386:21)\n      at async <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:17)\n(fail) reuses Chromium launched through a compiled distro wrapper [73.56ms]\n\n 6 pass\n 1 fail\nRan 7 tests across 4 files. [1.67s]\n[raw output: artifact://8]\n\n\nWall time: 1.73 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1731.2925799999502,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:43997\",\n-   \"pid\": 1092905,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [78.87ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.70 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1703.1437450000085,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:40389\",\n-   \"pid\": 1094610,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [78.28ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.69 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1691.1062159999856,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 419 of packages/coding-agent/src/tools/browser/attach.ts that [packages/coding-agent/src/tools/browser/attach.ts#995F] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  419:\t\t\targs = normalizeCandidateArgs(process.args());\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:44421\",\n-   \"pid\": 1098167,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [70.30ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.65s]\n\n\nWall time: 1.69 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1686.4336809999659,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 399-406 of packages/coding-agent/src/tools/browser/attach.ts that [packages/coding-agent/src/tools/browser/attach.ts#4135] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  399:\t\t\ttry {\n  400:\t\t\t\t[env, commandLine] = await Promise.all([\n  401:\t\t\t\t\tBun.file(`/proc/${entry}/environ`).text(),\n  402:\t\t\t\t\tBun.file(`/proc/${entry}/cmdline`).text(),\n  403:\t\t\t\t]);\n  404:\t\t\t} catch {\n  405:\t\t\t\tcontinue;\n  406:\t\t\t}\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 407-411 of packages/coding-agent/src/tools/browser/attach.ts that [packages/coding-agent/src/tools/browser/attach.ts#0D9F] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  407:\t\t\tif (!wrapper || (await fs.realpath(wrapper).catch(() => wrapper)) !== executablePath) continue;\n  408:\t\t\tconst candidate = Process.fromPid(pid);\n  409:\t\t\tif (candidate?.status() !== ProcessStatus.Running) continue;\n  410:\t\t\twrapperCandidates.push({ process: candidate, args: normalizeCandidateArgs(commandLine.split(\"\\0\").filter(Boolean)) });\n  411:\t\t}\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:43039\",\n-   \"pid\": 1099973,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [79.83ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.72 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1717.661551999976,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "`PUT 412.=412:` rejected: a selected boundary row is required for the file to parse, but the body indentation does not establish whether it belongs before or after that row. Re-read the region and re-issue with a range that excludes every unchanged boundary row."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:35133\",\n-   \"pid\": 1101810,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [74.73ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]\n\n\nWall time: 1.70 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1696.5706459999783,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "/tmp/argv-1102439.c: In function ‘main’:\n/tmp/argv-1102439.c:3:155: error: stray ‘\\’ in program\n    3 | int main(int c,char**v){setenv(\"CHROME_WRAPPER\",\"/tmp/wrapper\",1);char*a[]={\"/proc/self/exe\",\"--eval\",\"process.stdout.write(JSON.stringify(process.argv)+\"\\n\"); await Bun.stdin.text()\",\"--user-data-dir=/tmp/p\",\"--remote-debugging-port=32123\",0};execv(a[0],a);}\n      |                                                                                                                                                           ^\n/tmp/argv-1102439.c:3:156: error: expected ‘}’ before ‘n’\n    3 | int main(int c,char**v){setenv(\"CHROME_WRAPPER\",\"/tmp/wrapper\",1);char*a[]={\"/proc/self/exe\",\"--eval\",\"process.stdout.write(JSON.stringify(process.argv)+\"\\n\"); await Bun.stdin.text()\",\"--user-data-dir=/tmp/p\",\"--remote-debugging-port=32123\",0};execv(a[0],a);}\n      |                                                                            ~                                                                               ^\n1 | const f=`/tmp/argv-${process.pid}.c`; await Bun.write(f,`#include <stdlib.h>\\n#include <unistd.h>\\nint main(int c,char**v){setenv(\"CHROME_WRAPPER\",\"/tmp/wrapper\",1);char*a[]={\"/proc/self/exe\",\"--eval\",\"process.stdout.write(JSON.stringify(process.argv)+\"\\\\n\"); await Bun.stdin.text()\",\"--user-data-dir=/tmp/p\",\"--remote-debugging-port=32123\",0};execv(a[0],a);}`); const r=await Bun.$`cc ${f} -o /tmp/wrapper`; const p=Bun.spawn([\"/tmp/wrapper\",\"--eval\",`process.stdout.write(JSON.stringify(process.argv)+\"\\\\n\"); await Bun.stdin.text()`,`--user-data-dir=/tmp/p`,`--remote-debugging-port=32123`],{stdin:\"pipe\",stdout:\"pipe\",stderr:\"ignore\"}); await Bun.sleep(100); console.log({pid:p.pid,cmd:await Bun.file(`/proc/${p.pid}/cmdline`).text(),env:(await Bun.file(`/pr…\n\nShellError: Failed with exit code 1\n exitCode: 1,\n   stdout: \"\",\n   stderr: \"/tmp/argv-1102439.c: In function ‘main’:\\n/tmp/argv-1102439.c:3:155: error: stray ‘\\\\’ in program\\n    3 | int main(int c,char**v){setenv(\\\"CHROME_WRAPPER\\\",\\\"/tmp/wrapper\\\",1);char*a[]={\\\"/proc/self/exe\\\",\\\"--eval\\\",\\\"process.stdout.write(JSON.stringify(process.argv)+\\\"\\\\n\\\"); await Bun.stdin.text()\\\",\\\"--user-data-dir=/tmp/p\\\",\\\"--remote-debugging-port=32123\\\",0};execv(a[0],a);}\\n      |                                                                                                                                                           ^\\n/tmp/argv-1102439.c:3:156: error: expected ‘}’ before ‘n’\\n    3 | int main(int c,char**v){setenv(\\\"CHROME_WRAPPER\\\",\\\"/tmp/wrapper\\\",1);char*a[]={\\\"/proc/self/exe\\\",\\\"--eval\\\",\\\"process.…\n\n      at new ShellPromise (75:16)\n      at BunShell (191:35)\n      at /tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/[eval]:1:382\n\nBun v1.4.2 (Linux x64)\n\n\nWall time: 0.04 seconds\n\nCommand exited with code 1\n\n[Some lines truncated to 768 bytes. Read artifact://14 for full output]"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 10,
+            "wallTimeMs": 44.192750999936834,
+            "exitCode": 1,
+            "meta": {
+              "limits": {
+                "columnTruncated": {
+                  "maxColumn": 768,
+                  "unit": "bytes",
+                  "artifactId": "14"
+                }
+              }
+            }
+          }
+        },
+        {
+          "session": "2026-10-04T21-16-56-556Z_01a108c6-eb6c-7589-860c-daf2cc099912.jsonl",
+          "tool": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:46455\",\n-   \"pid\": 1103005,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-edit-measurements/revised/piforge-1-C9sbIF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [78.64ms]\n\n 6 pass\n 1 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.65s]\n\n\nWall time: 1.70 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1695.9038249999285,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        }
+      ],
+      "finalDiff": "diff --git a/packages/coding-agent/src/tools/bash.ts b/packages/coding-agent/src/tools/bash.ts\nindex 8bdd3bd..ad49f19 100644\n--- a/packages/coding-agent/src/tools/bash.ts\n+++ b/packages/coding-agent/src/tools/bash.ts\n@@ -334,6 +334,7 @@ const bashSchemaBase = type({\n \t\"timeout?\": type(\"number\").describe(BASH_TIMEOUT_DESCRIPTION),\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n });\n \n const bashSchemaWithAsync = type({\n@@ -342,6 +343,7 @@ const bashSchemaWithAsync = type({\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n \t\"async?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n });\n \n const bashSchemaWithService = type({\n@@ -349,6 +351,7 @@ const bashSchemaWithService = type({\n \t\"timeout?\": type(\"number\").describe(BASH_TIMEOUT_DESCRIPTION),\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n \t\"name?\": \"string <= 48\",\n \t\"ready?\": type({\n \t\t\"log?\": \"string\",\n@@ -358,13 +361,13 @@ const bashSchemaWithService = type({\n \t}),\n \t\"env?\": type.record(\"string\", \"string\"),\n });\n-\n const bashSchemaWithAsyncAndService = type({\n \tcommand: \"string\",\n \t\"timeout?\": type(\"number\").describe(BASH_TIMEOUT_DESCRIPTION),\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n \t\"async?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n \t\"name?\": \"string <= 48\",\n \t\"ready?\": type({\n \t\t\"log?\": \"string\",\n@@ -390,6 +393,7 @@ export interface BashToolInput {\n \tenv?: Record<string, string>;\n \tasync?: boolean;\n \tpty?: boolean;\n+\tverification?: boolean;\n }\n \n export interface BashToolOptions {}\n@@ -660,9 +664,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\tresult: BashResult | BashInteractiveResult,\n \t\ttimeoutSec: number | undefined,\n \t\toptions: {\n-\t\t\trequestedTimeoutSec?: number;\n \t\t\tnotices?: readonly string[];\n \t\t\twallTimeMs?: number;\n+\t\t\tverification?: boolean;\n \t\t} = {},\n \t): Promise<AgentToolResult<BashToolDetails>> {\n \t\tconst exitCode = result.exitCode;\n@@ -701,6 +705,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\tif (options.wallTimeMs !== undefined) {\n \t\t\tdetails.wallTimeMs = options.wallTimeMs;\n \t\t}\n+\t\tif (options.verification === true) {\n+\t\t\tdetails.verification = { passed: !failedExit && !isTimeout };\n+\t\t}\n \t\tif (failedExit) {\n \t\t\tdetails.exitCode = exitCode;\n \t\t}\n@@ -903,7 +910,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \n \tasync execute(\n \t\t_toolCallId: string,\n-\t\t{ command: rawCommand, timeout: rawTimeout, cwd, name, ready, env, async: asyncRequested, pty }: BashToolInput,\n+\t\t{ command: rawCommand, timeout: rawTimeout, cwd, name, ready, env, async: asyncRequested, pty, verification }: BashToolInput,\n \t\tsignal?: AbortSignal,\n \t\tonUpdate?: AgentToolUpdateCallback<BashToolDetails>,\n \t\tctx?: AgentToolContext,\n@@ -922,6 +929,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\t\tcommand = cd.rest;\n \t\t\t}\n \t\t}\n+\t\tif (verification === true && (asyncRequested === true || name !== undefined)) {\n+\t\t\tthrow new ToolError(\"Verification commands must run in the foreground; async execution and named services are not allowed.\");\n+\t\t}\n \t\tif (name !== undefined) {\n \t\t\tif (!this.#launchEnabled) throw new ToolError(\"Service launch is disabled in this session.\");\n \t\t\tif (asyncRequested !== undefined || rawTimeout !== undefined)\n@@ -1052,7 +1062,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\tif (timeoutClampNotice) pendingNotices.push(timeoutClampNotice);\n \t\t}\n \n-\t\tif (asyncRequested) {\n+\t\tif (asyncRequested === true) {\n \t\t\tif (!this.session.asyncJobManager) {\n \t\t\t\tthrow new ToolError(\"Async job manager unavailable for this session.\");\n \t\t\t}\n@@ -1085,6 +1095,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t// At the running-job cap, fall through to direct foreground execution\n \t\t// instead of failing every bash call until a slot frees up.\n \t\tif (\n+\t\t\tverification !== true &&\n \t\t\tcfgBashAutoBackgroundEnabled.get(this.session.settings) &&\n \t\t\t!pty &&\n \t\t\t!bridgeTerminalAvailable &&\n@@ -1272,6 +1283,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\t\t\t\trequestedTimeoutSec,\n \t\t\t\t\t\tnotices: pendingNotices,\n \t\t\t\t\t\twallTimeMs: performance.now() - bridgeWallTimeStart,\n+\t\t\t\t\t\tverification,\n \t\t\t\t\t});\n \t\t\t\t}\n \n@@ -1347,6 +1359,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\t\t\t\t\trequestedTimeoutSec,\n \t\t\t\t\t\t\tnotices: pendingNotices,\n \t\t\t\t\t\t\twallTimeMs: performance.now() - bridgeWallTimeStart,\n+\t\t\t\t\t\t\tverification,\n \t\t\t\t\t\t});\n \t\t\t\t\t}\n \n@@ -1415,6 +1428,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\t\t\trequestedTimeoutSec,\n \t\t\t\t\tnotices: bridgeNotices,\n \t\t\t\t\twallTimeMs: performance.now() - bridgeWallTimeStart,\n+\t\t\t\t\tverification,\n \t\t\t\t});\n \t\t\t} finally {\n \t\t\t\tclearTimeout(timeoutTimer);\n@@ -1499,6 +1513,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\trequestedTimeoutSec,\n \t\t\tnotices: pendingNotices,\n \t\t\twallTimeMs,\n+\t\t\tverification,\n \t\t});\n \t}\n }\ndiff --git a/packages/coding-agent/src/tools/browser/attach.ts b/packages/coding-agent/src/tools/browser/attach.ts\nindex 1e9b65b..7d7b05f 100644\n--- a/packages/coding-agent/src/tools/browser/attach.ts\n+++ b/packages/coding-agent/src/tools/browser/attach.ts\n@@ -1,7 +1,9 @@\n import * as fs from \"node:fs/promises\";\n import * as net from \"node:net\";\n-import * as path from \"node:path\";\n+import * as fsSync from \"node:fs\";\n import { Process, ProcessStatus } from \"@oh-my-pi/pi-natives\";\n+import { $ } from \"bun\";\n+import * as path from \"node:path\";\n import { getBrowserProfilesDir } from \"@oh-my-pi/pi-utils\";\n import type { Socket } from \"bun\";\n import type { Browser, Page } from \"puppeteer-core\";\n@@ -382,19 +384,38 @@ ): Promise<{ cdpUrl: string; pid: number } | null> {\n \tconst base = path.basename(exe).replace(/\\.exe$/i, \"\");\n \tconst isChromium = CHROMIUM_BROWSER_BASENAME.test(base) || Object.hasOwn(CHROMIUM_FLATPAK_IDS, base);\n \tconst wrapperTarget = process.platform === \"linux\" && isChromium ? await resolveWrapperTarget(executablePath) : null;\n-\tconst candidates = Process.fromPath(wrapperTarget ?? executablePath).filter(\n-\t\tcandidate => candidate.status() === ProcessStatus.Running,\n-\t);\n+\tconst processPath = wrapperTarget ?? executablePath;\n+\tconst candidates = Process.fromPath(processPath).filter(candidate => candidate.status() === ProcessStatus.Running);\n+\t// Distro wrappers exec Chromium after setting CHROME_WRAPPER; the wrapper path\n+\t// is absent from the browser argv, including for compiled Linux launchers.\n+\tconst wrapperCandidates: Array<{ process: Process; args: string[] }> = [];\n+\tif (isChromium && process.platform === \"linux\") {\n+\t\tfor (const entry of await fs.readdir(\"/proc\").catch(() => [])) {\n+\t\t\tif (!/^\\d+$/.test(entry)) continue;\n+\t\t\tconst pid = Number(entry);\n+\t\t\tif (candidates.some(candidate => candidate.pid === pid)) continue;\n+\t\t\tlet environment: string;\n+\t\t\tlet processArgs: string[];\n+\t\t\ttry {\n+\t\t\t\tenvironment = fsSync.readFileSync(`/proc/${entry}/environ`, \"utf8\");\n+\t\t\t\tprocessArgs = fsSync.readFileSync(`/proc/${entry}/cmdline`, \"utf8\").split(\"\\0\").filter(Boolean);\n+\t\t\t} catch {\n+\t\t\t\tcontinue;\n+\t\t\t}\n+\t\t\tconst wrapper = environment.split(\"\\0\").find(value => value.startsWith(\"CHROME_WRAPPER=\"))?.slice(\"CHROME_WRAPPER=\".length);\n+\t\t\tif (!wrapper || (await fs.realpath(wrapper).catch(() => wrapper)) !== executablePath) continue;\n+\t\t\tconst process = Process.fromPid(pid);\n+\t\t\tif (process?.status() !== ProcessStatus.Running) continue;\n+\t\t\twrapperCandidates.push({ process, args: processArgs });\n+\t\t}\n+\t}\n \tconst candidateArgs: string[][] = [];\n \tlet hasUnreadableCandidate = false;\n-\tfor (const process of candidates) {\n-\t\tlet args: string[];\n-\t\ttry {\n-\t\t\targs = normalizeCandidateArgs(process.args());\n-\t\t} catch {\n-\t\t\thasUnreadableCandidate = true;\n-\t\t\tcontinue;\n-\t\t}\n+\tconst allCandidates = [\n+\t\t...candidates.map(process => ({ process, args: normalizeCandidateArgs(process.args()) })),\n+\t\t...wrapperCandidates,\n+\t];\n+\tfor (const { process, args } of allCandidates) {\n \t\tcandidateArgs.push(args);\n \t\tconst candidateProfile = findUserDataDirInArgs(args);\n \t\tif (\n"
+    }
+  },
+  "measurementDriver": "import * as fs from \"node:fs/promises\";\nimport * as path from \"node:path\";\nimport * as vcs from \"/home/ken/Projects/pi-forge/packages/natives/native/vcs.js\";\nimport { linkRepositoryDependencies, runSystem } from \"/home/ken/Projects/pi-forge/packages/coding-agent/bench/task-outcome-ab.ts\";\nimport type { PacketManifest } from \"/home/ken/Projects/pi-forge/packages/coding-agent/bench/task-outcome-ab.ts\";\n\nconst repo = \"/home/ken/Projects/pi-forge\";\nconst output = \"/tmp/pi-forge-edit-measurements\";\nconst runtime = path.join(output, \"runtime\");\nconst source = vcs.requireGit(repo);\nconst revision = await source.resolveRef(\"HEAD\");\nif (!revision) throw new Error(\"Missing runtime revision\");\nawait source.worktreeAdd(runtime, revision, { detach: true, clone: false });\nawait linkRepositoryDependencies(repo, runtime);\nawait Bun.write(path.join(runtime, \"packages/coding-agent/src/export/html/tool-views.generated.js\"), Bun.file(path.join(repo, \"packages/coding-agent/src/export/html/tool-views.generated.js\")));\nfor (const name of await fs.readdir(path.join(repo, \"packages/natives/native\"))) {\n\tif (name.endsWith(\".node\")) await Bun.write(path.join(runtime, \"packages/natives/native\", name), Bun.file(path.join(repo, \"packages/natives/native\", name)));\n}\nconst original = await Bun.file(path.join(runtime, \"crates/pi-edit/prompts/hashline.md\")).text();\nconst revised = await Bun.file(path.join(repo, \"crates/pi-edit/prompts/hashline.md\")).text();\nconst indexFile = path.join(runtime, \"packages/coding-agent/src/edit/index.ts\");\nlet index = await Bun.file(indexFile).text();\nconst branch = \": editDescription(mode);\";\nif (!index.includes(branch)) throw new Error(\"Cannot install isolated prompt delivery adapter\");\nindex = 'import experimentPrompt from \"./measurement-prompt.md\" with { type: \"text\" };\\n' + index.replace(branch, ': (mode === \"hashline\" ? experimentPrompt : editDescription(mode));');\nawait Bun.write(indexFile, index);\nconst packet = path.join(repo, \"packages/coding-agent/bench/fixtures/governor-repository-maintenance-v1\");\nconst manifest: PacketManifest = await Bun.file(path.join(packet, \"manifest.json\")).json();\nconst digest = async (text: string): Promise<string> => Buffer.from(await crypto.subtle.digest(\"SHA-256\", new TextEncoder().encode(text))).toString(\"hex\");\nconst addon = path.join(runtime, \"packages/natives/native/pi_natives.linux-x64-modern.node\");\nconst metadata = {\n\truntimeRevision: revision,\n\truntimeAdapter: \"Both conditions use the same static MD adapter for hashline descriptions, with the same rebuilt native addon and CLI. Only the delivered full edit prompt differs; compact prompt policy is unchanged.\",\n\tmodel: \"openai-codex/gpt-6-luna\", thinking: \"low\", adaptiveMode: \"auto\", budget: \"unbounded\", repeatCount: 1,\n\toriginalPrompt: original, revisedPrompt: revised,\n\toriginalPromptSha256: await digest(original), revisedPromptSha256: await digest(revised),\n\taddonSha256: Buffer.from(await crypto.subtle.digest(\"SHA-256\", await Bun.file(addon).arrayBuffer())).toString(\"hex\"),\n\tpacket: manifest,\n\tpacketSha256: {} as Record<string, string>,\n};\nfor await (const file of new Bun.Glob(\"*\").scan({ cwd: packet, onlyFiles: true })) metadata.packetSha256[file] = await digest(await Bun.file(path.join(packet, file)).text());\nawait Bun.write(path.join(output, \"metadata.json\"), JSON.stringify(metadata, null, 2));\ntry {\n\tfor (const [condition, content] of [[\"original\", original], [\"revised\", revised]] as const) {\n\t\tawait Bun.write(path.join(runtime, \"packages/coding-agent/src/edit/measurement-prompt.md\"), content);\n\t\tconst verify = Bun.spawn([process.execPath, \"-e\", 'import {resolveEditToolDescription} from \"./packages/coding-agent/src/edit/index.ts\"; process.stdout.write(resolveEditToolDescription(\"hashline\", undefined));'], { cwd: runtime, stdout: \"pipe\", stderr: \"pipe\" });\n\t\tconst delivered = await new Response(verify.stdout).text();\n\t\tconst error = await new Response(verify.stderr).text();\n\t\tif (await verify.exited !== 0 || delivered !== content.trimEnd()) throw new Error(`Prompt delivery mismatch: ${error}`);\n\t\tconst boot = Bun.spawn([process.execPath, path.join(runtime, \"packages/coding-agent/src/cli.ts\"), \"--help\"], { cwd: runtime, stdout: \"ignore\", stderr: \"pipe\" });\n\t\tconst bootError = await new Response(boot.stderr).text();\n\t\tif (await boot.exited !== 0) throw new Error(`CLI startup failed before provider request: ${bootError}`);\n\t\tconst out = path.join(output, condition);\n\t\tawait fs.mkdir(out, { recursive: true });\n\t\tconsole.log(`Starting ${condition}: Luna Low, auto, seven fixed checks, unbounded`);\n\t\tconst result = await runSystem(\"piforge\", path.join(runtime, \"packages/coding-agent/src/cli.ts\"), metadata.model, packet, manifest, out, 1, new Map(), repo, \"auto\", null, \"low\");\n\t\tawait Bun.write(path.join(out, \"summary.json\"), JSON.stringify(result, null, 2));\n\t\tconsole.log(JSON.stringify({ condition, passed: result.passed, tokens: result.totalTokens, costUsd: result.costUsd, wallTimeMs: result.wallTimeMs }));\n\t}\n} finally {\n\tawait source.worktreeRemove(runtime, true);\n}\n",
+  "limitations": [
+    "One original/revised pair with original run first. No causal or statistically reliable performance claim from a single pair.",
+    "Same frozen task and seven acceptance checks. A passing focused suite does not establish all repository behavior.",
+    "Both full prompt descriptions are supplied through an identical temporary static Markdown adapter to hold the rebuilt native binary constant.",
+    "Cached tokens and reported model cost are not subscription quota measurements.",
+    "The larger spend is dominated by repeated browser verification and repair; this single pair cannot prove the prompt wording caused it."
+  ],
+  "decision": "Reject expanded edit recovery instructions and restore the previous production prompts: this pair demonstrates no overall improvement.",
+  "observedChanges": {
+    "totalTokensPercent": 116.32511900756396,
+    "costPercent": 110.0994904170808,
+    "wallTimePercent": 146.70858038676138,
+    "totalEditFailures": {
+      "original": 8,
+      "revised": 8
+    },
+    "unseenAnchorRefusals": {
+      "original": 7,
+      "revised": 6
+    }
+  }
+}

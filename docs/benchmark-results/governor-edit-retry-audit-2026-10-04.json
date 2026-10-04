@@ -1,0 +1,14 @@
+{
+  "sourceEvidence": "governor-repository-maintenance-2026-10-04.json",
+  "assistantTurns": 45,
+  "toolCalls": 47,
+  "failedToolResults": 8,
+  "counts": {
+    "unseenEditAnchors": 5,
+    "staleEditTag": 1,
+    "missingReadPath": 1,
+    "failedVerification": 1,
+    "other": 0
+  },
+  "interpretation": "These are observed failures, not a causal token attribution. Unseen-anchor and stale-tag refusals enforce intended safety contracts; prompt guidance now describes the existing safe recovery paths. No hosted comparison of revised prompts has been run."
+}
