@@ -1,0 +1,14 @@
+{
+  "id": "bash-verification-v1",
+  "category": "real repository tool contract",
+  "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+  "taskFile": "TASK.md",
+  "acceptanceCommand": ["bun", "test", "packages/coding-agent/test/bash-verification-bench.test.ts"],
+  "expectedChangedFiles": ["packages/coding-agent/src/tools/bash.ts"],
+  "repeatCount": 3,
+  "notes": "Focused Bash tool contract implemented against the same frozen upstream repository revision for both systems.",
+  "supportFiles": {
+    "TASK.md": "TASK.md",
+    "packages/coding-agent/test/bash-verification-bench.test.ts": "bash-verification-bench.test.ts"
+  }
+}

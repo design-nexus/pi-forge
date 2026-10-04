@@ -1,0 +1,10 @@
+{
+	"id": "unexpected-scope-v1",
+	"category": "unexpected scope",
+	"sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": ["bun", "test"],
+	"expectedChangedFiles": ["src/backoff.ts", "src/timer.ts"],
+	"repeatCount": 3,
+	"notes": "Frozen escalation case. A scheduler-local symptom also violates the shared delay helper contract."
+}

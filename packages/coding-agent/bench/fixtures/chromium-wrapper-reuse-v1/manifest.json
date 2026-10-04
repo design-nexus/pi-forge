@@ -1,0 +1,14 @@
+{
+  "id": "chromium-wrapper-reuse-v1",
+  "category": "real repository regression",
+  "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+  "taskFile": "TASK.md",
+  "acceptanceCommand": ["bun", "test", "packages/coding-agent/test/tools/browser-attach-bench.test.ts"],
+  "expectedChangedFiles": ["packages/coding-agent/src/tools/browser/attach.ts"],
+  "repeatCount": 1,
+  "notes": "Frozen task from a real Pi Forge browser attach regression; both CLIs edit the same upstream base revision.",
+  "supportFiles": {
+    "TASK.md": "TASK.md",
+    "packages/coding-agent/test/tools/browser-attach-bench.test.ts": "browser-attach-bench.test.ts"
+  }
+}

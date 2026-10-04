@@ -1,0 +1,10 @@
+{
+	"id": "overestimated-scope-v1",
+	"category": "overestimated scope",
+	"sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": ["bun", "test"],
+	"expectedChangedFiles": ["src/retryable.ts"],
+	"repeatCount": 3,
+	"notes": "Frozen de-escalation case. Several request paths share one faulty retryability condition."
+}
