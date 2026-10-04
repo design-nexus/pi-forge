@@ -1,0 +1,35 @@
+{
+	"id": "context-notes-governor-v1",
+	"category": "real repository high-risk delegated feature",
+	"sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": [
+		"bun",
+		"test",
+		"packages/coding-agent/test/context-notes-bench.test.ts",
+		"packages/tui/test/context-usage-bench.test.ts"
+	],
+	"allowedChangedFiles": [
+		"packages/coding-agent/src/config/settings.ts",
+		"packages/coding-agent/src/prompts/system/context-notes.md",
+		"packages/coding-agent/src/prompts/system/system-prompt.md",
+		"packages/coding-agent/src/prompts/tools/context-notes.md",
+		"packages/coding-agent/src/session/context-notes.ts",
+		"packages/coding-agent/src/session/context-usage-runtime.ts",
+		"packages/coding-agent/src/session/agent-session-types.ts",
+		"packages/coding-agent/src/session/session-stats.ts",
+		"packages/coding-agent/src/session/tool-result-paths.ts",
+		"packages/coding-agent/src/system-prompt.ts",
+		"packages/coding-agent/src/tools/context-notes.ts",
+		"packages/coding-agent/src/tools/index.ts",
+		"packages/coding-agent/src/utils/file-mention-parser.ts",
+		"packages/tui/src/status-line/context-usage.ts"
+	],
+	"repeatCount": 1,
+	"notes": "Same frozen context-notes feature acceptance contract as context-notes-feature-v1; prompt requires a four-item structured task batch and declares journal privacy/data-retention risk when Governor metadata is available.",
+	"supportFiles": {
+		"TASK.md": "TASK.md",
+		"packages/coding-agent/test/context-notes-bench.test.ts": "context-notes-bench.test.ts",
+		"packages/tui/test/context-usage-bench.test.ts": "context-usage-bench.test.ts"
+	}
+}

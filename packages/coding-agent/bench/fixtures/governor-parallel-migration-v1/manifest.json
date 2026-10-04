@@ -1,0 +1,19 @@
+{
+	"id": "governor-parallel-migration-v1",
+	"category": "small Governor concurrency selection",
+	"sourceCommit": "f5f794e24790ae2e100a45b9d4771e1cf483158e",
+	"taskFile": "TASK.md",
+	"acceptanceCommand": [
+		"bun",
+		"test"
+	],
+	"expectedChangedFiles": [
+		"src/storage.ts",
+		"src/cache.ts",
+		"src/history.ts",
+		"src/project.ts"
+	],
+	"repeatCount": 1,
+	"notes": "Shared storage API changed by parent, followed by one declared batch of three independent consumer tasks. No band, worker-count, or concurrency override. Measures Governor-selected parallel concurrency, not the autonomous choice to delegate. Frozen tests remain read-only; root and generic workers pinned to GPT-6 Luna Low.",
+	"configFile": "benchmark.yml"
+}

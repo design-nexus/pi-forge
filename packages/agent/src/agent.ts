@@ -441,6 +441,7 @@ export class Agent {
 	#hideThinkingSummary?: boolean;
 	#maxRetryDelayMs?: number;
 	#getToolContext?: (toolCall?: ToolCallContext) => AgentToolContext | undefined;
+	#activeToolExecutions = new Set<string>();
 	#cursorExecHandlers?: CursorExecHandlers;
 	#getCursorTools?: () => AgentTool[];
 	#cursorOnToolResult?: CursorToolResultHandler;
@@ -1251,6 +1252,11 @@ export class Agent {
 		return results;
 	}
 
+	/** Ordinary tools executing after the provider response has settled. */
+	get isExecutingTools(): boolean {
+		return this.#activeToolExecutions.size > 0;
+	}
+
 	get isAborting(): boolean {
 		return this.#abortController?.signal.aborted === true && this.#state.isStreaming;
 	}
@@ -1655,6 +1661,10 @@ export class Agent {
 			onSseEvent: this.#onSseEvent,
 			getApiKey: this.getApiKey,
 			getToolContext: this.#getToolContext,
+			onToolExecutionStateChange: (toolCallId, executing) => {
+				if (executing) this.#activeToolExecutions.add(toolCallId);
+				else this.#activeToolExecutions.delete(toolCallId);
+			},
 			syncContextBeforeModelCall: async (context, signal) => {
 				await this.#runBeforeModelCallHooks(signal);
 				if (this.#listeners.size > 0) {

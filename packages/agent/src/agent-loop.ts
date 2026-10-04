@@ -3012,6 +3012,7 @@ async function executeToolCalls(
 		hasBackgroundCompletions,
 		interruptMode = "immediate",
 		getToolContext,
+		onToolExecutionStateChange,
 
 		transformToolCallArguments,
 		resolveFallbackTool,
@@ -3361,6 +3362,7 @@ async function executeToolCalls(
 					}
 					executionStarted = true;
 					let rawResult: unknown;
+					onToolExecutionStateChange?.(toolCall.id, true);
 					try {
 						rawResult = await tool.execute(
 							toolCall.id,
@@ -3378,6 +3380,7 @@ async function executeToolCalls(
 							toolContext,
 						);
 					} finally {
+						onToolExecutionStateChange?.(toolCall.id, false);
 						await streamSession?.discard("outer tool completed without committing stream speculation");
 					}
 					completedToolExecution = true;

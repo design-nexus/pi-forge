@@ -124,6 +124,15 @@ export function isLoopGuardedModel(model: Model<Api>, options?: StreamOptions): 
 	return cls === "gemini" || cls === "deepseek" || cls === "xai";
 }
 
+/** Exact-cycle controls for streams that carry repetitive data rather than prose. */
+export interface ExactSuffixCycleOptions {
+	minRepeatedChars?: number;
+	/** Require the repeated suffix to span this many complete, nonempty deltas. */
+	minRepeatedDeltas?: number;
+	maxUnitLength?: number;
+	allowPunctuation?: boolean;
+}
+
 /**
  * Stateful detector fed the streamed thinking deltas. `push` returns a
  * human-readable reason the first time a loop shape is recognized; the caller
@@ -134,6 +143,8 @@ export class ThinkingLoopDetector {
 	#tail = "";
 	/** Total characters received when the exact detector last scanned. */
 	#exactScannedAt = 0;
+	#exactDeltaLengths: number[] = [];
+	#exactDeltaChars = 0;
 	/** Pending thinking text not yet split into completed segments. */
 	#pending = "";
 	/** Fingerprints of the most recent substantial segments (≤ SEGMENT_WINDOW). */
@@ -150,10 +161,21 @@ export class ThinkingLoopDetector {
 	 *  path/identifier every paragraph is still caught. */
 	#anchorWindow: Set<string>[] = [];
 
-	constructor(private readonly semanticHeuristics = true) {}
+	constructor(
+		private readonly semanticHeuristics = true,
+		private readonly exactCycleOptions?: ExactSuffixCycleOptions,
+	) {}
 
 	push(delta: string): string | null {
 		if (!delta) return null;
+		const minDeltas = this.exactCycleOptions?.minRepeatedDeltas;
+		if (minDeltas) {
+			this.#exactDeltaLengths.push(delta.length);
+			this.#exactDeltaChars += delta.length;
+			if (this.#exactDeltaLengths.length > minDeltas) {
+				this.#exactDeltaChars -= this.#exactDeltaLengths.shift()!;
+			}
+		}
 
 		// 1. Exact suffix cycles. Scan at a bounded cadence rather than doing
 		// quadratic work for every token-sized delta.
@@ -162,7 +184,7 @@ export class ThinkingLoopDetector {
 		this.#exactScannedAt += delta.length;
 		if (this.#exactScannedAt >= EXACT_CHECK_STRIDE || delta.length >= EXACT_CHECK_STRIDE) {
 			this.#exactScannedAt = 0;
-			const exact = detectExactSuffixCycle(this.#tail);
+			const exact = this.#detectExactCycle();
 			if (exact) {
 				const [unit, times] = exact;
 				return `repeated an exact ${unit.length}-character cycle ${times}× back-to-back`;
@@ -202,7 +224,7 @@ export class ThinkingLoopDetector {
 	flush(): string | null {
 		// A stream can end before the next cadence boundary. Force one final exact
 		// check even when semantic heuristics are disabled and #pending is empty.
-		const exact = detectExactSuffixCycle(this.#tail);
+		const exact = this.#detectExactCycle();
 		if (exact) {
 			const [unit, times] = exact;
 			return `repeated an exact ${unit.length}-character cycle ${times}× back-to-back`;
@@ -217,6 +239,16 @@ export class ThinkingLoopDetector {
 			if (hit) return hit;
 		}
 		return null;
+	}
+
+	#detectExactCycle(): [unit: string, count: number] | null {
+		const options = this.exactCycleOptions;
+		if (!options?.minRepeatedDeltas) return detectExactSuffixCycle(this.#tail, options);
+		if (this.#exactDeltaLengths.length < options.minRepeatedDeltas) return null;
+		return detectExactSuffixCycle(this.#tail, {
+			...options,
+			minRepeatedChars: Math.max(options.minRepeatedChars ?? EXACT_SHORT_MIN_REPEATED_CHARS, this.#exactDeltaChars),
+		});
 	}
 
 	#consumeSegment(raw: string): string | null {
@@ -515,8 +547,8 @@ function buildThinkingLoopError(model: Model<Api>, detail: string): AssistantMes
  * Short cycles retain the original 180-character/four-repeat sensitivity; long
  * cycles require at least three repeats and 1024 repeated characters.
  */
-function detectExactSuffixCycle(text: string): [unit: string, count: number] | null {
-	if (text.length < EXACT_SHORT_MIN_REPEATED_CHARS) return null;
+function detectExactSuffixCycle(text: string, options?: ExactSuffixCycleOptions): [unit: string, count: number] | null {
+	if (text.length < (options?.minRepeatedChars ?? EXACT_SHORT_MIN_REPEATED_CHARS)) return null;
 	const reversed = text.split("").reverse().join("");
 	const z = new Uint16Array(reversed.length);
 	let left = 0;
@@ -530,14 +562,16 @@ function detectExactSuffixCycle(text: string): [unit: string, count: number] | n
 		}
 	}
 
-	const maxUnit = Math.min(EXACT_MAX_UNIT, Math.floor(reversed.length / 3));
+	const maxUnit = Math.min(options?.maxUnitLength ?? EXACT_MAX_UNIT, EXACT_MAX_UNIT, Math.floor(reversed.length / 3));
 	for (let len = 2; len <= maxUnit; len++) {
 		const count = 1 + Math.floor(z[len] / len);
 		const minCount = len <= EXACT_SHORT_MAX_UNIT ? 4 : 3;
-		const minChars = len <= EXACT_SHORT_MAX_UNIT ? EXACT_SHORT_MIN_REPEATED_CHARS : EXACT_LONG_MIN_REPEATED_CHARS;
+		const minChars =
+			options?.minRepeatedChars ??
+			(len <= EXACT_SHORT_MAX_UNIT ? EXACT_SHORT_MIN_REPEATED_CHARS : EXACT_LONG_MIN_REPEATED_CHARS);
 		if (count < minCount || len * count < minChars) continue;
 		const unit = text.slice(-len);
-		if (/\p{L}|\p{Extended_Pictographic}/u.test(unit)) return [unit, count];
+		if (options?.allowPunctuation || /\p{L}|\p{Extended_Pictographic}/u.test(unit)) return [unit, count];
 	}
 	return null;
 }

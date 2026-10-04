@@ -5364,7 +5364,7 @@ describe("openai-codex streaming", () => {
 			providerSessionState,
 		}).result();
 
-		// One initial attempt + CODEX_WHITESPACE_LOOP_RETRY_LIMIT (2) bounded retries.
+		// One initial attempt + CODEX_TOOL_CALL_LOOP_RETRY_LIMIT (2) bounded retries.
 		expect(sendCount).toBe(3);
 		expect(closeCount).toBeGreaterThan(0);
 		expect(result.stopReason).toBe("error");
@@ -5547,12 +5547,295 @@ describe("openai-codex streaming", () => {
 			providerSessionState,
 		}).result();
 
-		// One initial attempt + CODEX_WHITESPACE_LOOP_RETRY_LIMIT (2) bounded retries.
+		// One initial attempt + CODEX_TOOL_CALL_LOOP_RETRY_LIMIT (2) bounded retries.
 		expect(sendCount).toBe(3);
 		expect(result.stopReason).toBe("error");
 		expect(result.errorMessage).toContain("whitespace-only tool-call argument delta");
 		expect(result.errorMessage).toContain("ctc_ws");
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ name: "single symbol", deltas: ["§"] },
+		{ name: "periodic punctuation", deltas: [" **", ".**"] },
+	])(
+		"replays a malformed custom tool stream over SSE without exposing its partial call ($name)",
+		async ({ deltas }) => {
+			using tempDir = TempDir.createSync("@pi-codex-stream-");
+			setAgentDir(tempDir.path());
+			await withEnv({ PI_CODEX_WEBSOCKET_V2: "0" }, async () => {
+				const events: object[] = [
+					{
+						type: "response.output_item.added",
+						item: {
+							type: "custom_tool_call",
+							id: "ctc_repeat",
+							call_id: "call_repeat",
+							name: "apply_patch",
+							input: "",
+						},
+					},
+					{
+						type: "response.custom_tool_call_input.delta",
+						item_id: "ctc_repeat",
+						output_index: 0,
+						delta: "*** Begin Patch\n[functions.todo] Invalid tool format?",
+					},
+				];
+				for (let sequence = 1; sequence <= 1100; sequence++) {
+					events.push({
+						type: "response.custom_tool_call_input.delta",
+						item_id: "ctc_repeat",
+						output_index: 0,
+						sequence_number: sequence,
+						delta: deltas[(sequence - 1) % deltas.length],
+					});
+				}
+				const flood = events.map(event => `data: ${JSON.stringify(event)}\n\n`).join("");
+				let requests = 0;
+				const fetchMock = vi.fn(async () => {
+					requests++;
+					return new Response(requests === 1 ? flood : createStatefulCodexSse("Recovered", "resp_recovered"), {
+						status: 200,
+						headers: { "content-type": "text/event-stream" },
+					});
+				});
+				const result = await streamOpenAICodexResponses(createCodexTestModel(), createCodexTestContext(), {
+					fetch: fetchMock as FetchImpl,
+					apiKey: createCodexTestToken(),
+				}).result();
+				expect(requests).toBe(2);
+				expect(result.stopReason).toBe("stop");
+				expect(result.content).toEqual([expect.objectContaining({ type: "text", text: "Recovered" })]);
+				const payload = result.providerPayload as { items?: Array<{ id?: string }> } | undefined;
+				expect((payload?.items ?? []).map(item => item.id)).not.toContain("ctc_repeat");
+			});
+		},
+	);
+
+	it.each([
+		{ kind: "function", delta: "§§§§", errorKind: "repeated-character" },
+		{ kind: "custom", delta: " **.**", errorKind: "repeated-pattern" },
+	])("exhausts bounded retries without returning a junk tool call ($kind)", async ({ kind, delta, errorKind }) => {
+		using tempDir = TempDir.createSync("@pi-codex-stream-");
+		setAgentDir(tempDir.path());
+		let requests = 0;
+		class RepeatedArgumentsWebSocket extends MockWebSocket {
+			constructor(url: string, options?: { headers?: WsHeaders }) {
+				super(url, options);
+				this.scheduleOpen();
+			}
+			override send(): void {
+				requests++;
+				this.sendJson({
+					type: "response.output_item.added",
+					item:
+						kind === "function"
+							? { type: "function_call", id: "fc_repeat", call_id: "call_repeat", name: "todo", arguments: "" }
+							: {
+									type: "custom_tool_call",
+									id: "fc_repeat",
+									call_id: "call_repeat",
+									name: "apply_patch",
+									input: "",
+								},
+				});
+				for (let sequence = 1; sequence <= 300; sequence++) {
+					this.sendJson({
+						type:
+							kind === "function"
+								? "response.function_call_arguments.delta"
+								: "response.custom_tool_call_input.delta",
+						item_id: "fc_repeat",
+						output_index: 0,
+						sequence_number: sequence,
+						delta,
+					});
+				}
+			}
+		}
+		global.WebSocket = RepeatedArgumentsWebSocket as unknown as typeof WebSocket;
+		const result = await streamOpenAICodexResponses(createCodexTestModel(), createCodexTestContext(), {
+			fetch: async () => {
+				throw new Error("Unexpected SSE fallback in repetition regression");
+			},
+			apiKey: createCodexTestToken(),
+			sessionId: "ws-repeated-arguments",
+			providerSessionState: new Map<string, ProviderSessionState>(),
+		}).result();
+		expect(requests).toBe(3);
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain(errorKind);
+		expect(result.content.filter(block => block.type === "toolCall")).toEqual([]);
+	});
+
+	it("preserves a large repeated payload in one delta and resets the guard when characters change", async () => {
+		using tempDir = TempDir.createSync("@pi-codex-stream-");
+		setAgentDir(tempDir.path());
+		const text = "§".repeat(2000) + "§x".repeat(600);
+		const args = JSON.stringify({ text });
+		let requests = 0;
+		class ValidRepeatedPayloadWebSocket extends MockWebSocket {
+			constructor(url: string, options?: { headers?: WsHeaders }) {
+				super(url, options);
+				this.scheduleOpen();
+			}
+			override send(): void {
+				requests++;
+				this.sendJson({
+					type: "response.output_item.added",
+					item: { type: "function_call", id: "fc_valid", call_id: "call_valid", name: "write", arguments: "" },
+				});
+				const deltas = ['{"text":"', "§".repeat(2000), ...Array.from("§x".repeat(600)), '"}'];
+				for (const delta of deltas) {
+					this.sendJson({
+						type: "response.function_call_arguments.delta",
+						item_id: "fc_valid",
+						output_index: 0,
+						delta,
+					});
+				}
+				this.sendJson({
+					type: "response.output_item.done",
+					item: { type: "function_call", id: "fc_valid", call_id: "call_valid", name: "write", arguments: args },
+				});
+				this.sendJson({
+					type: "response.completed",
+					response: { id: "resp_valid", status: "completed", usage: DEFAULT_USAGE },
+				});
+			}
+		}
+		global.WebSocket = ValidRepeatedPayloadWebSocket as unknown as typeof WebSocket;
+		const result = await streamOpenAICodexResponses(createCodexTestModel(), createCodexTestContext(), {
+			fetch: async () => {
+				throw new Error("Unexpected SSE fallback in repetition regression");
+			},
+			apiKey: createCodexTestToken(),
+			sessionId: "ws-valid-repeated-payload",
+			providerSessionState: new Map<string, ProviderSessionState>(),
+		}).result();
+		expect(requests).toBe(1);
+		expect(result.stopReason).toBe("toolUse");
+		expect(result.content).toEqual([
+			expect.objectContaining({ type: "toolCall", name: "write", arguments: { text } }),
+		]);
+	});
+
+	it.each(["first", "last"])("preserves a large single-frame custom patch payload arriving %s", async position => {
+		using tempDir = TempDir.createSync("@pi-codex-stream-");
+		setAgentDir(tempDir.path());
+		await withEnv({ PI_CODEX_WEBSOCKET_V2: "0" }, async () => {
+			const ordinaryLines = Array.from({ length: 600 }, (_, index) => `+line ${index}\n`);
+			const repeatedLine = ["+", "§".repeat(2000), "\n"];
+			const deltas = [
+				"*** Begin Patch\n*** Add File: fixture.txt\n",
+				...(position === "first" ? [...repeatedLine, ...ordinaryLines] : [...ordinaryLines, ...repeatedLine]),
+				"*** End Patch",
+			];
+			const input = deltas.join("");
+			const events: object[] = [
+				{
+					type: "response.output_item.added",
+					item: {
+						type: "custom_tool_call",
+						id: "ctc_valid",
+						call_id: "call_valid",
+						name: "apply_patch",
+						input: "",
+					},
+				},
+			];
+			for (const delta of deltas)
+				events.push({
+					type: "response.custom_tool_call_input.delta",
+					item_id: "ctc_valid",
+					output_index: 0,
+					delta,
+				});
+			events.push(
+				{
+					type: "response.output_item.done",
+					item: { type: "custom_tool_call", id: "ctc_valid", call_id: "call_valid", name: "apply_patch", input },
+				},
+				{
+					type: "response.completed",
+					response: { id: "resp_valid_custom", status: "completed", usage: DEFAULT_USAGE },
+				},
+			);
+			const fetchMock = vi.fn(
+				async () =>
+					new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(""), {
+						status: 200,
+						headers: { "content-type": "text/event-stream" },
+					}),
+			);
+			const result = await streamOpenAICodexResponses(createCodexTestModel(), createCodexTestContext(), {
+				apiKey: createCodexTestToken(),
+				fetch: fetchMock as FetchImpl,
+			}).result();
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+			expect(result.stopReason).toBe("toolUse");
+			expect(result.content).toEqual([
+				expect.objectContaining({ type: "toolCall", name: "apply_patch", arguments: { input } }),
+			]);
+		});
+	});
+
+	it("keeps a delivered tool call and refuses to replay a later repeated-character custom flood", async () => {
+		using tempDir = TempDir.createSync("@pi-codex-stream-");
+		setAgentDir(tempDir.path());
+		let requests = 0;
+		class DeliveredThenRepeatingWebSocket extends MockWebSocket {
+			constructor(url: string, options?: { headers?: WsHeaders }) {
+				super(url, options);
+				this.scheduleOpen();
+			}
+			override send(): void {
+				requests++;
+				this.sendJson({
+					type: "response.output_item.added",
+					item: { type: "function_call", id: "fc_done", call_id: "call_done", name: "read", arguments: "" },
+				});
+				this.sendJson({
+					type: "response.output_item.done",
+					item: {
+						type: "function_call",
+						id: "fc_done",
+						call_id: "call_done",
+						name: "read",
+						arguments: '{"path":"safe.ts"}',
+					},
+				});
+				this.sendJson({
+					type: "response.output_item.added",
+					item: { type: "custom_tool_call", id: "ctc_junk", call_id: "call_junk", name: "apply_patch", input: "" },
+				});
+				for (let sequence = 1; sequence <= 300; sequence++) {
+					this.sendJson({
+						type: "response.custom_tool_call_input.delta",
+						item_id: "ctc_junk",
+						output_index: 1,
+						sequence_number: sequence,
+						delta: "§§§§",
+					});
+				}
+			}
+		}
+		global.WebSocket = DeliveredThenRepeatingWebSocket as unknown as typeof WebSocket;
+		const result = await streamOpenAICodexResponses(createCodexTestModel(), createCodexTestContext(), {
+			fetch: async () => {
+				throw new Error("Unexpected SSE fallback in repetition regression");
+			},
+			apiKey: createCodexTestToken(),
+			sessionId: "ws-delivered-before-repeated-flood",
+			providerSessionState: new Map<string, ProviderSessionState>(),
+		}).result();
+		expect(requests).toBe(1);
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain("repeated-character tool-call argument delta");
+		expect(result.content).toEqual([
+			expect.objectContaining({ type: "toolCall", name: "read", arguments: { path: "safe.ts" } }),
+		]);
 	});
 
 	it("delivers a queued terminal event when the server closes immediately after it", async () => {
