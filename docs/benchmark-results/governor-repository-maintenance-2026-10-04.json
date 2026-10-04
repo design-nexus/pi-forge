@@ -1,0 +1,776 @@
+{
+  "sourceHead": "8600f17c9f1a64ed041f6e846cd3a44939a77a29",
+  "sourceHasUncommittedRuntimeChanges": true,
+  "sourceSha256": {
+    "packages/coding-agent/src/task/integration-gate.ts": "c28f7cbe3ce675b9079342cd4e90906845a8c8a4ec2c9d9af516717631e876d5",
+    "packages/coding-agent/src/task/index.ts": "fd997757ff0deba5fd4d4dfbeb45c997d6424771010c380e241c2f74c6c5e763",
+    "packages/coding-agent/src/task/structured-subagent.ts": "54133338cd105a0949e889a870d6d98c569c458812c7d01aed6414e738d10d67",
+    "packages/coding-agent/src/task/isolation-runner.ts": "a7c2d785ccf56aa97e1d2fd091097617877b7687ad952985d513801073e7c8bc",
+    "packages/coding-agent/src/prompts/tools/task-integration-gate.md": "6411c29d277a679e56147c07223d50aeb907cf4a91c1217d674c43b53746883d",
+    "packages/coding-agent/bench/task-outcome-ab.ts": "16826103d491a43e20e161b68f9eb1abe019565a318d76576f9afb89febc0f6b"
+  },
+  "packetSha256": {
+    "TASK.md": "20f5b6926178968e28daea73a91c55413da2864ecfb08034ded7294afdf514a0",
+    "browser-attach-bench.test.ts": "f2063f3b06b376666d5e49b5d55df5688e4ce59b9130093bb2feff4a10af8057",
+    "bash-verification-bench.test.ts": "c6b300f8873892f6518247862d81903468f7dcbd5698460cc8f28830388a228b",
+    "bash-background-audit.test.ts": "b79b46d2f616aceafcf4a224c3736f4eee7dbf351b728774dcd516eac557408a",
+    "benchmark.yml": "526a071f0c2c2022b09f00326b61abfa5e988377b70bd0f453c47e0daf47174c",
+    "manifest.json": "bb220940e869a0a205e7fbe151c683e9e5b641e420adb36b831cd722a2e191d9"
+  },
+  "taskText": "# Repair two independent repository tool contracts\n\nImplement both maintenance fixes below. Choose the execution strategy yourself; delegation is optional. All model roles are pinned to GPT-6 Luna Low. Keep production changes confined to the two listed files and keep the supplied tests unchanged.\n\n1. In `packages/coding-agent/src/tools/browser/attach.ts`, make `findReusableCdp` recognize Chromium launched through a compiled Linux distro wrapper. The wrapper sets `CHROME_WRAPPER` and execs the actual browser binary, so the process command line does not contain the wrapper path. Reuse the matching remote debugging endpoint while preserving existing profile and process matching behavior.\n2. In `packages/coding-agent/src/tools/bash.ts`, add an optional `verification` boolean. A verification command must report structured `details.verification: { passed: boolean }`: true only for a successful foreground command, false for nonzero exit or timeout. Reject verification combined with async execution or a named service with a clear foreground-related error. Ordinary commands must retain their behavior and must not gain verification metadata, including auto-background enabled without a job manager.\n\nThe fixes have separate ownership and tests. No new feature design, dependency installation, unrelated investigation, or broad suite is needed. If delegating, provide exact ownership and these contracts to workers and keep their model effort Low. If an integration gate runs, wait for its final host job snapshot before finishing.\n\nRun the focused combined acceptance command and report the actual result:\n\n```sh\nbun test packages/coding-agent/test/tools/browser-attach-bench.test.ts packages/coding-agent/test/bash-verification-bench.test.ts packages/coding-agent/test/bash-background-audit.test.ts\n```\n",
+  "baseline": {
+    "system": "piforge",
+    "cliPath": "/tmp/pi-forge-maintenance-baseline/cli.ts",
+    "model": "offline-baseline",
+    "thinkingLevel": "low",
+    "exitCode": 0,
+    "testExitCode": 1,
+    "passed": false,
+    "orchestrationPassed": true,
+    "orchestrationFailure": null,
+    "budgetStopReason": null,
+    "adaptiveMode": null,
+    "governorDecisions": [],
+    "changedFiles": [],
+    "filesWithinScope": true,
+    "toolCalls": [],
+    "assistantTurns": 1,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "totalTokens": 0,
+    "costUsd": 0,
+    "wallTimeMs": 5.882409999999993,
+    "humanInterventions": 0,
+    "transcriptPath": "/tmp/pi-forge-maintenance-baseline/piforge-1-cjz4RF/transcript.jsonl",
+    "sessionDirectory": "/tmp/pi-forge-maintenance-baseline/piforge-1-cjz4RF/sessions",
+    "workspacePath": "/tmp/pi-forge-maintenance-baseline/piforge-1-cjz4RF/workspace",
+    "testOutput": "bun test v1.4.2 (744846f84)\n\n\npackages/coding-agent/test/bash-background-audit.test.ts:\n(pass) keeps ordinary foreground commands usable with auto-background enabled and no job manager [43.66ms]\n31 | \n32 | it(\"reports verification failure when a foreground command times out\", async () => {\n33 | \tconst tool = new BashTool(makeSession(false));\n34 | \tconst result = await tool.execute(\"timeout\", { command: \"sleep 2\", timeout: 0.05, verification: true });\n35 | \texpect(result.isError).toBe(true);\n36 | \texpect(result.details).toMatchObject({ verification: { passed: false } });\n                             ^\nerror: expect(received).toMatchObject(expected)\n\n  {\n-   \"verification\": {\n-     \"passed\": false,\n-   },\n+   \"requestedTimeoutSeconds\": 0.05,\n+   \"timedOut\": true,\n+   \"timeoutSeconds\": 1,\n+   \"wallTimeMs\": 1229.663535,\n  }\n\n- Expected  - 3\n+ Received  + 4\n\n      at <anonymous> (/tmp/pi-forge-maintenance-baseline/piforge-1-cjz4RF/workspace/packages/coding-agent/test/bash-background-audit.test.ts:36:25)\n(fail) reports verification failure when a foreground command times out [1230.35ms]\n\npackages/coding-agent/test/bash-verification-bench.test.ts:\n27 | it(\"reports verification success and failure while leaving ordinary results unmarked\", async () => {\n28 | \tconst tool = new BashTool(makeSession());\n29 | \tconst passed = await tool.execute(\"passed\", { command: \"exit 0\", verification: true });\n30 | \tconst failed = await tool.execute(\"failed\", { command: \"exit 7\", verification: true });\n31 | \tconst ordinary = await tool.execute(\"ordinary\", { command: \"exit 7\" });\n32 | \texpect(passed.details).toMatchObject({ verification: { passed: true } });\n                             ^\nerror: expect(received).toMatchObject(expected)\n\n  {\n-   \"verification\": {\n-     \"passed\": true,\n-   },\n+   \"timeoutSeconds\": 300,\n+   \"wallTimeMs\": 2.1186489999997775,\n  }\n\n- Expected  - 3\n+ Received  + 2\n\n      at <anonymous> (/tmp/pi-forge-maintenance-baseline/piforge-1-cjz4RF/workspace/packages/coding-agent/test/bash-verification-bench.test.ts:32:25)\n(fail) reports verification success and failure while leaving ordinary results unmarked [7.01ms]\n35 | \texpect(ordinary.details).not.toHaveProperty(\"verification\");\n36 | });\n37 | \n38 | it(\"rejects verification checks requested as asynchronous jobs or services\", async () => {\n39 | \tconst tool = new BashTool(makeSession());\n40 | \tawait expect(tool.execute(\"async\", { command: \"exit 0\", verification: true, async: true })).rejects.toThrow(\n                                                                                                          ^\nerror: expect(received).toThrow(expected)\n\nExpected pattern: /foreground/iu\nReceived message: \"Async bash execution is disabled. Enable async.enabled to use async mode.\"\n\n      at <anonymous> (/tmp/pi-forge-maintenance-baseline/piforge-1-cjz4RF/workspace/packages/coding-agent/test/bash-verification-bench.test.ts:40:102)\n(fail) rejects verification checks requested as asynchronous jobs or services [0.48ms]\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:35691\",\n-   \"pid\": 920132,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-maintenance-baseline/piforge-1-cjz4RF/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [133.35ms]\n\n 1 pass\n 4 fail\n 7 expect() calls\nRan 5 tests across 3 files. [1.72s]"
+  },
+  "report": {
+    "packet": {
+      "id": "governor-repository-maintenance-v1",
+      "category": "real repository optional-delegation maintenance",
+      "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+      "taskFile": "TASK.md",
+      "acceptanceCommand": [
+        "bun",
+        "test",
+        "packages/coding-agent/test/tools/browser-attach-bench.test.ts",
+        "packages/coding-agent/test/bash-verification-bench.test.ts",
+        "packages/coding-agent/test/bash-background-audit.test.ts"
+      ],
+      "expectedChangedFiles": [
+        "packages/coding-agent/src/tools/browser/attach.ts",
+        "packages/coding-agent/src/tools/bash.ts"
+      ],
+      "repeatCount": 1,
+      "notes": "Two independent real repository tool contracts with optional execution strategy. One auto-only Luna Low calibration; no required task call, worker count, or harness token/time cutoff. Browser test requires Linux and cc. Not a matched efficiency comparison.",
+      "configFile": "benchmark.yml",
+      "supportFiles": {
+        "TASK.md": "TASK.md",
+        "benchmark.yml": "benchmark.yml",
+        "packages/coding-agent/test/tools/browser-attach-bench.test.ts": "browser-attach-bench.test.ts",
+        "packages/coding-agent/test/bash-verification-bench.test.ts": "bash-verification-bench.test.ts",
+        "packages/coding-agent/test/bash-background-audit.test.ts": "bash-background-audit.test.ts"
+      }
+    },
+    "model": "openai-codex/gpt-6-luna",
+    "thinkingLevel": "low",
+    "createdAt": "2026-10-04T20:52:40.412Z",
+    "conditions": {
+      "autoApprove": true,
+      "sessionPersistence": true,
+      "taskPrompt": "TASK.md",
+      "selectedSystem": "piforge",
+      "budget": null,
+      "adaptiveMode": "auto",
+      "thinkingLevel": "low",
+      "repeatCount": 1
+    },
+    "sources": {
+      "omp": {
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "revision": null
+      },
+      "piforge": {
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "revision": "8600f17c9f-uncommitted-integration-fixes"
+      }
+    },
+    "runs": [
+      {
+        "system": "piforge",
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "model": "openai-codex/gpt-6-luna",
+        "thinkingLevel": "low",
+        "exitCode": 0,
+        "testExitCode": 0,
+        "passed": true,
+        "orchestrationPassed": true,
+        "orchestrationFailure": null,
+        "budgetStopReason": null,
+        "adaptiveMode": "auto",
+        "governorDecisions": [
+          {
+            "trigger": "initial",
+            "band": "normal",
+            "workerCount": 0,
+            "verificationFloor": "V1"
+          },
+          {
+            "trigger": "scope",
+            "band": "normal",
+            "workerCount": 0,
+            "verificationFloor": "V1"
+          },
+          {
+            "trigger": "runtime",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V2"
+          },
+          {
+            "trigger": "scope",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V2"
+          },
+          {
+            "trigger": "verification_failure",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          },
+          {
+            "trigger": "scope",
+            "band": "complex",
+            "workerCount": 0,
+            "verificationFloor": "V3"
+          }
+        ],
+        "changedFiles": [
+          "packages/coding-agent/src/tools/bash.ts",
+          "packages/coding-agent/src/tools/browser/attach.ts"
+        ],
+        "filesWithinScope": true,
+        "toolCalls": [
+          "todo",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "todo",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "todo",
+          "bash",
+          "edit",
+          "edit",
+          "edit",
+          "grep",
+          "edit",
+          "read",
+          "glob",
+          "grep",
+          "read",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "todo",
+          "bash",
+          "todo"
+        ],
+        "assistantTurns": 45,
+        "inputTokens": 94206,
+        "outputTokens": 5388,
+        "cacheReadTokens": 1795584,
+        "cacheWriteTokens": 0,
+        "totalTokens": 1895178,
+        "costUsd": 0.030070440000000004,
+        "wallTimeMs": 181550.17296599998,
+        "humanInterventions": 0,
+        "transcriptPath": "/tmp/pi-forge-repository-maintenance-low-auto/piforge-1-Tfi3bT/transcript.jsonl",
+        "sessionDirectory": "/tmp/pi-forge-repository-maintenance-low-auto/piforge-1-Tfi3bT/sessions",
+        "workspacePath": "/tmp/pi-forge-repository-maintenance-low-auto/piforge-1-Tfi3bT/workspace",
+        "testOutput": "bun test v1.4.2 (744846f84)\n\n\npackages/coding-agent/test/bash-background-audit.test.ts:\n(pass) keeps ordinary foreground commands usable with auto-background enabled and no job manager [44.02ms]\n(pass) reports verification failure when a foreground command times out [1229.16ms]\n\npackages/coding-agent/test/bash-verification-bench.test.ts:\n(pass) reports verification success and failure while leaving ordinary results unmarked [6.66ms]\n(pass) rejects verification checks requested as asynchronous jobs or services [0.40ms]\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n(pass) reuses Chromium launched through a compiled distro wrapper [116.44ms]\n\n 5 pass\n 0 fail\n 11 expect() calls\nRan 5 tests across 3 files. [1.72s]"
+      }
+    ]
+  },
+  "sessions": [
+    {
+      "path": "2026-10-04T20-49-37-345Z_01a108ad-e841-735a-b59d-d0d21cf7b350.jsonl",
+      "models": [
+        "openai-codex/gpt-6-luna"
+      ],
+      "thinkingLevels": [
+        "low"
+      ],
+      "usage": {
+        "toolCalls": [
+          "todo",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "todo",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "edit",
+          "read",
+          "edit",
+          "todo",
+          "bash",
+          "edit",
+          "edit",
+          "edit",
+          "grep",
+          "edit",
+          "read",
+          "glob",
+          "grep",
+          "read",
+          "read",
+          "edit",
+          "read",
+          "edit",
+          "todo",
+          "bash",
+          "todo"
+        ],
+        "assistantTurns": 45,
+        "inputTokens": 94206,
+        "outputTokens": 5388,
+        "cacheReadTokens": 1795584,
+        "cacheWriteTokens": 0,
+        "totalTokens": 1895178,
+        "costUsd": 0.030070440000000004
+      },
+      "toolResults": [
+        {
+          "toolName": "edit",
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 790, 1097 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#567D] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  790:\t#extractTextResult(result: AgentToolResult<BashToolDetails>): string {\n  1097:\t\tif (\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "toolName": "edit",
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 1109-1114 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#516F] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  1109:\t\t\tconst startBackgrounded = autoBackgroundWaitMs === 0;\n  1110:\t\t\tconst job = this.#startManagedBashJob({\n  1111:\t\t\t\tcommand,\n  1112:\t\t\t\tcommandCwd,\n  1113:\t\t\t\ttimeoutMs,\n  1114:\t\t\t\ttimeoutSec,\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "toolName": "edit",
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 904-917 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#BB18] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  904:\t\t\t},\n  905:\t\t);\n  906:\n  907:\t\treturn {\n  908:\t\t\tjobId,\n  909:\t\t\tcompletion: completion.promise,\n  910:\t\t\tgetLatestText: () => latestText,\n  911:\t\t\tstopUpdates: () => {\n  912:\t\t\t\tforwardUpdates = false;\n  913:\t\t\t},\n  914:\t\t};\n  915:\t}\n  916:\n  917:\t\t{ command: rawCommand, timeout: rawTimeout, cwd, name, ready, env, async: asyncRequested, pty, verification }: BashToolInput,\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "toolName": "edit",
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 1110-1119 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#3609] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  1110:\t\t\tconst autoBackgroundWaitMs = resolveAutoBackgroundWaitMs(\n  1111:\t\t\t\tMath.floor(cfgBashAutoBackgroundThresholdMs.get(this.session.settings)),\n  1112:\t\t\t\ttimeoutMs,\n  1113:\t\t\t);\n  1114:\t\t\tconst startBackgrounded = autoBackgroundWaitMs === 0;\n  1115:\t\t\tconst job = this.#startManagedBashJob({\n  1116:\t\t\t\tcommand,\n  1117:\t\t\t\tcommandCwd,\n  1118:\t\t\t\ttimeoutMs,\n  1119:\t\t\t\ttimeoutSec,\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "toolName": "bash",
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n38 | \t\t);\n39 | \t\tconst readiness = child.stdout.getReader();\n40 | \t\tawait readiness.read();\n41 | \t\treadiness.releaseLock();\n42 | \t\ttry {\n43 | \t\t\texpect(await findReusableCdp(wrapper, { appArgs: [`--user-data-dir=${profile}`] })).toEqual({\n                                                                                            ^\nerror: expect(received).toEqual(expected)\n\n- {\n-   \"cdpUrl\": \"http://127.0.0.1:46575\",\n-   \"pid\": 927198,\n- }\n+ null\n\n- Expected  - 4\n+ Received  + 1\n\n      at <anonymous> (/tmp/pi-forge-repository-maintenance-low-auto/piforge-1-Tfi3bT/workspace/packages/coding-agent/test/tools/browser-attach-bench.test.ts:43:88)\n(fail) reuses Chromium launched through a compiled distro wrapper [79.71ms]\n\n 4 pass\n 1 fail\n 11 expect() calls\nRan 5 tests across 3 files. [1.65s]\n\n\nWall time: 1.70 seconds\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1695.0393250000052,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          }
+        },
+        {
+          "toolName": "edit",
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "Edit rejected for packages/coding-agent/src/tools/browser/attach.ts: file changed between read and edit.\nSection is bound to #BEF8, but the current file hashes to #2DA9. If a prior edit in this session modified this file, copy the [path#newhash] header from that edit's response; otherwise re-read the file with `read` to refresh the tag before retrying.\n\n 379:\t// wrapper script defeats realpath, so resolve through the wrapper exec target\n 380:\t// for Chromium-family browsers on Linux.\n*381:\tconst executablePath = await fs.realpath(exe).catch(() => exe);\n*382:\tconst base = path.basename(exe).replace(/\\.exe$/i, \"\");\n*383:\tconst isChromium = CHROMIUM_BROWSER_BASENAME.test(base) || Object.hasOwn(CHROMIUM_FLATPAK_IDS, base);\n*384:\tconst wrapperTarget = process.platform === \"linux\" && isChromium ? await resolveWrapperTarget(executablePath) : null;\n*385:\tconst candidates = Process.fromPath(wrapperTarget ?? executablePath).filter(\n 386:\t\tcandidate => candidate.status() === ProcessStatus.Running,\n 387:\t);"
+            }
+          ],
+          "details": {}
+        },
+        {
+          "toolName": "edit",
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "This edit anchors to lines 115 of packages/coding-agent/src/tools/bash.ts that [packages/coding-agent/src/tools/bash.ts#3609] never displayed (it showed a partial range, a search hit, or a folded summary). Actual file content at those lines:\n  115:\t\t\ti++;\nVerify the content matches what you intend to touch, then re-issue the edit with the same [path#tag] header — a straight retry now succeeds without a re-read. If the content does NOT match, fix your line numbers."
+            }
+          ],
+          "details": {}
+        },
+        {
+          "toolName": "read",
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "Path 'packages/natives/src/vcs' not found"
+            }
+          ],
+          "details": {}
+        },
+        {
+          "toolName": "bash",
+          "isError": false,
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\n 5 pass\n 0 fail\n 11 expect() calls\nRan 5 tests across 3 files. [1.69s]\n\n\nWall time: 1.72 seconds"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "wallTimeMs": 1719.9477750000078,
+            "verification": {
+              "passed": true
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "governorRecords": [
+    {
+      "path": "2026-10-04T20-49-37-345Z_01a108ad-e841-735a-b59d-d0d21cf7b350.jsonl",
+      "version": 1,
+      "revision": 1,
+      "trigger": "initial",
+      "signalSource": "todo",
+      "signals": {
+        "fileCount": 0,
+        "taskCount": 3,
+        "independentTasks": 0,
+        "dependencyEdges": 0,
+        "highRisk": false,
+        "confidence": 0.6
+      },
+      "decision": {
+        "version": 1,
+        "band": "normal",
+        "confidence": 0.6,
+        "executionMode": "direct",
+        "planningDepth": "brief",
+        "verification": "targeted_checks",
+        "verificationFloor": "V1",
+        "verificationCeiling": "V2",
+        "reviewer": "risk_based",
+        "workerCount": 0,
+        "modelRole": "task",
+        "model": {
+          "provider": "openai-codex",
+          "id": "gpt-6-luna"
+        },
+        "effort": "low",
+        "contextBudgetTokens": 54400,
+        "capabilityIds": [],
+        "evidence": [
+          "moderate scope"
+        ],
+        "clamps": []
+      }
+    },
+    {
+      "path": "2026-10-04T20-49-37-345Z_01a108ad-e841-735a-b59d-d0d21cf7b350.jsonl",
+      "version": 1,
+      "revision": 2,
+      "trigger": "scope",
+      "signalSource": "todo",
+      "signals": {
+        "fileCount": 0,
+        "taskCount": 2,
+        "independentTasks": 0,
+        "dependencyEdges": 0,
+        "highRisk": false,
+        "confidence": 0.6
+      },
+      "decision": {
+        "version": 1,
+        "band": "normal",
+        "confidence": 0.6,
+        "executionMode": "direct",
+        "planningDepth": "brief",
+        "verification": "targeted_checks",
+        "verificationFloor": "V1",
+        "verificationCeiling": "V2",
+        "reviewer": "risk_based",
+        "workerCount": 0,
+        "modelRole": "task",
+        "model": {
+          "provider": "openai-codex",
+          "id": "gpt-6-luna"
+        },
+        "effort": "low",
+        "contextBudgetTokens": 54400,
+        "capabilityIds": [],
+        "evidence": [
+          "moderate scope"
+        ],
+        "clamps": []
+      }
+    },
+    {
+      "path": "2026-10-04T20-49-37-345Z_01a108ad-e841-735a-b59d-d0d21cf7b350.jsonl",
+      "version": 1,
+      "revision": 3,
+      "trigger": "runtime",
+      "signalSource": "todo",
+      "signals": {
+        "fileCount": 0,
+        "taskCount": 2,
+        "independentTasks": 0,
+        "dependencyEdges": 0,
+        "highRisk": false,
+        "confidence": 0.6,
+        "runtime": {
+          "completedCalls": 16,
+          "explorationCalls": 12,
+          "failedCalls": 1,
+          "editedFiles": 2,
+          "verificationFailures": 0,
+          "failedWorkers": 0,
+          "failedMutations": 1,
+          "stalledToolMs": 0,
+          "stalledExplorationCalls": 1
+        }
+      },
+      "decision": {
+        "version": 1,
+        "band": "complex",
+        "confidence": 0.6,
+        "executionMode": "planned",
+        "planningDepth": "milestones",
+        "verification": "targeted_checks",
+        "verificationFloor": "V2",
+        "verificationCeiling": "V3",
+        "reviewer": "risk_based",
+        "workerCount": 0,
+        "modelRole": "task",
+        "model": {
+          "provider": "openai-codex",
+          "id": "gpt-6-luna"
+        },
+        "effort": "low",
+        "contextBudgetTokens": 95200,
+        "capabilityIds": [],
+        "evidence": [
+          "moderate scope",
+          "recent exploration and tool failures increased effort pressure"
+        ],
+        "clamps": []
+      }
+    },
+    {
+      "path": "2026-10-04T20-49-37-345Z_01a108ad-e841-735a-b59d-d0d21cf7b350.jsonl",
+      "version": 1,
+      "revision": 4,
+      "trigger": "scope",
+      "signalSource": "todo",
+      "signals": {
+        "fileCount": 0,
+        "taskCount": 1,
+        "independentTasks": 0,
+        "dependencyEdges": 0,
+        "highRisk": false,
+        "confidence": 0.6,
+        "runtime": {
+          "completedCalls": 16,
+          "explorationCalls": 12,
+          "failedCalls": 1,
+          "editedFiles": 2,
+          "verificationFailures": 0,
+          "failedWorkers": 0,
+          "failedMutations": 1,
+          "stalledToolMs": 0,
+          "stalledExplorationCalls": 1
+        }
+      },
+      "decision": {
+        "version": 1,
+        "band": "complex",
+        "confidence": 0.6,
+        "executionMode": "planned",
+        "planningDepth": "milestones",
+        "verification": "targeted_checks",
+        "verificationFloor": "V2",
+        "verificationCeiling": "V3",
+        "reviewer": "risk_based",
+        "workerCount": 0,
+        "modelRole": "task",
+        "model": {
+          "provider": "openai-codex",
+          "id": "gpt-6-luna"
+        },
+        "effort": "low",
+        "contextBudgetTokens": 95200,
+        "capabilityIds": [],
+        "evidence": [
+          "small independent scope",
+          "recent exploration and tool failures increased effort pressure"
+        ],
+        "clamps": []
+      }
+    },
+    {
+      "path": "2026-10-04T20-49-37-345Z_01a108ad-e841-735a-b59d-d0d21cf7b350.jsonl",
+      "version": 1,
+      "revision": 5,
+      "trigger": "verification_failure",
+      "signalSource": "todo",
+      "signals": {
+        "fileCount": 0,
+        "taskCount": 1,
+        "independentTasks": 0,
+        "dependencyEdges": 0,
+        "highRisk": false,
+        "confidence": 0.6,
+        "runtime": {
+          "completedCalls": 16,
+          "explorationCalls": 5,
+          "failedCalls": 5,
+          "editedFiles": 2,
+          "verificationFailures": 1,
+          "failedWorkers": 0,
+          "failedMutations": 4,
+          "stalledToolMs": 1696,
+          "stalledExplorationCalls": 0
+        }
+      },
+      "decision": {
+        "version": 1,
+        "band": "complex",
+        "confidence": 0.6,
+        "executionMode": "planned",
+        "planningDepth": "milestones",
+        "verification": "targeted_checks",
+        "verificationFloor": "V3",
+        "verificationCeiling": "V3",
+        "reviewer": "risk_based",
+        "workerCount": 0,
+        "modelRole": "task",
+        "model": {
+          "provider": "openai-codex",
+          "id": "gpt-6-luna"
+        },
+        "effort": "low",
+        "contextBudgetTokens": 95200,
+        "capabilityIds": [],
+        "evidence": [
+          "small independent scope",
+          "a declared verification failure raised effort",
+          "repeated edit or write failures raised effort"
+        ],
+        "clamps": []
+      }
+    },
+    {
+      "path": "2026-10-04T20-49-37-345Z_01a108ad-e841-735a-b59d-d0d21cf7b350.jsonl",
+      "version": 1,
+      "revision": 6,
+      "trigger": "scope",
+      "signalSource": "todo",
+      "signals": {
+        "fileCount": 0,
+        "taskCount": 0,
+        "independentTasks": 0,
+        "dependencyEdges": 0,
+        "highRisk": false,
+        "confidence": 0.6,
+        "runtime": {
+          "completedCalls": 16,
+          "explorationCalls": 5,
+          "failedCalls": 5,
+          "editedFiles": 2,
+          "verificationFailures": 1,
+          "failedWorkers": 0,
+          "failedMutations": 4,
+          "stalledToolMs": 1696,
+          "stalledExplorationCalls": 0
+        }
+      },
+      "decision": {
+        "version": 1,
+        "band": "complex",
+        "confidence": 0.6,
+        "executionMode": "planned",
+        "planningDepth": "milestones",
+        "verification": "targeted_checks",
+        "verificationFloor": "V3",
+        "verificationCeiling": "V3",
+        "reviewer": "risk_based",
+        "workerCount": 0,
+        "modelRole": "task",
+        "model": {
+          "provider": "openai-codex",
+          "id": "gpt-6-luna"
+        },
+        "effort": "low",
+        "contextBudgetTokens": 95200,
+        "capabilityIds": [],
+        "evidence": [
+          "small independent scope",
+          "a declared verification failure raised effort",
+          "repeated edit or write failures raised effort"
+        ],
+        "clamps": []
+      }
+    }
+  ],
+  "taskCalls": [],
+  "finalDiff": "diff --git a/packages/coding-agent/src/tools/bash.ts b/packages/coding-agent/src/tools/bash.ts\nindex 8bdd3bd..b44f4fd 100644\n--- a/packages/coding-agent/src/tools/bash.ts\n+++ b/packages/coding-agent/src/tools/bash.ts\n@@ -334,6 +334,7 @@ const bashSchemaBase = type({\n \t\"timeout?\": type(\"number\").describe(BASH_TIMEOUT_DESCRIPTION),\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n });\n \n const bashSchemaWithAsync = type({\n@@ -342,6 +343,7 @@ const bashSchemaWithAsync = type({\n \t\"cwd?\": \"string\",\n \t\"pty?\": \"boolean\",\n \t\"async?\": \"boolean\",\n+\t\"verification?\": \"boolean\",\n });\n \n const bashSchemaWithService = type({\n@@ -357,6 +359,7 @@ const bashSchemaWithService = type({\n \t\t\"timeout?\": \"number\",\n \t}),\n \t\"env?\": type.record(\"string\", \"string\"),\n+\t\"verification?\": \"boolean\",\n });\n \n const bashSchemaWithAsyncAndService = type({\n@@ -373,6 +376,7 @@ const bashSchemaWithAsyncAndService = type({\n \t\t\"timeout?\": \"number\",\n \t}),\n \t\"env?\": type.record(\"string\", \"string\"),\n+\t\"verification?\": \"boolean\",\n });\n \n type BashToolSchema =\n@@ -390,6 +394,7 @@ export interface BashToolInput {\n \tenv?: Record<string, string>;\n \tasync?: boolean;\n \tpty?: boolean;\n+\tverification?: boolean;\n }\n \n export interface BashToolOptions {}\n@@ -663,6 +668,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\trequestedTimeoutSec?: number;\n \t\t\tnotices?: readonly string[];\n \t\t\twallTimeMs?: number;\n+\t\t\tverification?: boolean;\n \t\t} = {},\n \t): Promise<AgentToolResult<BashToolDetails>> {\n \t\tconst exitCode = result.exitCode;\n@@ -690,6 +696,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\tconst isTimeout = result.timedOut === true;\n \n \t\tconst details: BashToolDetails = {};\n+\t\tif (options.verification !== undefined) {\n+\t\t\tdetails.verification = { passed: options.verification && !failedExit && !isTimeout };\n+\t\t}\n \t\tif (timeoutSec === undefined) {\n \t\t\tdetails.timeoutDisabled = true;\n \t\t} else {\n@@ -794,6 +803,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\trequestedTimeoutSec?: number;\n \t\tnotices?: readonly string[];\n \t\tonUpdate?: AgentToolUpdateCallback<BashToolDetails>;\n+\t\tverification?: boolean;\n \t\t/** A foreground wait races the job: updates stream to the caller and the row stays hidden until promoted. */\n \t\tforeground: boolean;\n \t\t/** Approval tier bounding the job's URL filesystem. */\n@@ -843,6 +853,9 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\t\t\t\trequestedTimeoutSec: options.requestedTimeoutSec,\n \t\t\t\t\t\tnotices: options.notices ?? [],\n \t\t\t\t\t\twallTimeMs,\n+\t\t\t\t\t\t...(options.verification === undefined\n+\t\t\t\t\t\t\t? {}\n+\t\t\t\t\t\t\t: { verification: { passed: finalResult.isError !== true } }),\n \t\t\t\t\t});\n \t\t\t\t\tconst finalText = this.#extractTextResult(finalResult);\n \t\t\t\t\tlatestText = finalText;\n@@ -903,11 +916,14 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \n \tasync execute(\n \t\t_toolCallId: string,\n-\t\t{ command: rawCommand, timeout: rawTimeout, cwd, name, ready, env, async: asyncRequested, pty }: BashToolInput,\n+\t\t{ command: rawCommand, timeout: rawTimeout, cwd, name, ready, env, async: asyncRequested, pty, verification }: BashToolInput,\n \t\tsignal?: AbortSignal,\n \t\tonUpdate?: AgentToolUpdateCallback<BashToolDetails>,\n \t\tctx?: AgentToolContext,\n \t): Promise<AgentToolResult<BashToolDetails>> {\n+\t\tif (verification && (asyncRequested !== undefined || name !== undefined)) {\n+\t\t\tthrow new ToolError(\"Verification requires a foreground command; async execution and named services are not supported.\");\n+\t\t}\n \t\tlet command = rawCommand;\n \n \t\t// Extract a leading `cd <path> && ...` into cwd when the model ignores the\n@@ -1103,6 +1119,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\t\ttimeoutSec,\n \t\t\t\trequestedTimeoutSec,\n \t\t\t\tnotices: pendingNotices,\n+\t\t\t\tverification,\n \t\t\t\tonUpdate,\n \t\t\t\tforeground: !startBackgrounded,\n \t\t\t\tapprovalTier,\n@@ -1499,6 +1516,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {\n \t\t\trequestedTimeoutSec,\n \t\t\tnotices: pendingNotices,\n \t\t\twallTimeMs,\n+\t\t\t...(verification === undefined ? {} : { verification: !result.timedOut && result.exitCode === 0 }),\n \t\t});\n \t}\n }\ndiff --git a/packages/coding-agent/src/tools/browser/attach.ts b/packages/coding-agent/src/tools/browser/attach.ts\nindex 1e9b65b..2473388 100644\n--- a/packages/coding-agent/src/tools/browser/attach.ts\n+++ b/packages/coding-agent/src/tools/browser/attach.ts\n@@ -320,12 +320,22 @@ async function resolveWrapperTarget(wrapperPath: string): Promise<string | null> {\n \treturn fs.realpath(joined).catch(() => joined);\n }\n \n-/**\n- * Normalize candidate argv for kernels that serve /proc/<pid>/cmdline\n- * space-joined instead of NUL-separated. A glued first word (the whole\n- * command line in argv[0]) would otherwise hide --user-data-dir and\n- * --remote-debugging-port from the matchers below.\n- */\n+async function findWrapperProcesses(wrapperPath: string): Promise<Process[]> {\n+\tif (process.platform !== \"linux\") return [];\n+\tconst entries = await fs.readdir(\"/proc\", { withFileTypes: true }).catch(() => []);\n+\tconst matches: Process[] = [];\n+\tfor (const entry of entries) {\n+\t\tif (!entry.isDirectory() || !/^\\d+$/u.test(entry.name)) continue;\n+\t\tconst proc = Process.fromPid(Number(entry.name));\n+\t\tif (!proc) continue;\n+\t\tconst environment = await Bun.file(`/proc/${entry.name}/environ`)\n+\t\t\t.text()\n+\t\t\t.catch(() => \"\");\n+\t\tif (environment.split(\"\\0\").includes(`CHROME_WRAPPER=${wrapperPath}`)) matches.push(proc);\n+\t}\n+\treturn matches;\n+}\n+\n function normalizeCandidateArgs(args: string[]): string[] {\n \tif (args.length !== 1 || !args[0]!.includes(\" --\")) return args;\n \tconst word = args[0]!;\n@@ -382,9 +392,14 @@ ): Promise<{ cdpUrl: string; pid: number } | null> {\n \tconst base = path.basename(exe).replace(/\\.exe$/i, \"\");\n \tconst isChromium = CHROMIUM_BROWSER_BASENAME.test(base) || Object.hasOwn(CHROMIUM_FLATPAK_IDS, base);\n \tconst wrapperTarget = process.platform === \"linux\" && isChromium ? await resolveWrapperTarget(executablePath) : null;\n-\tconst candidates = Process.fromPath(wrapperTarget ?? executablePath).filter(\n-\t\tcandidate => candidate.status() === ProcessStatus.Running,\n-\t);\n+\tconst candidates = [\n+\t\t...new Map(\n+\t\t\t[\n+\t\t\t\t...Process.fromPath(wrapperTarget ?? executablePath),\n+\t\t\t\t...(isChromium ? await findWrapperProcesses(executablePath) : []),\n+\t\t\t].map(candidate => [candidate.pid, candidate]),\n+\t\t).values(),\n+\t].filter(candidate => candidate.status() === ProcessStatus.Running);\n \tconst candidateArgs: string[][] = [];\n \tlet hasUnreadableCandidate = false;\n \tfor (const process of candidates) {\n",
+  "supplementalAudit": {
+    "system": "piforge",
+    "cliPath": "/tmp/pi-forge-maintenance-audit/cli.ts",
+    "model": "offline-patch-audit",
+    "thinkingLevel": "low",
+    "exitCode": 0,
+    "testExitCode": 1,
+    "passed": false,
+    "orchestrationPassed": true,
+    "orchestrationFailure": null,
+    "budgetStopReason": null,
+    "adaptiveMode": null,
+    "governorDecisions": [],
+    "changedFiles": [
+      "packages/coding-agent/src/tools/bash.ts",
+      "packages/coding-agent/src/tools/browser/attach.ts"
+    ],
+    "filesWithinScope": true,
+    "toolCalls": [],
+    "assistantTurns": 1,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "totalTokens": 0,
+    "costUsd": 0,
+    "wallTimeMs": 345.04280399999993,
+    "humanInterventions": 0,
+    "transcriptPath": "/tmp/pi-forge-maintenance-audit/piforge-1-7Pl8Bg/transcript.jsonl",
+    "sessionDirectory": "/tmp/pi-forge-maintenance-audit/piforge-1-7Pl8Bg/sessions",
+    "workspacePath": "/tmp/pi-forge-maintenance-audit/piforge-1-7Pl8Bg/workspace",
+    "testOutput": "bun test v1.4.2 (744846f84)\n\n\npackages/coding-agent/test/bash-verification-boundaries.test.ts:\n23 | }\n24 | \n25 | it(\"does not label an ordinary command as failed verification when verification is explicitly false\", async () => {\n26 | \tconst result = await makeTool().execute(\"ordinary\", { command: \"exit 0\", verification: false });\n27 | \texpect(result.isError).not.toBe(true);\n28 | \texpect(result.details).not.toHaveProperty(\"verification\");\n                                 ^\nerror: expect(received).not.toHaveProperty(path)\n\nExpected path: not \"verification\"\n\nReceived value: {\n  passed: true,\n}\n\n      at <anonymous> (/tmp/pi-forge-maintenance-audit/piforge-1-7Pl8Bg/workspace/packages/coding-agent/test/bash-verification-boundaries.test.ts:28:29)\n(fail) does not label an ordinary command as failed verification when verification is explicitly false [51.94ms]\n920 | \t\tsignal?: AbortSignal,\n921 | \t\tonUpdate?: AgentToolUpdateCallback<BashToolDetails>,\n922 | \t\tctx?: AgentToolContext,\n923 | \t): Promise<AgentToolResult<BashToolDetails>> {\n924 | \t\tif (verification && (asyncRequested !== undefined || name !== undefined)) {\n925 | \t\t\tthrow new ToolError(\"Verification requires a foreground command; async execution and named services are not supported.\");\n               ^\nToolError: Verification requires a foreground command; async execution and named services are not supported.\n context: undefined,\n\n      at execute (/tmp/pi-forge-maintenance-audit/piforge-1-7Pl8Bg/workspace/packages/coding-agent/src/tools/bash.ts:925:10)\n      at <anonymous> (/tmp/pi-forge-maintenance-audit/piforge-1-7Pl8Bg/workspace/packages/coding-agent/test/bash-verification-boundaries.test.ts:32:34)\n(fail) accepts a foreground verification command with async explicitly false [0.45ms]\n\npackages/coding-agent/test/bash-background-audit.test.ts:\n(pass) keeps ordinary foreground commands usable with auto-background enabled and no job manager [2.70ms]\n(pass) reports verification failure when a foreground command times out [1231.56ms]\n\npackages/coding-agent/test/bash-verification-bench.test.ts:\n(pass) reports verification success and failure while leaving ordinary results unmarked [16.21ms]\n(pass) rejects verification checks requested as asynchronous jobs or services [0.61ms]\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n(pass) reuses Chromium launched through a compiled distro wrapper [180.67ms]\n\n 5 pass\n 2 fail\n 13 expect() calls\nRan 7 tests across 4 files. [1.85s]"
+  },
+  "productionControl": {
+    "system": "piforge",
+    "cliPath": "/tmp/pi-forge-maintenance-control/cli.ts",
+    "model": "offline-production-control",
+    "thinkingLevel": "low",
+    "exitCode": 0,
+    "testExitCode": 0,
+    "passed": true,
+    "orchestrationPassed": true,
+    "orchestrationFailure": null,
+    "budgetStopReason": null,
+    "adaptiveMode": null,
+    "governorDecisions": [],
+    "changedFiles": [
+      "packages/coding-agent/src/tools/bash.ts",
+      "packages/coding-agent/src/tools/browser/attach.ts"
+    ],
+    "filesWithinScope": true,
+    "toolCalls": [],
+    "assistantTurns": 1,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "totalTokens": 0,
+    "costUsd": 0,
+    "wallTimeMs": 7.143934999999999,
+    "humanInterventions": 0,
+    "transcriptPath": "/tmp/pi-forge-maintenance-control/piforge-1-VafxdM/transcript.jsonl",
+    "sessionDirectory": "/tmp/pi-forge-maintenance-control/piforge-1-VafxdM/sessions",
+    "workspacePath": "/tmp/pi-forge-maintenance-control/piforge-1-VafxdM/workspace",
+    "testOutput": "bun test v1.4.2 (744846f84)\n\n\npackages/coding-agent/test/bash-verification-boundaries.test.ts:\n(pass) does not label an ordinary command as failed verification when verification is explicitly false [42.22ms]\n(pass) accepts a foreground verification command with async explicitly false [2.16ms]\n\npackages/coding-agent/test/bash-background-audit.test.ts:\n(pass) keeps ordinary foreground commands usable with auto-background enabled and no job manager [1.99ms]\n(pass) reports verification failure when a foreground command times out [1229.49ms]\n\npackages/coding-agent/test/bash-verification-bench.test.ts:\n(pass) reports verification success and failure while leaving ordinary results unmarked [6.78ms]\n(pass) rejects verification checks requested as asynchronous jobs or services [0.27ms]\n\npackages/coding-agent/test/tools/browser-attach-bench.test.ts:\n(pass) reuses Chromium launched through a compiled distro wrapper [74.07ms]\n\n 7 pass\n 0 fail\n 15 expect() calls\nRan 7 tests across 4 files. [1.66s]"
+  },
+  "limitations": [
+    "One auto-only Luna Low optional-strategy run; no matched efficiency inference.",
+    "No delegation occurred; autonomous delegation remains unverified.",
+    "Original five checks pass; strengthened seven-check audit fails both explicit-false boundaries.",
+    "Generated benchmark patch was not applied to the development checkout.",
+    "Reported cost and cached-token counts do not measure subscription quota usage."
+  ],
+  "supplementalPacketSha256": {
+    "TASK.md": "b59802fa5a947de55e62d4d0cdb611ce24c1ae95f82d980d30cf29a92648d821",
+    "browser-attach-bench.test.ts": "f2063f3b06b376666d5e49b5d55df5688e4ce59b9130093bb2feff4a10af8057",
+    "bash-verification-bench.test.ts": "c6b300f8873892f6518247862d81903468f7dcbd5698460cc8f28830388a228b",
+    "bash-background-audit.test.ts": "b79b46d2f616aceafcf4a224c3736f4eee7dbf351b728774dcd516eac557408a",
+    "benchmark.yml": "526a071f0c2c2022b09f00326b61abfa5e988377b70bd0f453c47e0daf47174c",
+    "manifest.json": "03c47c7478eae26eb5117b72de1aedfd3b2f2ef9991f83b9556eaf64f87afe12",
+    "bash-verification-boundaries.test.ts": "f55c4db9ad2005c40c6fba717381dfaf26c41da0f26f03ec0294a3864b57f0b8"
+  }
+}

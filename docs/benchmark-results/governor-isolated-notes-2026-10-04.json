@@ -1,0 +1,292 @@
+{
+  "sourceHead": "8600f17c9f1a64ed041f6e846cd3a44939a77a29",
+  "sourceHasUncommittedRuntimeChanges": true,
+  "runtimeChanges": [
+    "integrationGateFailure rejects falsy malformed check evidence"
+  ],
+  "sourceSha256": {
+    "packages/coding-agent/src/task/integration-gate.ts": "f0a14f458657628da83d08c1aea934e3941dd7a1798b35c7344bf4ac9730a72a",
+    "packages/coding-agent/src/task/index.ts": "227d02a659138972f5e6e47ebb3848353a613eb43553be968ef7295874419458",
+    "packages/coding-agent/src/task/structured-subagent.ts": "54133338cd105a0949e889a870d6d98c569c458812c7d01aed6414e738d10d67",
+    "packages/coding-agent/src/task/isolation-runner.ts": "a7c2d785ccf56aa97e1d2fd091097617877b7687ad952985d513801073e7c8bc",
+    "packages/coding-agent/bench/task-outcome-ab.ts": "02a442802fbed99ea15aaa01242843f3b45c1c1e8e319b36a67f41f5120e4551"
+  },
+  "packetSha256": {
+    "TASK.md": "265768f33edbdcd47220dfd88b13c2c5f769e1c14bdb30eb702fadef2b06a816",
+    "manifest.json": "bb74ebf7e4ded4cbfa8a6fcabd0083b6eabf581d4e7d18c462714607e253c904",
+    "benchmark.yml": "ac930187074b13851ca10c77820749f289bb2f05f71ca8c24a9df8a87c4f6f1d"
+  },
+  "report": {
+    "packet": {
+      "id": "governor-isolated-notes-v1",
+      "category": "live isolated patch integration",
+      "sourceCommit": "8600f17c9f1a64ed041f6e846cd3a44939a77a29",
+      "taskFile": "TASK.md",
+      "acceptanceCommand": [
+        "bun",
+        "test",
+        "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts"
+      ],
+      "expectedChangedFiles": [
+        "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts",
+        "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts"
+      ],
+      "repeatCount": 1,
+      "notes": "One auto-mode run with two explicit isolated workers and the host integration gate. Uses the six frozen compact-notes checks in a repository worktree. All roles pinned to Luna Low; no harness token/time cutoff. Default repair budgets remain the product policy. No upstream or off-mode performance comparison.",
+      "configFile": "benchmark.yml",
+      "supportFiles": {
+        "TASK.md": "TASK.md",
+        "benchmark.yml": "benchmark.yml"
+      }
+    },
+    "model": "openai-codex/gpt-6-luna",
+    "thinkingLevel": "low",
+    "createdAt": "2026-10-04T18:03:28.666Z",
+    "conditions": {
+      "autoApprove": true,
+      "sessionPersistence": true,
+      "taskPrompt": "TASK.md",
+      "selectedSystem": "piforge",
+      "budget": null,
+      "adaptiveMode": "auto",
+      "thinkingLevel": "low",
+      "repeatCount": 1
+    },
+    "sources": {
+      "omp": {
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "revision": null
+      },
+      "piforge": {
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "revision": "8600f17c9f"
+      }
+    },
+    "runs": [
+      {
+        "system": "piforge",
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "model": "openai-codex/gpt-6-luna",
+        "thinkingLevel": "low",
+        "exitCode": 0,
+        "testExitCode": 0,
+        "passed": true,
+        "budgetStopReason": null,
+        "adaptiveMode": "auto",
+        "governorDecisions": [
+          {
+            "trigger": "initial",
+            "band": "normal",
+            "workerCount": 0,
+            "verificationFloor": "V1"
+          },
+          {
+            "trigger": "scope",
+            "band": "normal",
+            "workerCount": 0,
+            "verificationFloor": "V1"
+          }
+        ],
+        "changedFiles": [
+          "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts",
+          "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts"
+        ],
+        "filesWithinScope": true,
+        "toolCalls": [
+          "todo",
+          "task",
+          "todo",
+          "wait",
+          "wait",
+          "todo",
+          "wait",
+          "todo",
+          "glob",
+          "read",
+          "read",
+          "read",
+          "read",
+          "read",
+          "bash",
+          "yield",
+          "read",
+          "edit",
+          "yield",
+          "read",
+          "edit",
+          "yield"
+        ],
+        "assistantTurns": 20,
+        "inputTokens": 53050,
+        "outputTokens": 1678,
+        "cacheReadTokens": 176128,
+        "cacheWriteTokens": 0,
+        "totalTokens": 230856,
+        "costUsd": 0.00790528,
+        "wallTimeMs": 68558.36099100001,
+        "humanInterventions": 0,
+        "transcriptPath": "/tmp/pi-forge-isolated-notes-low-auto/piforge-1-AeMlFq/transcript.jsonl",
+        "sessionDirectory": "/tmp/pi-forge-isolated-notes-low-auto/piforge-1-AeMlFq/sessions",
+        "workspacePath": "/tmp/pi-forge-isolated-notes-low-auto/piforge-1-AeMlFq/workspace",
+        "testOutput": "bun test v1.4.2 (744846f84)\n\n\npackages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts:\n(pass) canonicalizes labels and keeps the first occurrence without changing input [0.18ms]\n(pass) returns no labels for empty input [0.01ms]\n(pass) returns the newest entries in chronological order without changing input [0.03ms]\n(pass) hides all history when the requested limit is zero or negative [0.01ms]\n(pass) returns an independent copy when the limit exceeds available history [0.02ms]\n(pass) combines canonical labels and hidden history through the existing consumer [0.04ms]\n\n 6 pass\n 0 fail\n 8 expect() calls\nRan 6 tests across 1 file. [10.00ms]"
+      }
+    ]
+  },
+  "execution": {
+    "sessions": [
+      {
+        "path": "2026-10-04T18-02-20-273Z_01a10814-c0f1-7408-b998-b952df0db504.jsonl",
+        "models": [
+          "openai-codex/gpt-6-luna"
+        ],
+        "thinkingLevels": [
+          "low"
+        ],
+        "usage": {
+          "toolCalls": [
+            "todo",
+            "task",
+            "todo",
+            "wait",
+            "wait",
+            "todo",
+            "wait",
+            "todo"
+          ],
+          "assistantTurns": 9,
+          "inputTokens": 21707,
+          "outputTokens": 791,
+          "cacheReadTokens": 112640,
+          "cacheWriteTokens": 0,
+          "totalTokens": 135138,
+          "costUsd": 0.0036926000000000007
+        }
+      },
+      {
+        "path": "2026-10-04T18-02-20-273Z_01a10814-c0f1-7408-b998-b952df0db504/Integration gate.jsonl",
+        "models": [
+          "openai-codex/gpt-6-luna"
+        ],
+        "thinkingLevels": [
+          "low"
+        ],
+        "usage": {
+          "toolCalls": [
+            "glob",
+            "read",
+            "read",
+            "read",
+            "read",
+            "read",
+            "bash",
+            "yield"
+          ],
+          "assistantTurns": 5,
+          "inputTokens": 13731,
+          "outputTokens": 446,
+          "cacheReadTokens": 36864,
+          "cacheWriteTokens": 0,
+          "totalTokens": 51041,
+          "costUsd": 0.0019647400000000004
+        }
+      },
+      {
+        "path": "2026-10-04T18-02-20-273Z_01a10814-c0f1-7408-b998-b952df0db504/Labels.jsonl",
+        "models": [
+          "openai-codex/gpt-6-luna"
+        ],
+        "thinkingLevels": [
+          "low"
+        ],
+        "usage": {
+          "toolCalls": [
+            "read",
+            "edit",
+            "yield"
+          ],
+          "assistantTurns": 3,
+          "inputTokens": 8945,
+          "outputTokens": 247,
+          "cacheReadTokens": 13312,
+          "cacheWriteTokens": 0,
+          "totalTokens": 22504,
+          "costUsd": 0.0011511200000000003
+        }
+      },
+      {
+        "path": "2026-10-04T18-02-20-273Z_01a10814-c0f1-7408-b998-b952df0db504/History.jsonl",
+        "models": [
+          "openai-codex/gpt-6-luna"
+        ],
+        "thinkingLevels": [
+          "low"
+        ],
+        "usage": {
+          "toolCalls": [
+            "read",
+            "edit",
+            "yield"
+          ],
+          "assistantTurns": 3,
+          "inputTokens": 8667,
+          "outputTokens": 194,
+          "cacheReadTokens": 13312,
+          "cacheWriteTokens": 0,
+          "totalTokens": 22173,
+          "costUsd": 0.00109682
+        }
+      }
+    ],
+    "taskInvocations": [
+      {
+        "i": "Repair two fixture utilities",
+        "context": "Two independent file repairs. Exact ownership: worker Labels owns only `packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts`; worker History owns only `packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts`. The entire `packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts` is read-only: never change, rename, format, or add tests. Keep `preview.ts` unchanged. Workers must not delegate or run checks. All model roles are pinned to GPT-6 Luna Low.",
+        "tasks": [
+          {
+            "name": "Labels",
+            "agent": "task",
+            "isolated": true,
+            "effort": "lo",
+            "task": "Own only `packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts`. The entire `packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts` is read-only: never change, rename, format, or add tests. Keep `preview.ts` unchanged. Implement normalizeLabels: trim and lowercase labels, remove empty labels, and deduplicate in first-seen order without mutating input. Do not delegate or run checks. All model roles are pinned to GPT-6 Luna Low."
+          },
+          {
+            "name": "History",
+            "agent": "task",
+            "isolated": true,
+            "effort": "lo",
+            "task": "Own only `packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts`. The entire `packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts` is read-only: never change, rename, format, or add tests. Keep `preview.ts` unchanged. Implement recentHistory: return up to limit newest entries in original order without mutating input. Zero or negative integer limits return []; larger limits return a copy of all entries. Do not delegate or run checks. All model roles are pinned to GPT-6 Luna Low."
+          }
+        ]
+      }
+    ],
+    "gateOutcome": {
+      "status": "verified",
+      "summary": "Combined labels and history implementations satisfy the requested behavior; the fixture's focused test suite passes.",
+      "verificationLevel": "V1",
+      "checks": [
+        {
+          "command": "bun test test/notes.test.ts (in packages/coding-agent/bench/fixtures/governor-compact-notes-v1)",
+          "status": "passed",
+          "result": "6 passed, 0 failed; 8 assertions."
+        }
+      ],
+      "files": [],
+      "repairAttempts": 0
+    },
+    "peakRunningImplementationWorkers": 2,
+    "integrationNotices": [
+      {
+        "session": "2026-10-04T18-02-20-273Z_01a10814-c0f1-7408-b998-b952df0db504.jsonl",
+        "text": "## Completed (1)\n\n### Labels [task] — completed\nLabel: Labels\nDelivery: not auto-delivered; recovered by this snapshot.\n```\n<task-result id=\"Labels\" agent=\"task\" status=\"completed\" duration=\"13.2s\">\n<meta lines=\"3\" size=\"232B\" />\n<output>\n{\n  \"result\": \"Implemented `normalizeLabels` in the assigned file: trims and lowercases labels, drops empty values, and deduplicates while preserving first-seen order. Input remains unchanged. Per instruction, no checks were run.\"\n}\n</output>\n<merge-summary>\nApplied patches: yes\n</merge-summary>\n</task-result>\n\nLabels ran isolated and cannot be resumed or messaged — transcript at history://Labels\n```\n\n## Still Running (2)\n\n- `History` [task] — History\n- `Integration gate` [task] — Integration gate"
+      }
+    ]
+  },
+  "finalDiff": "diff --git a/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts b/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts\nindex ac09ec8..03f8d61 100644\n--- a/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts\n+++ b/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts\n@@ -1,3 +1,4 @@\n export function recentHistory(entries: readonly string[], limit: number): string[] {\n+\tif (limit <= 0) return [];\n \treturn entries.slice(-limit);\n }\ndiff --git a/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts b/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts\nindex 99c889c..8ed4b06 100644\n--- a/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts\n+++ b/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts\n@@ -1,3 +1,14 @@\n export function normalizeLabels(labels: readonly string[]): string[] {\n-\treturn labels.map(label => label.toLowerCase());\n+\tconst normalized: string[] = [];\n+\tconst seen = new Set<string>();\n+\n+\tfor (const label of labels) {\n+\t\tconst value = label.trim().toLowerCase();\n+\t\tif (value && !seen.has(value)) {\n+\t\t\tseen.add(value);\n+\t\t\tnormalized.push(value);\n+\t\t}\n+\t}\n+\n+\treturn normalized;\n }\n",
+  "limitations": [
+    "One auto-only run with explicit isolated delegation; no matched performance comparison or autonomous delegation.",
+    "No failing integration check or live repair was observed.",
+    "Fixture source files reside inside a frozen repository checkout; this is a small synthetic contract, not broad repository calibration.",
+    "Product repair budgets are unchanged; no harness token/time cutoff was applied.",
+    "Reported cost is provider telemetry, not subscription quota consumption."
+  ]
+}

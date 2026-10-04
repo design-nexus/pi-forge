@@ -19,6 +19,8 @@ export interface PacketManifest {
 	supportFiles?: Record<string, string>;
 	/** Frozen settings overlay copied with the packet, applied to the benchmark CLI. */
 	configFile?: string;
+	/** Require a completed, host-accepted integration gate snapshot in the parent session. */
+	requiredIntegrationGate?: { status: "verified" | "reconciled"; minimumRepairAttempts?: number };
 }
 
 export interface RunSummary {
@@ -29,6 +31,8 @@ export interface RunSummary {
 	exitCode: number;
 	testExitCode: number;
 	passed: boolean;
+	orchestrationPassed: boolean;
+	orchestrationFailure: string | null;
 	budgetStopReason: "token_cap" | "time_cap" | null;
 	adaptiveMode: "off" | "auto" | null;
 	governorDecisions: Array<{
@@ -374,6 +378,7 @@ export async function runSystem(
 	);
 	await Bun.write(transcriptPath, transcript);
 	const telemetry = await readRunTelemetry(sessionDirectory);
+	const orchestrationFailure = await readIntegrationOutcome(sessionDirectory, manifest.requiredIntegrationGate);
 	const governorDecisions = await readGovernorDecisions(sessionDirectory);
 	const test = await runCommand(manifest.acceptanceCommand, runDir);
 	let changed: string[];
@@ -421,7 +426,14 @@ export async function runSystem(
 		thinkingLevel,
 		exitCode,
 		testExitCode: test.exitCode,
-		passed: exitCode === 0 && test.exitCode === 0 && changedSetMatches && changedOutsideScope.length === 0,
+		passed:
+			exitCode === 0 &&
+			test.exitCode === 0 &&
+			changedSetMatches &&
+			changedOutsideScope.length === 0 &&
+			orchestrationFailure === null,
+		orchestrationPassed: orchestrationFailure === null,
+		orchestrationFailure,
 		budgetStopReason: stopReason,
 		adaptiveMode,
 		governorDecisions,
@@ -435,6 +447,48 @@ export async function runSystem(
 		workspacePath: runDir,
 		testOutput: test.output,
 	};
+}
+
+/** Gate yield output alone is insufficient: only the parent's host job snapshot proves acceptance. */
+export async function readIntegrationOutcome(
+	sessionDirectory: string,
+	requirement: PacketManifest["requiredIntegrationGate"],
+): Promise<string | null> {
+	if (!requirement) return null;
+	const glob = new Bun.Glob("*.jsonl");
+	for await (const relative of glob.scan({ cwd: sessionDirectory, onlyFiles: true })) {
+		let latest: Record<string, unknown> | undefined;
+		for (const line of (await Bun.file(path.join(sessionDirectory, relative)).text()).split("\n")) {
+			let entry: unknown;
+			try {
+				entry = JSON.parse(line);
+			} catch {
+				continue;
+			}
+			if (!isRecord(entry) || !isRecord(entry.message)) continue;
+			const message = entry.message;
+			if (message.role !== "toolResult" || message.toolName !== "wait" || !isRecord(message.details)) continue;
+			if (!Array.isArray(message.details.jobs)) continue;
+			for (const job of message.details.jobs) {
+				if (isRecord(job) && job.id === "Integration gate") latest = job;
+			}
+		}
+		if (!latest) continue;
+		const structured = latest.structured;
+		if (
+			latest.status !== "completed" ||
+			!isRecord(structured) ||
+			structured.status !== "valid" ||
+			!isRecord(structured.data)
+		)
+			return "Integration gate did not complete with a host-accepted structured result";
+		if (structured.data.status !== requirement.status)
+			return `Integration gate did not report required status ${requirement.status}`;
+		if (numberField(structured.data, "repairAttempts") < (requirement.minimumRepairAttempts ?? 0))
+			return "Integration gate did not report the required repair attempts";
+		return null;
+	}
+	return "Missing parent integration gate completion snapshot";
 }
 
 /** Persisted assistant messages are authoritative; task result summaries repeat worker usage. */

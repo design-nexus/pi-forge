@@ -1,0 +1,403 @@
+{
+  "sourceHead": "8600f17c9f1a64ed041f6e846cd3a44939a77a29",
+  "sourceHasUncommittedRuntimeChanges": true,
+  "sourceSha256": {
+    "packages/coding-agent/src/task/integration-gate.ts": "c28f7cbe3ce675b9079342cd4e90906845a8c8a4ec2c9d9af516717631e876d5",
+    "packages/coding-agent/src/task/index.ts": "fd997757ff0deba5fd4d4dfbeb45c997d6424771010c380e241c2f74c6c5e763",
+    "packages/coding-agent/src/task/structured-subagent.ts": "54133338cd105a0949e889a870d6d98c569c458812c7d01aed6414e738d10d67",
+    "packages/coding-agent/src/task/isolation-runner.ts": "a7c2d785ccf56aa97e1d2fd091097617877b7687ad952985d513801073e7c8bc",
+    "packages/coding-agent/src/prompts/tools/task-integration-gate.md": "6411c29d277a679e56147c07223d50aeb907cf4a91c1217d674c43b53746883d",
+    "packages/coding-agent/bench/task-outcome-ab.ts": "02a442802fbed99ea15aaa01242843f3b45c1c1e8e319b36a67f41f5120e4551"
+  },
+  "packetSha256": {
+    "TASK.md": "83bd97c0c0faac933a7f6af0d8115e2f213c398e0ca1d127f843efc9dbcd3b20",
+    "manifest.json": "c5a2f03ef401d9fc78d1fb233e674fc37acd0af1bd53554d26760bd6b62f9342",
+    "benchmark.yml": "ac930187074b13851ca10c77820749f289bb2f05f71ca8c24a9df8a87c4f6f1d"
+  },
+  "taskText": "This is a controlled integration-repair experiment. Change only these two files:\n- packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts\n- packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts\n\nUse the generic task tool once with two independent items, each with isolated: true and effort \"lo\" when available. Labels owns only labels.ts and implements the correct normalizeLabels behavior below. History owns only history.ts and deliberately implements recentHistory with exactly `return entries.slice(-Math.max(1, limit));` for fault injection. History must not correct the non-positive-limit defect. Repeat the exact ownership, read-only test restriction, and injected-defect instructions in the relevant assignments. Workers must not delegate or run checks. All model roles are pinned to GPT-6 Luna Low.\n\nnormalizeLabels must trim and lowercase labels, remove empty labels, and deduplicate in first-seen order without mutating its input. recentHistory must return up to limit newest entries in original order without mutating input. Zero or negative integer limits return []; larger limits return a copy of all entries.\n\nThe entire test file packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts is read-only: never change, rename, format, or add tests. Keep preview.ts unchanged. No repository investigation, package installation, or design plan is needed.\n\nInclude these integration-gate instructions in shared context: after merging both patches, first run `bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts` without editing any files. This must expose the injected non-positive-limit defect. Then the integration gate may make one focused repair in history.ts to satisfy the correct contract and rerun the same command. Include both attempted checks and their actual outcomes in the structured result; report reconciled status and one repair if the fix passes. Do not claim repair before executing the initial failing check. Do not inspect unrelated files or run broader checks for this fixture.\n\nThe parent must not edit or repair either source file. Let the host integration gate perform the repair and verification. If the gate already reports success, do not repeat checks yourself. Return a short result stating whether the controlled repair succeeded.\n\nIn shared context, also require the gate to use exactly `bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts` in both check records' command fields. Put “initial before edits” and “after repair” in the corresponding result descriptions. Do not append phase annotations to command text.\n",
+  "report": {
+    "packet": {
+      "id": "governor-isolated-repair-v1",
+      "category": "controlled live integration repair",
+      "sourceCommit": "8600f17c9f1a64ed041f6e846cd3a44939a77a29",
+      "taskFile": "TASK.md",
+      "acceptanceCommand": [
+        "bun",
+        "test",
+        "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts"
+      ],
+      "expectedChangedFiles": [
+        "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts",
+        "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts"
+      ],
+      "repeatCount": 1,
+      "notes": "One auto-mode Luna Low run with two isolated workers. The History worker intentionally injects a non-positive-limit defect; the integration gate must execute the unchanged checks before repairing it. Measures controlled detection and repair, not natural coding failure rates or matched performance. No harness token/time cutoff; default product repair budgets remain authoritative.",
+      "configFile": "benchmark.yml",
+      "supportFiles": {
+        "TASK.md": "TASK.md",
+        "benchmark.yml": "benchmark.yml"
+      }
+    },
+    "model": "openai-codex/gpt-6-luna",
+    "thinkingLevel": "low",
+    "createdAt": "2026-10-04T20:26:10.972Z",
+    "conditions": {
+      "autoApprove": true,
+      "sessionPersistence": true,
+      "taskPrompt": "TASK.md",
+      "selectedSystem": "piforge",
+      "budget": null,
+      "adaptiveMode": "auto",
+      "thinkingLevel": "low",
+      "repeatCount": 1
+    },
+    "sources": {
+      "omp": {
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "revision": null
+      },
+      "piforge": {
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "revision": null
+      }
+    },
+    "runs": [
+      {
+        "system": "piforge",
+        "cliPath": "/home/ken/Projects/pi-forge/packages/coding-agent/src/cli.ts",
+        "model": "openai-codex/gpt-6-luna",
+        "thinkingLevel": "low",
+        "exitCode": 0,
+        "testExitCode": 0,
+        "passed": true,
+        "budgetStopReason": null,
+        "adaptiveMode": "auto",
+        "governorDecisions": [
+          {
+            "trigger": "scope",
+            "band": "normal",
+            "workerCount": 0,
+            "verificationFloor": "V1"
+          }
+        ],
+        "changedFiles": [
+          "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts",
+          "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts"
+        ],
+        "filesWithinScope": true,
+        "toolCalls": [
+          "task",
+          "wait",
+          "wait",
+          "wait",
+          "bash",
+          "read",
+          "edit",
+          "bash",
+          "yield",
+          "read",
+          "edit",
+          "yield",
+          "read",
+          "edit",
+          "yield"
+        ],
+        "assistantTurns": 16,
+        "inputTokens": 50411,
+        "outputTokens": 1660,
+        "cacheReadTokens": 122880,
+        "cacheWriteTokens": 0,
+        "totalTokens": 174951,
+        "costUsd": 0.0070999,
+        "wallTimeMs": 67789.63563199999,
+        "humanInterventions": 0,
+        "transcriptPath": "/tmp/pi-forge-isolated-repair-low-auto-fixed/piforge-1-QEbKt4/transcript.jsonl",
+        "sessionDirectory": "/tmp/pi-forge-isolated-repair-low-auto-fixed/piforge-1-QEbKt4/sessions",
+        "workspacePath": "/tmp/pi-forge-isolated-repair-low-auto-fixed/piforge-1-QEbKt4/workspace",
+        "testOutput": "bun test v1.4.2 (744846f84)\n\n\npackages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts:\n(pass) canonicalizes labels and keeps the first occurrence without changing input [0.50ms]\n(pass) returns no labels for empty input [0.12ms]\n(pass) returns the newest entries in chronological order without changing input [0.18ms]\n(pass) hides all history when the requested limit is zero or negative [0.07ms]\n(pass) returns an independent copy when the limit exceeds available history [0.08ms]\n(pass) combines canonical labels and hidden history through the existing consumer [0.14ms]\n\n 6 pass\n 0 fail\n 8 expect() calls\nRan 6 tests across 1 file. [27.00ms]"
+      }
+    ]
+  },
+  "sessions": [
+    {
+      "path": "2026-10-04T20-25-02-880Z_01a10897-68a0-7134-8bf2-228ccf6ab8e3.jsonl",
+      "models": [
+        "openai-codex/gpt-6-luna"
+      ],
+      "thinkingLevels": [
+        "low"
+      ],
+      "usage": {
+        "toolCalls": [
+          "task",
+          "wait",
+          "wait",
+          "wait"
+        ],
+        "assistantTurns": 5,
+        "inputTokens": 18116,
+        "outputTokens": 805,
+        "cacheReadTokens": 57344,
+        "cacheWriteTokens": 0,
+        "totalTokens": 76265,
+        "costUsd": 0.00278754
+      },
+      "gateToolResults": []
+    },
+    {
+      "path": "2026-10-04T20-25-02-880Z_01a10897-68a0-7134-8bf2-228ccf6ab8e3/Integration gate.jsonl",
+      "models": [
+        "openai-codex/gpt-6-luna"
+      ],
+      "thinkingLevels": [
+        "low"
+      ],
+      "usage": {
+        "toolCalls": [
+          "bash",
+          "read",
+          "edit",
+          "bash",
+          "yield"
+        ],
+        "assistantTurns": 5,
+        "inputTokens": 13701,
+        "outputTokens": 428,
+        "cacheReadTokens": 38912,
+        "cacheWriteTokens": 0,
+        "totalTokens": 53041,
+        "costUsd": 0.0019732200000000004
+      },
+      "gateToolResults": [
+        {
+          "role": "toolResult",
+          "toolCallId": "call_zO0DODU8uGthLvDHJF54OEIV|fc_07e0fd48ed86ede4016ac2b652606887d1b4ffb96212b59d9a",
+          "toolName": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "16 | \tconst entries = Object.freeze([\"old\", \"middle\", \"new\"]);\n17 | \texpect(recentHistory(entries, 2)).toEqual([\"middle\", \"new\"]);\n18 | });\n19 | \n20 | it(\"hides all history when the requested limit is zero or negative\", () => {\n21 | \texpect(recentHistory([\"private\"], 0)).toEqual([]);\n                                            ^\nerror: expect(received).toEqual(expected)\n\n- []\n+ [\n+   \"private\",\n+ ]\n\n- Expected  - 1\n+ Received  + 3\n\n      at <anonymous> (/tmp/pi-forge-isolated-repair-low-auto-fixed/piforge-1-QEbKt4/workspace/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts:21:40)\n(fail) hides all history when the requested limit is zero or negative [0.21ms]\n29 | \texpect(entries).toEqual([\"only\"]);\n30 | \texpect(result).toEqual([\"only\", \"later\"]);\n31 | });\n32 | \n33 | it(\"combines canonical labels and hidden history through the existing consumer\", () => {\n34 | \texpect(preview([\" Draft \", \"draft\"], [\"private\"], 0)).toEqual({ labels: [\"draft\"], entries: [] });\n                                                            ^\nerror: expect(received).toEqual(expected)\n\n@@ -1,3 +1,5 @@\n  {\n-   \"entries\": [],\n+   \"entries\": [\n+     \"private\",\n+   ],\n    \"labels\": [\n\n- Expected  - 1\n+ Received  + 3\n\n      at <anonymous> (/tmp/pi-forge-isolated-repair-low-auto-fixed/piforge-1-QEbKt4/workspace/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts:34:56)\n(fail) combines canonical labels and hidden history through the existing consumer [0.09ms]\n\n 4 pass\n 2 fail\nRan 6 tests across 1 file. [14.00ms]\n[raw output: artifact://1]\n\n\nWall time: 0.09 seconds\nTimeout clamped to 3600s (requested 120000s; allowed range 1-3600s).\n\nCommand exited with code 1"
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "requestedTimeoutSeconds": 120000,
+            "wallTimeMs": 85.64238699999987,
+            "exitCode": 1,
+            "verification": {
+              "passed": false
+            }
+          },
+          "isError": true,
+          "timestamp": 1791145555385
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_xuXW7amMtvwT3gcCqkypKDC5|ctc_07e0fd48ed86ede4016ac2b65631f487d18adaf28eede72356",
+          "toolName": "edit",
+          "content": [
+            {
+              "type": "text",
+              "text": "[packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts#C4B6]\n1:export function recentHistory(entries: readonly string[], limit: number): string[] {\n2:\treturn limit <= 0 ? [] : entries.slice(-limit);\n3:}"
+            }
+          ],
+          "details": {
+            "diff": " 1|export function recentHistory(entries: readonly string[], limit: number): string[] {\n-2|\treturn entries.slice(-Math.max(1, limit));\n+2|\treturn limit <= 0 ? [] : entries.slice(-limit);\n 3|}",
+            "firstChangedLine": 2,
+            "op": "update",
+            "path": "/tmp/pi-forge-isolated-repair-low-auto-fixed/piforge-1-QEbKt4/workspace/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts",
+            "oldText": "export function recentHistory(entries: readonly string[], limit: number): string[] {\n\treturn entries.slice(-Math.max(1, limit));\n}\n",
+            "newText": "export function recentHistory(entries: readonly string[], limit: number): string[] {\n\treturn limit <= 0 ? [] : entries.slice(-limit);\n}\n"
+          },
+          "isError": false,
+          "timestamp": 1791145559308
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_IuFX8BgX93EBJHn38QkXEMjV|fc_07e0fd48ed86ede4016ac2b6584c1087d1b9bca7cd8753bab2",
+          "toolName": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "bun test v1.4.2 (744846f84)\n\n 6 pass\n 0 fail\n 8 expect() calls\nRan 6 tests across 1 file. [12.00ms]\n\n\nWall time: 0.04 seconds\nTimeout clamped to 3600s (requested 120000s; allowed range 1-3600s)."
+            }
+          ],
+          "details": {
+            "timeoutSeconds": 3600,
+            "requestedTimeoutSeconds": 120000,
+            "wallTimeMs": 35.02230400000553,
+            "verification": {
+              "passed": true
+            }
+          },
+          "isError": false,
+          "timestamp": 1791145561303
+        },
+        {
+          "role": "toolResult",
+          "toolCallId": "call_nlXGKLD2izI7CXDarWTBucCx|fc_07e0fd48ed86ede4016ac2b65ace3887d1b7e14112b8b28abe",
+          "toolName": "yield",
+          "content": [
+            {
+              "type": "text",
+              "text": "Result submitted."
+            }
+          ],
+          "details": {
+            "data": {
+              "status": "reconciled",
+              "summary": "The required initial focused test exposed the injected non-positive-limit history defect. Repaired recentHistory to return [] for non-positive limits; the required rerun passed.",
+              "verificationLevel": "V1",
+              "checks": [
+                {
+                  "command": "bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts",
+                  "status": "failed",
+                  "result": "initial before edits: 4 passed, 2 failed; zero-limit history leaked an entry directly and through preview."
+                },
+                {
+                  "command": "bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts",
+                  "status": "passed",
+                  "result": "after repair: all 6 tests passed (8 assertions)."
+                }
+              ],
+              "files": [
+                "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts"
+              ],
+              "repairAttempts": 1
+            },
+            "status": "success"
+          },
+          "isError": false,
+          "timestamp": 1791145565963
+        }
+      ]
+    },
+    {
+      "path": "2026-10-04T20-25-02-880Z_01a10897-68a0-7134-8bf2-228ccf6ab8e3/LabelsNormalization.jsonl",
+      "models": [
+        "openai-codex/gpt-6-luna"
+      ],
+      "thinkingLevels": [
+        "low"
+      ],
+      "usage": {
+        "toolCalls": [
+          "read",
+          "edit",
+          "yield"
+        ],
+        "assistantTurns": 3,
+        "inputTokens": 9384,
+        "outputTokens": 263,
+        "cacheReadTokens": 13312,
+        "cacheWriteTokens": 0,
+        "totalTokens": 22959,
+        "costUsd": 0.00120302
+      },
+      "gateToolResults": []
+    },
+    {
+      "path": "2026-10-04T20-25-02-880Z_01a10897-68a0-7134-8bf2-228ccf6ab8e3/HistoryInjectedDefect.jsonl",
+      "models": [
+        "openai-codex/gpt-6-luna"
+      ],
+      "thinkingLevels": [
+        "low"
+      ],
+      "usage": {
+        "toolCalls": [
+          "read",
+          "edit",
+          "yield"
+        ],
+        "assistantTurns": 3,
+        "inputTokens": 9210,
+        "outputTokens": 164,
+        "cacheReadTokens": 13312,
+        "cacheWriteTokens": 0,
+        "totalTokens": 22686,
+        "costUsd": 0.00113612
+      },
+      "gateToolResults": []
+    }
+  ],
+  "gateReports": [
+    {
+      "status": "reconciled",
+      "summary": "The required initial focused test exposed the injected non-positive-limit history defect. Repaired recentHistory to return [] for non-positive limits; the required rerun passed.",
+      "verificationLevel": "V1",
+      "checks": [
+        {
+          "command": "bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts",
+          "status": "failed",
+          "result": "initial before edits: 4 passed, 2 failed; zero-limit history leaked an entry directly and through preview."
+        },
+        {
+          "command": "bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts",
+          "status": "passed",
+          "result": "after repair: all 6 tests passed (8 assertions)."
+        }
+      ],
+      "files": [
+        "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts"
+      ],
+      "repairAttempts": 1
+    }
+  ],
+  "gateJobResults": [
+    {
+      "id": "Integration gate",
+      "type": "task",
+      "status": "running",
+      "label": "Integration gate",
+      "durationMs": 34425,
+      "agentUrlId": "Integration gate"
+    },
+    {
+      "id": "Integration gate",
+      "type": "task",
+      "status": "completed",
+      "label": "Integration gate",
+      "durationMs": 48166,
+      "resolvedModel": "openai-codex/gpt-6-luna:low",
+      "resolvedModelIdentity": "openai-codex/gpt-6-luna",
+      "resolvedThinkingLevel": "low",
+      "resultText": "<task-result id=\"Integration gate\" agent=\"task\" status=\"completed\" duration=\"13.1s\">\n<meta lines=\"21\" size=\"886B\" />\n<output>\n{\n  \"status\": \"reconciled\",\n  \"summary\": \"The required initial focused test exposed the injected non-positive-limit history defect. Repaired recentHistory to return [] for non-positive limits; the required rerun passed.\",\n  \"verificationLevel\": \"V1\",\n  \"checks\": [\n    {\n      \"command\": \"bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts\",\n      \"status\": \"failed\",\n      \"result\": \"initial before edits: 4 passed, 2 failed; zero-limit history leaked an entry directly and through preview.\"\n    },\n    {\n      \"command\": \"bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts\",\n      \"status\": \"passed\",\n      \"result\": \"after repair: all 6 tests passed (8 assertions).\"\n    }\n  ],\n  \"files\": [\n    \"packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts\"\n  ],\n  \"repairAttempts\": 1\n}\n</output>\n</task-result>\n\nIntegration gate is now idle — message it via `write agent://Integration gate` to follow up; transcript at history://Integration gate",
+      "structured": {
+        "source": "caller",
+        "mode": "strict",
+        "status": "valid",
+        "data": {
+          "status": "reconciled",
+          "summary": "The required initial focused test exposed the injected non-positive-limit history defect. Repaired recentHistory to return [] for non-positive limits; the required rerun passed.",
+          "verificationLevel": "V1",
+          "checks": [
+            {
+              "command": "bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts",
+              "status": "failed",
+              "result": "initial before edits: 4 passed, 2 failed; zero-limit history leaked an entry directly and through preview."
+            },
+            {
+              "command": "bun test packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts",
+              "status": "passed",
+              "result": "after repair: all 6 tests passed (8 assertions)."
+            }
+          ],
+          "files": [
+            "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts"
+          ],
+          "repairAttempts": 1
+        }
+      },
+      "agentUrlId": "Integration gate"
+    }
+  ],
+  "finalDiff": "diff --git a/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts b/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts\nindex ac09ec8..c1d7556 100644\n--- a/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts\n+++ b/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts\n@@ -1,3 +1,3 @@\n export function recentHistory(entries: readonly string[], limit: number): string[] {\n-\treturn entries.slice(-limit);\n+\treturn limit <= 0 ? [] : entries.slice(-limit);\n }\ndiff --git a/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts b/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts\nindex 99c889c..8ed4b06 100644\n--- a/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts\n+++ b/packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts\n@@ -1,3 +1,14 @@\n export function normalizeLabels(labels: readonly string[]): string[] {\n-\treturn labels.map(label => label.toLowerCase());\n+\tconst normalized: string[] = [];\n+\tconst seen = new Set<string>();\n+\n+\tfor (const label of labels) {\n+\t\tconst value = label.trim().toLowerCase();\n+\t\tif (value && !seen.has(value)) {\n+\t\t\tseen.add(value);\n+\t\t\tnormalized.push(value);\n+\t\t}\n+\t}\n+\n+\treturn normalized;\n }\n",
+  "controlledRepairAcceptedByHost": true,
+  "limitations": [
+    "One controlled fault-injection run, not a natural failure rate or performance comparison.",
+    "Repair occurs within the first gate invocation; live multi-invocation ownership reuse is covered locally, not exercised in this run.",
+    "HEAD plus uncommitted runtime and static prompt fixes; hashes identify the implementation.",
+    "Reported cost is provider telemetry, not subscription quota usage."
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "governor-isolated-repair-v1",
+  "category": "controlled live integration repair",
+  "sourceCommit": "8600f17c9f1a64ed041f6e846cd3a44939a77a29",
+  "taskFile": "TASK.md",
+  "acceptanceCommand": [
+    "bun",
+    "test",
+    "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/test/notes.test.ts"
+  ],
+  "expectedChangedFiles": [
+    "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/labels.ts",
+    "packages/coding-agent/bench/fixtures/governor-compact-notes-v1/src/history.ts"
+  ],
+  "repeatCount": 1,
+  "notes": "One auto-mode Luna Low run with two isolated workers. The History worker intentionally injects a non-positive-limit defect; the integration gate must execute the unchanged checks before repairing it. Measures controlled detection and repair, not natural coding failure rates or matched performance. No harness token/time cutoff; default product repair budgets remain authoritative.",
+  "configFile": "benchmark.yml",
+  "supportFiles": {
+    "TASK.md": "TASK.md",
+    "benchmark.yml": "benchmark.yml"
+  },
+  "requiredIntegrationGate": {
+    "status": "reconciled",
+    "minimumRepairAttempts": 1
+  }
+}

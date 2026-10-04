@@ -91,6 +91,110 @@ await Bun.write(sessions + "/root.jsonl", JSON.stringify(${JSON.stringify(assist
 	expect(second.changedFiles).toEqual(["result.txt"]);
 });
 
+it.each([
+	{
+		name: "failed host job despite correct files",
+		status: "failed",
+		dataStatus: "reconciled",
+		repairs: 1,
+		present: true,
+		passed: false,
+	},
+	{
+		name: "verified result without required repair",
+		status: "completed",
+		dataStatus: "verified",
+		repairs: 0,
+		present: true,
+		passed: false,
+	},
+	{
+		name: "reconciled result without required repair count",
+		status: "completed",
+		dataStatus: "reconciled",
+		repairs: 0,
+		present: true,
+		passed: false,
+	},
+	{
+		name: "missing parent completion despite worker yield",
+		status: "completed",
+		dataStatus: "reconciled",
+		repairs: 1,
+		present: false,
+		passed: false,
+	},
+	{
+		name: "host accepts repair after an earlier failure",
+		status: "completed",
+		dataStatus: "reconciled",
+		repairs: 1,
+		present: true,
+		passed: true,
+	},
+])("does not confuse source acceptance with orchestration: $name", async row => {
+	using dir = TempDir.createSync("@benchmark-orchestration-");
+	const packet = dir.join("packet");
+	const out = dir.join("out");
+	await fs.mkdir(out);
+	await Bun.write(path.join(packet, "task.md"), "Fixture assignment");
+	await Bun.write(path.join(packet, "result.txt"), "before");
+	const snapshot = (status: string, dataStatus: string, repairs: number): object => ({
+		type: "message",
+		message: {
+			role: "toolResult",
+			toolName: "wait",
+			details: {
+				jobs: [
+					{
+						id: "Integration gate",
+						status,
+						structured: {
+							status: "valid",
+							data: { status: dataStatus, repairAttempts: repairs },
+						},
+					},
+				],
+			},
+		},
+	});
+	const parent = [assistant("edit", 10, 0.1)];
+	if (row.present) parent.push(snapshot("failed", "unresolved", 0), snapshot(row.status, row.dataStatus, row.repairs));
+	const cli = dir.join("cli.ts");
+	await Bun.write(
+		cli,
+		`
+const args = process.argv;
+const sessions = args[args.indexOf("--session-dir") + 1];
+await Bun.write("result.txt", "after");
+await Bun.write(sessions + "/root.jsonl", ${JSON.stringify(parent.map(entry => JSON.stringify(entry)).join("\n"))});
+await Bun.write(sessions + "/root/gate.jsonl", ${JSON.stringify(JSON.stringify(snapshot("completed", "reconciled", 1)))});
+`,
+	);
+	const manifest: PacketManifest = {
+		id: "gate-contract",
+		category: "repair",
+		sourceCommit: "fixture",
+		taskFile: "task.md",
+		acceptanceCommand: [
+			process.execPath,
+			"-e",
+			'if (await Bun.file("result.txt").text() !== "after") process.exit(1)',
+		],
+		expectedChangedFiles: ["result.txt"],
+		repeatCount: 1,
+		notes: "fixture",
+		requiredIntegrationGate: { status: "reconciled", minimumRepairAttempts: 1 },
+	};
+	const result = await runSystem("piforge", cli, "fixture", packet, manifest, out, 1, await fileSnapshot(packet));
+	expect(result.testExitCode).toBe(0);
+	expect(result.filesWithinScope).toBe(true);
+	expect(result.passed).toBe(row.passed);
+	expect(result.orchestrationPassed).toBe(row.passed);
+	if (row.passed) expect(result.orchestrationFailure).toBeNull();
+	else expect(result.orchestrationFailure).toMatch(/Integration gate|integration gate/);
+});
+
 it("benchmarks a pinned repository worktree and records its patch before cleanup", async () => {
 	using dir = TempDir.createSync("@benchmark-worktree-");
 	const packet = dir.join("packet");

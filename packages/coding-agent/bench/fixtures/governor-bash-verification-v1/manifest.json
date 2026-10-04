@@ -1,0 +1,24 @@
+{
+  "id": "governor-bash-verification-v1",
+  "category": "real repository Governor tool contract",
+  "sourceCommit": "7853b4e499936f9dcc13c9b64adb55f6b342aabf",
+  "taskFile": "TASK.md",
+  "acceptanceCommand": [
+    "bun",
+    "test",
+    "packages/coding-agent/test/bash-verification-bench.test.ts",
+    "packages/coding-agent/test/bash-background-audit.test.ts"
+  ],
+  "expectedChangedFiles": [
+    "packages/coding-agent/src/tools/bash.ts"
+  ],
+  "repeatCount": 1,
+  "notes": "Frozen Bash verification repository task with original checks plus the ordinary auto-background and timeout contracts. The first Luna Low pair used only the original checks; its retained post-run audit exposed an off regression. Future runs include all four checks. No required delegation or policy/concurrency overrides.",
+  "supportFiles": {
+    "TASK.md": "TASK.md",
+    "packages/coding-agent/test/bash-verification-bench.test.ts": "bash-verification-bench.test.ts",
+    "benchmark.yml": "benchmark.yml",
+    "packages/coding-agent/test/bash-background-audit.test.ts": "bash-background-audit.test.ts"
+  },
+  "configFile": "benchmark.yml"
+}

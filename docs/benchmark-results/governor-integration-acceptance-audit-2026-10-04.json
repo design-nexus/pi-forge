@@ -1,0 +1,23 @@
+{
+  "notes": "Offline classification of retained parent snapshots; no model calls or alteration of original reports.",
+  "results": [
+    {
+      "run": "pi-forge-isolated-repair-low-auto",
+      "requirement": {
+        "status": "reconciled",
+        "minimumRepairAttempts": 1
+      },
+      "orchestrationPassed": false,
+      "failure": "Integration gate did not complete with a host-accepted structured result"
+    },
+    {
+      "run": "pi-forge-isolated-repair-low-auto-fixed",
+      "requirement": {
+        "status": "reconciled",
+        "minimumRepairAttempts": 1
+      },
+      "orchestrationPassed": true,
+      "failure": null
+    }
+  ]
+}

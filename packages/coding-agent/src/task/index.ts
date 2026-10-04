@@ -2238,6 +2238,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				runStructuredSubagent({
 					session: this.session,
 					invocationKind: "task",
+					...(params.integrationGateTask ? { keepAlive: false } : {}),
 					assignment,
 					context,
 					agent: params.agent,

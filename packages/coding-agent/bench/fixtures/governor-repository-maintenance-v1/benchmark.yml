@@ -1,0 +1,18 @@
+modelRoles:
+  default: openai-codex/gpt-6-luna:low
+  task: openai-codex/gpt-6-luna:low
+  smol: openai-codex/gpt-6-luna:low
+  slow: openai-codex/gpt-6-luna:low
+  plan: openai-codex/gpt-6-luna:low
+task:
+  agentModelOverrides:
+    task: openai-codex/gpt-6-luna:low
+  enableEffort: true
+  maxEffort: low
+  prewalk: false
+adaptive:
+  roles:
+    trivial: task
+    normal: task
+    complex: task
+    massive: task

@@ -14,6 +14,10 @@
  *    runtime for internal callers.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { $ } from "bun";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import * as vcs from "@oh-my-pi/pi-natives/vcs";
 import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async/job-manager";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
@@ -22,6 +26,7 @@ import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry
 import { TaskTool } from "@oh-my-pi/pi-coding-agent/task";
 import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
 import * as executorModule from "@oh-my-pi/pi-coding-agent/task/executor";
+import * as isolationRunner from "@oh-my-pi/pi-coding-agent/task/isolation-runner";
 import * as structuredModule from "@oh-my-pi/pi-coding-agent/task/structured-subagent";
 import type {
 	EffectiveSubagentPolicy,
@@ -30,7 +35,7 @@ import type {
 import type { AgentDefinition } from "@oh-my-pi/pi-coding-agent/task/types";
 import type { SingleResult, TaskParams } from "@oh-my-pi/pi-tui/tools/task";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { isRecord } from "@oh-my-pi/pi-utils";
+import { isRecord, TempDir } from "@oh-my-pi/pi-utils";
 
 import { cfgTaskEnableEffort } from "@oh-my-pi/pi-coding-agent/task/settings";
 
@@ -43,6 +48,7 @@ const taskAgent: AgentDefinition = {
 
 function createSession(
 	options: {
+		cwd?: string;
 		manager?: AsyncJobManager;
 		settings?: Record<string, unknown>;
 		agentId?: string;
@@ -51,7 +57,7 @@ function createSession(
 	} = {},
 ): ToolSession {
 	return {
-		cwd: "/tmp",
+		cwd: options.cwd ?? "/tmp",
 		hasUI: false,
 		settings: Settings.isolated(options.settings ?? {}),
 		getSessionFile: () => null,
@@ -470,7 +476,10 @@ describe("task.batch spawning", () => {
 		expect(applied).toEqual(["Beta"]);
 	});
 
-	it("retries integration verification after a failed check and reports reconciled outcome", async () => {
+	it.each([
+		{ outcome: "reconciled", converges: true },
+		{ outcome: "unresolved after repeated failure", converges: false },
+	])("reports $outcome after retrying integration verification", async ({ converges }) => {
 		mockDiscovery();
 		const seen: Array<{ id: string; assignment: string; outputSchema?: unknown }> = [];
 		vi.spyOn(structuredModule, "runStructuredSubagent").mockImplementation(async request => {
@@ -478,6 +487,24 @@ describe("task.batch spawning", () => {
 			seen.push({ id, assignment: request.assignment, outputSchema: request.outputSchema });
 			const integrationGate = id === "Integration gate";
 			const retryingGate = integrationGate && seen.filter(item => item.id === id).length > 1;
+			const repaired = retryingGate && converges;
+			// Reproduce the executor's generation claim: retained helpers block a fresh retry.
+			const registry = AgentRegistry.global();
+			const gateRef = integrationGate
+				? registry.registerIfAvailable(
+						{
+							id,
+							displayName: id,
+							kind: "sub",
+							session: null,
+							sessionFile: null,
+							status: "running",
+						},
+						null,
+					)
+				: undefined;
+			if (integrationGate && !gateRef)
+				throw new Error("Integration gate is already owned by another session generation");
 			const result = makeResult(id, {
 				index: request.index ?? 0,
 				task: request.assignment,
@@ -498,11 +525,11 @@ describe("task.batch spawning", () => {
 							mode: "strict",
 							status: "valid",
 							data: {
-								status: retryingGate ? "verified" : "unresolved",
-								summary: retryingGate ? "Combined checks passed" : "type check failed before repair",
+								status: repaired ? "verified" : "unresolved",
+								summary: repaired ? "Combined checks passed" : "type check failed before repair",
 								verificationLevel: "V2",
 								checks: [
-									retryingGate
+									repaired
 										? { command: "bun test", status: "passed", result: "18 tests passed" }
 										: { command: "bun check", status: "failed", result: "one type error remains" },
 								],
@@ -530,6 +557,7 @@ describe("task.batch spawning", () => {
 				enableLsp: false,
 				enableIrc: false,
 			} satisfies EffectiveSubagentPolicy;
+			if (gateRef && request.keepAlive === false) registry.unregister(id, gateRef);
 			return {
 				result,
 				policy,
@@ -547,7 +575,7 @@ describe("task.batch spawning", () => {
 					"task.batch": true,
 					"task.isolation.enabled": true,
 					"task.repairBudget": {
-						maxAttempts: 2,
+						maxAttempts: converges ? 2 : 4,
 						maxTokens: 5_000,
 						maxCostUsd: 0.5,
 						maxWallTimeMs: 60_000,
@@ -571,15 +599,143 @@ describe("task.batch spawning", () => {
 		expect(seen[3]?.assignment).toContain("Attempt 1");
 		expect(result.details?.results.at(-1)?.structuredOutput?.status).toBe("valid");
 		expect(result.details?.results.at(-1)?.structuredOutput?.data).toMatchObject({
-			status: "reconciled",
+			status: converges ? "reconciled" : "unresolved",
 			repairAttempts: 1,
 		});
+		if (converges) {
+			expect(result.details?.results.at(-1)?.error).toBeUndefined();
+		} else {
+			expect(result.details?.results.at(-1)?.error).toContain(
+				"Automatic repair budget exhausted (repeated identical failure)",
+			);
+		}
 		expect(result.details?.results.at(-1)).toMatchObject({
 			requests: 3,
 			usage: { input: 30, output: 10, cacheRead: 4, cacheWrite: 2, totalTokens: 46, cost: { total: 0.04 } },
 		});
 		expect(getFirstText(result)).toContain("Integration gate");
 	});
+
+	it.skipIf(vcs.git(import.meta.dir) === null)(
+		"integrates out-of-order isolated patches before repairing a failing combined check",
+		async () => {
+			using dir = TempDir.createSync("@task-integration-repair-");
+			const source = vcs.requireGit(import.meta.dir);
+			const workspace = dir.join("workspace");
+			await source.worktreeAdd(workspace, "HEAD", { detach: true, clone: false });
+			try {
+				await fs.cp(
+					path.join(import.meta.dir, "../../bench/fixtures/integration-repair-local-v1"),
+					path.join(workspace, "local-contract"),
+					{ recursive: true },
+				);
+				mockDiscovery();
+				const betaCaptured = Promise.withResolvers<void>();
+				const isolatedRun = isolationRunner.runIsolatedSubprocess;
+				const merge = isolationRunner.mergeIsolatedChanges;
+				let scaleCheckBeforeBeta: number | undefined;
+				vi.spyOn(isolationRunner, "mergeIsolatedChanges").mockImplementation(async options => {
+					if (options.result.id === "Beta") {
+						const check =
+							await $`${process.execPath} ${path.join(workspace, "local-contract/check.ts")} --scale-only`
+								.cwd(workspace)
+								.quiet()
+								.nothrow();
+						scaleCheckBeforeBeta = check.exitCode;
+					}
+					return merge(options);
+				});
+				const captureOrder: string[] = [];
+				vi.spyOn(isolationRunner, "runIsolatedSubprocess").mockImplementation(async options => {
+					const captured = await isolatedRun(options);
+					captureOrder.push(options.agentId);
+					if (options.agentId === "Beta") betaCaptured.resolve();
+					return captured;
+				});
+				const checkExitCodes: number[] = [];
+				vi.spyOn(executorModule, "runSubprocess").mockImplementation(async options => {
+					const target = options.worktree ?? options.cwd;
+					if (options.id === "Alpha") {
+						await betaCaptured.promise;
+						await Bun.write(
+							path.join(target, "local-contract/scale.ts"),
+							"export function scale(value: number): number { return value * 2; }\n",
+						);
+					} else if (options.id === "Beta") {
+						await Bun.write(
+							path.join(target, "local-contract/combined.ts"),
+							'import { scale } from "./scale";\nexport function combined(value: number): number { return scale(value) + 3; }\n',
+						);
+					} else {
+						if (checkExitCodes.length > 0) {
+							await Bun.write(
+								path.join(target, "local-contract/combined.ts"),
+								'import { scale } from "./scale";\nexport function combined(value: number): number { return scale(value) * 3; }\n',
+							);
+						}
+						const check = await $`${process.execPath} ${path.join(target, "local-contract/check.ts")}`
+							.cwd(target)
+							.quiet()
+							.nothrow();
+						checkExitCodes.push(check.exitCode);
+						return makeResult(options.id, {
+							index: options.index,
+							output: JSON.stringify({
+								status: check.exitCode === 0 ? "verified" : "unresolved",
+								summary: check.exitCode === 0 ? "Combined contract passes" : "Combined consumer check failed",
+								verificationLevel: "V1",
+								checks: [
+									{
+										command: "bun local-contract/check.ts",
+										status: check.exitCode === 0 ? "passed" : "failed",
+										result: check.exitCode === 0 ? "All contract assertions passed" : check.stderr.toString(),
+									},
+								],
+								files: check.exitCode === 0 ? ["local-contract/combined.ts"] : [],
+								repairAttempts: 0,
+							}),
+						});
+					}
+					return makeResult(options.id, { index: options.index });
+				});
+				const tool = await TaskTool.create(
+					createSession({
+						cwd: workspace,
+						settings: {
+							"async.enabled": false,
+							"task.batch": true,
+							"task.isolation.enabled": true,
+							"isolation.backend": "rcopy",
+							"task.maxConcurrency": 2,
+						},
+					}),
+				);
+				const settled = await tool.execute("real-integration-repair", {
+					context: "Combined local contract",
+					tasks: [
+						{ name: "Alpha", task: "Double the scale result", isolated: true },
+						{ name: "Beta", task: "Update the combined consumer", isolated: true },
+					],
+				} as TaskParams);
+				expect(captureOrder).toEqual(["Beta", "Alpha"]);
+				expect(scaleCheckBeforeBeta).toBe(0);
+				expect(settled.details?.results.slice(0, 2).map(item => item.error)).toEqual([undefined, undefined]);
+				expect(checkExitCodes).toEqual([1, 0]);
+				expect(settled.details?.results.at(-1)?.structuredOutput?.data).toMatchObject({
+					status: "reconciled",
+					repairAttempts: 1,
+				});
+				const finalCheck = await $`${process.execPath} ${path.join(workspace, "local-contract/check.ts")}`
+					.cwd(workspace)
+					.quiet()
+					.nothrow();
+				expect(finalCheck.exitCode).toBe(0);
+			} finally {
+				await source.worktreeRemove(workspace, true);
+			}
+		},
+		30_000,
+	);
 
 	it("spawns one background job per task item and forwards independent models and schemas with shared context", async () => {
 		mockDiscovery({
