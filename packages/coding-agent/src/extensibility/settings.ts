@@ -11,7 +11,7 @@ export const cfgExtensions = register({ id: "extensions", type: "array", default
 
 export const cfgDisabledExtensions = register({ id: "disabledExtensions", type: "array", default: EMPTY_STRING_ARRAY });
 
-// Skill registry (omp skill)
+// Skill registry (pi-forge skill)
 export const cfgSkillsRegistryUrl = register({
 	id: "skills.registryUrl",
 	type: "string",
@@ -21,7 +21,7 @@ export const cfgSkillsRegistryUrl = register({
 		group: "Skills",
 		label: "Skill Registry",
 		description:
-			"Skillshare registry used by `omp skill` to install, search, and publish skills (https://host[:port])",
+			"Skillshare registry used by `pi-forge skill` to install, search, and publish skills (https://host[:port])",
 	},
 });
 
@@ -80,7 +80,7 @@ export const cfgSkillsIncludeSkills = register({
 	default: EMPTY_STRING_ARRAY,
 });
 
-/** Skill discovery options (`skills.*` except the `omp skill` registry URL). */
+/** Skill discovery options (`skills.*` except the `pi-forge skill` registry URL). */
 export const cfgSkills = combine({
 	enabled: cfgSkillsEnabled,
 	enableSkillCommands: cfgSkillsEnableSkillCommands,

@@ -174,8 +174,8 @@ describe("parseReportedVersion", () => {
 		// Regression: dropping `-canary.1` made a correctly installed canary
 		// build look like a stale `X.Y.Z` launcher, triggering a binary repair
 		// that rejects the prerelease GitHub release.
-		expect(parseReportedVersion("omp/18.0.6-canary.1")).toBe("18.0.6-canary.1");
-		expect(parseReportedVersion("omp/18.0.5")).toBe("18.0.5");
+		expect(parseReportedVersion("pi-forge/18.0.6-canary.1")).toBe("18.0.6-canary.1");
+		expect(parseReportedVersion("pi-forge/18.0.5")).toBe("18.0.5");
 		expect(parseReportedVersion("not a version")).toBeUndefined();
 	});
 
@@ -401,7 +401,7 @@ describe("update-cli install target detection", () => {
 		async () => {
 			const dir = await makeTempDir();
 			const dispatcherPath = path.join(dir, "launch");
-			const aliasPath = path.join(dir, "omp");
+			const aliasPath = path.join(dir, "pi-forge");
 			const dispatcher = "#!/bin/sh\necho dispatcher\n";
 			await Bun.write(dispatcherPath, dispatcher);
 			await fs.chmod(dispatcherPath, 0o755);
@@ -415,7 +415,7 @@ describe("update-cli install target detection", () => {
 
 			await expect(
 				updateViaBinaryAt(target.path, "18.1.13", {
-					binaryName: "omp-linux-x64",
+					binaryName: "pi-forge-linux-x64",
 					fetchImpl,
 					validateExistingTarget: target.validateExistingTarget,
 				}),
@@ -429,7 +429,7 @@ describe("update-cli install target detection", () => {
 		"refuses a foreign native target that does not report an OMP version",
 		async () => {
 			const dir = await makeTempDir();
-			const aliasPath = path.join(dir, "omp");
+			const aliasPath = path.join(dir, "pi-forge");
 			await fs.symlink(process.execPath, aliasPath);
 			const fetchImpl = vi.fn(async () => new Response());
 			const target = resolveUpdateTargetFromPath(aliasPath, undefined, {
@@ -439,7 +439,7 @@ describe("update-cli install target detection", () => {
 
 			await expect(
 				updateViaBinaryAt(target.path, "18.1.13", {
-					binaryName: "omp-linux-x64",
+					binaryName: "pi-forge-linux-x64",
 					fetchImpl,
 					validateExistingTarget: target.validateExistingTarget,
 				}),
@@ -550,18 +550,22 @@ describe("update-cli install target detection", () => {
 
 describe("update-cli package manager commands", () => {
 	it("targets the Homebrew tap formula and switches to reinstall for forced updates", () => {
-		expect(buildHomebrewUpdateArgs(false)).toEqual(["upgrade", "can1357/tap/omp"]);
-		expect(buildHomebrewUpdateArgs(true)).toEqual(["reinstall", "can1357/tap/omp"]);
+		expect(buildHomebrewUpdateArgs(false)).toEqual(["upgrade", "design-nexus/tap/pi-forge"]);
+		expect(buildHomebrewUpdateArgs(true)).toEqual(["reinstall", "design-nexus/tap/pi-forge"]);
 	});
 
 	it("targets the mise GitHub backend and overrides release-age settings for attended updates", () => {
-		expect(buildMiseUpgradeArgs()).toEqual(["upgrade", "github:can1357/oh-my-pi", "--bump", "--before", "0s"]);
-		expect(buildMiseUpgradeArgs(false)).toEqual(["upgrade", "github:can1357/oh-my-pi", "--bump"]);
+		expect(buildMiseUpgradeArgs()).toEqual(["upgrade", "github:design-nexus/pi-forge", "--bump", "--before", "0s"]);
+		expect(buildMiseUpgradeArgs(false)).toEqual(["upgrade", "github:design-nexus/pi-forge", "--bump"]);
 		expect(buildMiseUpdateEnv({ PATH: "/bin", MISE_MINIMUM_RELEASE_AGE: "24h" })).toEqual({
 			PATH: "/bin",
 			MISE_MINIMUM_RELEASE_AGE: "0s",
 		});
-		expect(buildMiseForceInstallArgs("15.10.5")).toEqual(["install", "--force", "github:can1357/oh-my-pi@15.10.5"]);
+		expect(buildMiseForceInstallArgs("15.10.5")).toEqual([
+			"install",
+			"--force",
+			"github:design-nexus/pi-forge@15.10.5",
+		]);
 	});
 
 	it.skipIf(!miseBinary)("overrides per-tool release age during actual mise upgrade resolution", async () => {
@@ -575,9 +579,9 @@ describe("update-cli package manager commands", () => {
 				created_at: "2026-09-09T00:00:00Z",
 				assets: [
 					{
-						name: "omp-linux-x64",
+						name: "pi-forge-linux-x64",
 						url: "https://example.invalid/api/asset",
-						browser_download_url: "https://example.invalid/v2/omp-linux-x64",
+						browser_download_url: "https://example.invalid/v2/pi-forge-linux-x64",
 					},
 				],
 			},
@@ -588,9 +592,9 @@ describe("update-cli package manager commands", () => {
 				created_at: "2020-01-01T00:00:00Z",
 				assets: [
 					{
-						name: "omp-linux-x64",
+						name: "pi-forge-linux-x64",
 						url: "https://example.invalid/api/asset",
-						browser_download_url: "https://example.invalid/v1/omp-linux-x64",
+						browser_download_url: "https://example.invalid/v1/pi-forge-linux-x64",
 					},
 				],
 			},
@@ -609,7 +613,7 @@ describe("update-cli package manager commands", () => {
 			await Bun.write(
 				path.join(root, "mise.toml"),
 				`[tools]
-"github:can1357/oh-my-pi" = { version = "1", minimum_release_age = "999y", api_url = "${server.url}" }
+"github:design-nexus/pi-forge" = { version = "1", minimum_release_age = "999y", api_url = "${server.url}" }
 `,
 			);
 			const env = {
@@ -644,11 +648,11 @@ describe("update-cli package manager commands", () => {
 			// inside the isolated test root, so trust only that fixture.
 			await run(["trust", "mise.toml", "--yes"]);
 
-			const blocked = await run(["upgrade", "github:can1357/oh-my-pi", "--bump", "--dry-run"]);
-			expect(blocked).not.toContain("Would install github:can1357/oh-my-pi@2.0.0");
+			const blocked = await run(["upgrade", "github:design-nexus/pi-forge", "--bump", "--dry-run"]);
+			expect(blocked).not.toContain("Would install github:design-nexus/pi-forge@2.0.0");
 
 			const allowed = await run([...buildMiseUpgradeArgs(), "--dry-run"]);
-			expect(allowed).toContain("Would install github:can1357/oh-my-pi@2.0.0");
+			expect(allowed).toContain("Would install github:design-nexus/pi-forge@2.0.0");
 		} finally {
 			server.stop(true);
 		}
@@ -795,7 +799,9 @@ describe("migrateRenamedInstall transaction", () => {
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		const { steps, calls } = scriptedSteps({ install: [0, 0], verify: [false, false] });
 
-		await expect(migrateRenamedInstall(release, steps)).rejects.toThrow("curl -fsSL https://omp.sh/install");
+		await expect(migrateRenamedInstall(release, steps)).rejects.toThrow(
+			"curl -fsSL https://raw.githubusercontent.com/design-nexus/pi-forge/main/scripts/install.sh",
+		);
 		expect(calls).toEqual(["install", "removeOld", "verify", "install", "verify"]);
 	});
 
@@ -807,7 +813,9 @@ describe("migrateRenamedInstall transaction", () => {
 		try {
 			const { steps } = scriptedSteps({ install: [0, 0], verify: [false, false] });
 			const promise = migrateRenamedInstall(release, steps);
-			await expect(promise).rejects.toThrow("irm https://omp.sh/install.ps1");
+			await expect(promise).rejects.toThrow(
+				"irm https://raw.githubusercontent.com/design-nexus/pi-forge/main/scripts/install.ps1",
+			);
 			await expect(promise).rejects.not.toThrow("| sh");
 		} finally {
 			Object.defineProperty(process, "platform", platformDescriptor);
@@ -993,8 +1001,8 @@ describe("update-cli bun cache pruning", () => {
 
 describe("update-cli release binary integrity", () => {
 	const tag = "v17.1.2";
-	const binaryName = "omp-linux-x64";
-	const url = `https://github.com/can1357/oh-my-pi/releases/download/${tag}/${binaryName}`;
+	const binaryName = "pi-forge-linux-x64";
+	const url = `https://github.com/design-nexus/pi-forge/releases/download/${tag}/${binaryName}`;
 	const content = "verified binary";
 	const digest = `sha256:${Bun.SHA256.hash(content, "hex")}`;
 
@@ -1050,7 +1058,7 @@ describe("update-cli release binary integrity", () => {
 		).toThrow(`has 2 assets named ${binaryName}`);
 		expect(() =>
 			resolveReleaseBinaryAsset(
-				releaseAsset({ browser_download_url: "https://example.com/omp-linux-x64" }),
+				releaseAsset({ browser_download_url: "https://example.com/pi-forge-linux-x64" }),
 				tag,
 				binaryName,
 			),
@@ -1169,8 +1177,8 @@ describe("update-cli release binary integrity", () => {
 	it("rejects an altered version-reporting executable before replacing the installed binary", async () => {
 		const dir = await makeTempDir();
 		const targetPath = path.join(dir, binaryName);
-		const installed = "#!/bin/sh\necho omp/17.0.8\n";
-		const altered = "#!/bin/sh\necho omp/17.1.2\n";
+		const installed = "#!/bin/sh\necho pi-forge/17.0.8\n";
+		const altered = "#!/bin/sh\necho pi-forge/17.1.2\n";
 		const expectedDigest = `sha256:${Bun.SHA256.hash("x".repeat(Buffer.byteLength(altered)), "hex")}`;
 		await Bun.write(targetPath, installed);
 		await fs.chmod(targetPath, 0o755);
@@ -1232,7 +1240,7 @@ describe("update-cli release binary integrity", () => {
 describe("update-cli binary replacement", () => {
 	it("restores the previous binary when the replacement fails verification", async () => {
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp");
+		const targetPath = path.join(dir, "pi-forge");
 		const tempPath = `${targetPath}.new`;
 		const backupPath = `${targetPath}.bak`;
 		await Bun.write(targetPath, "old binary");
@@ -1246,7 +1254,7 @@ describe("update-cli binary replacement", () => {
 				expectedVersion: "15.1.8",
 				verifyInstalledVersion: async () => ({ ok: false, path: targetPath }),
 			}),
-		).rejects.toThrow("restored previous omp binary");
+		).rejects.toThrow("restored previous pi-forge binary");
 
 		expect(await Bun.file(targetPath).text()).toBe("old binary");
 		expect(await Bun.file(tempPath).exists()).toBe(false);
@@ -1255,7 +1263,7 @@ describe("update-cli binary replacement", () => {
 
 	it("keeps the replacement only after it reports the expected version", async () => {
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp");
+		const targetPath = path.join(dir, "pi-forge");
 		const tempPath = `${targetPath}.new`;
 		const backupPath = `${targetPath}.bak`;
 		await Bun.write(targetPath, "old binary");
@@ -1278,7 +1286,7 @@ describe("update-cli binary replacement", () => {
 		// is nothing to move aside, so the swap must still land instead of
 		// aborting on ENOENT and leaving the user without a launcher.
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp");
+		const targetPath = path.join(dir, "pi-forge");
 		const tempPath = `${targetPath}.new`;
 		const backupPath = `${targetPath}.bak`;
 		await Bun.write(tempPath, "new binary");
@@ -1303,7 +1311,7 @@ describe("update-cli binary replacement on locked backups", () => {
 		// the running process image, so unlinking it throws EPERM. That cleanup
 		// failure must not turn a verified swap into "Update failed" (issue #845).
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp.exe");
+		const targetPath = path.join(dir, "pi-forge.exe");
 		const tempPath = `${targetPath}.new`;
 		const backupPath = `${targetPath}.1700000000000.4242.bak`;
 		await Bun.write(targetPath, "old binary");
@@ -1342,7 +1350,7 @@ describe("update-cli binary replacement on locked backups", () => {
 describe("update-cli stale update artifact sweep", () => {
 	it("reclaims timestamped and legacy backups and orphaned temps while sparing in-progress temps and unrelated files", async () => {
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp.exe");
+		const targetPath = path.join(dir, "pi-forge.exe");
 		await Bun.write(targetPath, "current binary");
 		await Bun.write(`${targetPath}.bak`, "legacy backup");
 		await Bun.write(`${targetPath}.1700000000000.4242.bak`, "timestamped backup");
@@ -1387,7 +1395,7 @@ describe.skipIf(process.platform !== "darwin")("update-cli macOS live backup ima
 	// macOS when executed from a new path, so they cannot serve here.)
 	it("retains a backup whose image a live process runs across cleanup and sweep, then reclaims it after the process exits", async () => {
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp");
+		const targetPath = path.join(dir, "pi-forge");
 		await fs.copyFile(process.execPath, targetPath);
 		const live = Bun.spawn([targetPath, "-e", "await Bun.sleep(30000)"], { stdout: "ignore", stderr: "ignore" });
 		try {
@@ -1480,8 +1488,8 @@ describe("update-cli binary-only release gating", () => {
 
 describe("update-cli script-shim takeover", () => {
 	const version = "18.0.0";
-	const binaryName = "omp-windows-x64.exe";
-	const url = `https://github.com/can1357/oh-my-pi/releases/download/v${version}/${binaryName}`;
+	const binaryName = "pi-forge-windows-x64.exe";
+	const url = `https://github.com/design-nexus/pi-forge/releases/download/v${version}/${binaryName}`;
 
 	function makeFetch(content: string, prerelease = false): (input: string | URL | Request) => Promise<Response> {
 		const digest = `sha256:${Bun.SHA256.hash(content, "hex")}`;
@@ -1511,9 +1519,9 @@ describe("update-cli script-shim takeover", () => {
 	}
 
 	const shims: Record<string, string> = {
-		omp: "#!/bin/sh\nnode omp.js\n",
-		"omp.cmd": "@node omp.js %*\n",
-		"omp.ps1": "node omp.js @args\n",
+		"pi-forge": "#!/bin/sh\nnode omp.js\n",
+		"pi-forge.cmd": "@node omp.js %*\n",
+		"pi-forge.ps1": "node omp.js @args\n",
 	};
 
 	async function writeShims(dir: string): Promise<void> {
@@ -1528,15 +1536,15 @@ describe("update-cli script-shim takeover", () => {
 		// Real executable, no injected verifier: the takeover must verify the
 		// exe by explicit path — $which cached the shim path before it was
 		// renamed away, so a PATH re-resolution would fail here.
-		const exe = `#!/bin/sh\necho omp/${version}\n`;
+		const exe = `#!/bin/sh\necho pi-forge/${version}\n`;
 
-		await updateViaShimTakeover(path.join(dir, "omp.cmd"), version, {
+		await updateViaShimTakeover(path.join(dir, "pi-forge.cmd"), version, {
 			binaryName,
 			fetchImpl: makeFetch(exe),
 			githubToken: "test-token",
 		});
 
-		expect(await Bun.file(path.join(dir, "omp.exe")).text()).toBe(exe);
+		expect(await Bun.file(path.join(dir, "pi-forge.exe")).text()).toBe(exe);
 		for (const name in shims) {
 			expect(await Bun.file(path.join(dir, name)).exists()).toBe(false);
 		}
@@ -1547,28 +1555,28 @@ describe("update-cli script-shim takeover", () => {
 	it("installs a canary prerelease binary only when the caller opts in", async () => {
 		const dir = await makeTempDir();
 		await writeShims(dir);
-		const exe = `#!/bin/sh\necho omp/${version}\n`;
+		const exe = `#!/bin/sh\necho pi-forge/${version}\n`;
 
 		// A canary release is published as a prerelease: without opt-in the
 		// takeover refuses the asset and leaves the shims intact.
 		await expect(
-			updateViaShimTakeover(path.join(dir, "omp.cmd"), version, {
+			updateViaShimTakeover(path.join(dir, "pi-forge.cmd"), version, {
 				binaryName,
 				fetchImpl: makeFetch(exe, true),
 				githubToken: "test-token",
 			}),
 		).rejects.toThrow("is a prerelease");
-		expect(await Bun.file(path.join(dir, "omp.exe")).exists()).toBe(false);
+		expect(await Bun.file(path.join(dir, "pi-forge.exe")).exists()).toBe(false);
 
 		// allowPrerelease threads through to the asset resolver, so the canary
 		// exe installs and the shims are retired.
-		await updateViaShimTakeover(path.join(dir, "omp.cmd"), version, {
+		await updateViaShimTakeover(path.join(dir, "pi-forge.cmd"), version, {
 			binaryName,
 			fetchImpl: makeFetch(exe, true),
 			allowPrerelease: true,
 			githubToken: "test-token",
 		});
-		expect(await Bun.file(path.join(dir, "omp.exe")).text()).toBe(exe);
+		expect(await Bun.file(path.join(dir, "pi-forge.exe")).text()).toBe(exe);
 	});
 
 	it("drops bun's launcher metadata when the standalone binary takes the .exe over", async () => {
@@ -1577,11 +1585,11 @@ describe("update-cli script-shim takeover", () => {
 		// the next update through `bun install -g`, which cannot overwrite the
 		// running `.exe` and would pin the install to the old version.
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp.exe");
-		const marker = path.join(dir, "omp.bunx");
+		const targetPath = path.join(dir, "pi-forge.exe");
+		const marker = path.join(dir, "pi-forge.bunx");
 		await Bun.write(targetPath, "bun shim");
 		await Bun.write(marker, "bun launcher metadata");
-		const exe = `#!/bin/sh\necho omp/${version}\n`;
+		const exe = `#!/bin/sh\necho pi-forge/${version}\n`;
 
 		await updateViaBinaryAt(targetPath, version, {
 			binaryName,
@@ -1596,8 +1604,8 @@ describe("update-cli script-shim takeover", () => {
 
 	it.skipIf(process.platform === "win32")("reports the physical binary path verified after an update", async () => {
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp");
-		const exe = `#!/bin/sh\necho omp/${version}\n`;
+		const targetPath = path.join(dir, "pi-forge");
+		const exe = `#!/bin/sh\necho pi-forge/${version}\n`;
 		await Bun.write(targetPath, "old binary");
 		const logSpy = spyOn(console, "log").mockImplementation(() => {});
 
@@ -1618,17 +1626,17 @@ describe("update-cli script-shim takeover", () => {
 		const dir = await makeTempDir();
 		await writeShims(dir);
 		// Executable runs but reports the previous version -> full rollback.
-		const exe = "#!/bin/sh\necho omp/17.2.12\n";
+		const exe = "#!/bin/sh\necho pi-forge/17.2.12\n";
 
 		await expect(
-			updateViaShimTakeover(path.join(dir, "omp.cmd"), version, {
+			updateViaShimTakeover(path.join(dir, "pi-forge.cmd"), version, {
 				binaryName,
 				fetchImpl: makeFetch(exe),
 				githubToken: "test-token",
 			}),
-		).rejects.toThrow(/still reports 17\.2\.12 \(expected 18\.0\.0\); restored previous omp launcher/);
+		).rejects.toThrow(/still reports 17\.2\.12 \(expected 18\.0\.0\); restored previous pi-forge launcher/);
 
-		expect(await Bun.file(path.join(dir, "omp.exe")).exists()).toBe(false);
+		expect(await Bun.file(path.join(dir, "pi-forge.exe")).exists()).toBe(false);
 		for (const name in shims) {
 			expect(await Bun.file(path.join(dir, name)).text()).toBe(shims[name]);
 		}
@@ -1639,7 +1647,7 @@ describe("update-cli script-shim takeover", () => {
 	function renameLockingPs1(): Mock<typeof nodeFs.promises.rename> {
 		const realRename = nodeFs.promises.rename;
 		return spyOn(nodeFs.promises, "rename").mockImplementation(async (from, to) => {
-			if (path.basename(String(from)) === "omp.ps1") {
+			if (path.basename(String(from)) === "pi-forge.ps1") {
 				throw Object.assign(new Error("EPERM: file is locked"), { code: "EPERM" });
 			}
 			return await realRename(from, to);
@@ -1649,10 +1657,10 @@ describe("update-cli script-shim takeover", () => {
 	it("rewrites an immovable precedence-winning shim as a forwarder to the exe", async () => {
 		const dir = await makeTempDir();
 		await writeShims(dir);
-		const exe = `#!/bin/sh\necho omp/${version}\n`;
+		const exe = `#!/bin/sh\necho pi-forge/${version}\n`;
 		const renameSpy = renameLockingPs1();
 		try {
-			await updateViaShimTakeover(path.join(dir, "omp.cmd"), version, {
+			await updateViaShimTakeover(path.join(dir, "pi-forge.cmd"), version, {
 				binaryName,
 				fetchImpl: makeFetch(exe),
 				githubToken: "test-token",
@@ -1661,32 +1669,32 @@ describe("update-cli script-shim takeover", () => {
 			renameSpy.mockRestore();
 		}
 
-		expect(await Bun.file(path.join(dir, "omp.exe")).text()).toBe(exe);
-		expect(await Bun.file(path.join(dir, "omp")).exists()).toBe(false);
-		expect(await Bun.file(path.join(dir, "omp.cmd")).exists()).toBe(false);
+		expect(await Bun.file(path.join(dir, "pi-forge.exe")).text()).toBe(exe);
+		expect(await Bun.file(path.join(dir, "pi-forge")).exists()).toBe(false);
+		expect(await Bun.file(path.join(dir, "pi-forge.cmd")).exists()).toBe(false);
 		// PowerShell resolves .ps1 before .exe: the locked shim must now exec
 		// the new binary instead of keeping its old body.
-		expect(await Bun.file(path.join(dir, "omp.ps1")).text()).toContain('& "$PSScriptRoot\\omp.exe" @args');
+		expect(await Bun.file(path.join(dir, "pi-forge.ps1")).text()).toContain('& "$PSScriptRoot\\pi-forge.exe" @args');
 	});
 
 	it("restores a forwarded shim's original body when verification fails", async () => {
 		const dir = await makeTempDir();
 		await writeShims(dir);
-		const exe = "#!/bin/sh\necho omp/17.2.12\n";
+		const exe = "#!/bin/sh\necho pi-forge/17.2.12\n";
 		const renameSpy = renameLockingPs1();
 		try {
 			await expect(
-				updateViaShimTakeover(path.join(dir, "omp.cmd"), version, {
+				updateViaShimTakeover(path.join(dir, "pi-forge.cmd"), version, {
 					binaryName,
 					fetchImpl: makeFetch(exe),
 					githubToken: "test-token",
 				}),
-			).rejects.toThrow("restored previous omp launcher");
+			).rejects.toThrow("restored previous pi-forge launcher");
 		} finally {
 			renameSpy.mockRestore();
 		}
 
-		expect(await Bun.file(path.join(dir, "omp.exe")).exists()).toBe(false);
+		expect(await Bun.file(path.join(dir, "pi-forge.exe")).exists()).toBe(false);
 		for (const name in shims) {
 			expect(await Bun.file(path.join(dir, name)).text()).toBe(shims[name]);
 		}
@@ -1695,8 +1703,8 @@ describe("update-cli script-shim takeover", () => {
 
 describe("update-cli concurrent binary updates", () => {
 	const version = "999.0.0";
-	const binaryName = "omp-linux-x64";
-	const url = `https://github.com/can1357/oh-my-pi/releases/download/v${version}/${binaryName}`;
+	const binaryName = "pi-forge-linux-x64";
+	const url = `https://github.com/design-nexus/pi-forge/releases/download/v${version}/${binaryName}`;
 	const payload = Buffer.alloc(2048, 0x41);
 	const digest = `sha256:${Bun.SHA256.hash(payload, "hex")}`;
 
@@ -1724,7 +1732,7 @@ describe("update-cli concurrent binary updates", () => {
 		setThemeInstance(loadedTheme);
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp");
+		const targetPath = path.join(dir, "pi-forge");
 		await Bun.write(targetPath, "old binary");
 		return { dir, targetPath };
 	}

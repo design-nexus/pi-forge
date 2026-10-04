@@ -6,7 +6,14 @@ import { colorLuma } from "@oh-my-pi/pi-utils/color";
 import { getCustomThemesDir } from "@oh-my-pi/pi-utils/dirs";
 import * as logger from "@oh-my-pi/pi-utils/logger";
 import { ansi256ToHex, resolveThemeColors, resolveVarRefs } from "./color";
-import { type CreateThemeOptions, getBuiltinThemes, loadTheme, loadThemeJson, loadThemeSync } from "./loader";
+import {
+	createTheme,
+	type CreateThemeOptions,
+	getBuiltinThemes,
+	loadTheme,
+	loadThemeJson,
+	loadThemeSync,
+} from "./loader";
 import type { ThemeColor, ThemeJson } from "./schema";
 import type { SymbolPreset } from "./symbols";
 import type { Theme } from "./theme-class";
@@ -21,6 +28,8 @@ export {
 	type SymbolPreset,
 } from "./symbols";
 export { Theme } from "./theme-class";
+export * from "./omarchy";
+import { readOmarchyTheme, watchOmarchyTheme } from "./omarchy";
 export {
 	createHighlightStream,
 	getEditorTheme,
@@ -130,6 +139,53 @@ var onThemeChangeCallback: ((event: ThemeChangeEvent) => void) | undefined;
 var themeLoadRequestId: number = 0;
 let themeEpoch = 0;
 
+let themeSource: "terminal" | "omarchy" = "terminal";
+let lastOmarchyTheme: ThemeJson | undefined;
+let stopOmarchyWatcher: (() => void) | undefined;
+
+export function getThemeSource(): "terminal" | "omarchy" {
+	return themeSource;
+}
+
+export function setThemeSource(source: "terminal" | "omarchy"): void {
+	themeSource = source;
+	++themeLoadRequestId;
+	stopFileThemeWatchers();
+	if (typeof theme === "undefined") return;
+	if (source === "omarchy") {
+		lastOmarchyTheme = readOmarchyTheme() ?? lastOmarchyTheme;
+		if (lastOmarchyTheme) {
+			currentThemeName = "omarchy";
+			assignTheme(createTheme(lastOmarchyTheme, getCurrentThemeOptions()));
+			notifyThemeChange();
+		} else {
+			logger.warn("Omarchy palette unavailable; using configured terminal theme");
+		}
+		startOmarchyWatcher();
+	} else {
+		lastOmarchyTheme = undefined;
+		currentThemeName = undefined;
+		enableAutoTheme();
+	}
+}
+
+function startOmarchyWatcher(): void {
+	stopOmarchyWatcher?.();
+	stopOmarchyWatcher = watchOmarchyTheme(value => {
+		if (themeSource !== "omarchy") return;
+		lastOmarchyTheme = value;
+		currentThemeName = "omarchy";
+		++themeLoadRequestId;
+		assignTheme(createTheme(value, getCurrentThemeOptions()));
+		notifyThemeChange({ ephemeral: true });
+	});
+}
+
+async function loadPresentationTheme(name: string, options: CreateThemeOptions): Promise<Theme> {
+	if (name === "omarchy" && lastOmarchyTheme) return createTheme(lastOmarchyTheme, options);
+	return loadTheme(name, options);
+}
+
 function getCurrentThemeOptions(): CreateThemeOptions {
 	return {
 		symbolPresetOverride: currentSymbolPresetOverride,
@@ -147,7 +203,8 @@ function configureTheme(
 	autoLightTheme = lightTheme ?? "light";
 	currentSymbolPresetOverride = symbolPreset;
 	currentColorBlindMode = colorBlindMode ?? false;
-	const name = getDefaultTheme();
+	lastOmarchyTheme = themeSource === "omarchy" ? (readOmarchyTheme() ?? lastOmarchyTheme) : lastOmarchyTheme;
+	const name = themeSource === "omarchy" && lastOmarchyTheme ? "omarchy" : getDefaultTheme();
 	currentThemeName = name;
 	return name;
 }
@@ -165,7 +222,9 @@ export function initThemeSync(
 		colorBlindMode: currentColorBlindMode,
 	};
 	try {
-		assignTheme(loadThemeSync(name, options));
+		assignTheme(
+			name === "omarchy" && lastOmarchyTheme ? createTheme(lastOmarchyTheme, options) : loadThemeSync(name, options),
+		);
 	} catch (error) {
 		logger.debug("Theme loading failed, falling back to dark theme", { error: String(error) });
 		currentThemeName = "dark";
@@ -193,7 +252,7 @@ export async function initTheme(
 ): Promise<void> {
 	const name = configureTheme(symbolPreset, colorBlindMode, darkTheme, lightTheme);
 	try {
-		assignTheme(await loadTheme(name, getCurrentThemeOptions()));
+		assignTheme(await loadPresentationTheme(name, getCurrentThemeOptions()));
 		if (enableWatcher) {
 			await startThemeWatcher();
 			startSigwinchListener();
@@ -214,7 +273,7 @@ export async function setTheme(
 	currentThemeName = name;
 	const requestId = ++themeLoadRequestId;
 	try {
-		const loadedTheme = await loadTheme(name, getCurrentThemeOptions());
+		const loadedTheme = await loadPresentationTheme(name, getCurrentThemeOptions());
 		if (requestId !== themeLoadRequestId) {
 			return { success: false, error: "Theme change superseded by a newer request" };
 		}
@@ -249,7 +308,7 @@ export async function previewTheme(
 ): Promise<{ success: boolean; error?: string }> {
 	const requestId = ++themeLoadRequestId;
 	try {
-		const loadedTheme = await loadTheme(name, getCurrentThemeOptions());
+		const loadedTheme = await loadPresentationTheme(name, getCurrentThemeOptions());
 		if (requestId !== themeLoadRequestId) {
 			return { success: false, error: "Theme preview superseded by a newer request" };
 		}
@@ -316,7 +375,7 @@ export async function setSymbolPreset(preset: SymbolPreset): Promise<void> {
 
 	const requestId = ++themeLoadRequestId;
 	try {
-		const loadedTheme = await loadTheme(currentThemeName, getCurrentThemeOptions());
+		const loadedTheme = await loadPresentationTheme(currentThemeName, getCurrentThemeOptions());
 		if (requestId !== themeLoadRequestId) return;
 		assignTheme(loadedTheme);
 	} catch {
@@ -345,7 +404,7 @@ export async function setColorBlindMode(enabled: boolean): Promise<void> {
 
 	const requestId = ++themeLoadRequestId;
 	try {
-		const loadedTheme = await loadTheme(currentThemeName, getCurrentThemeOptions());
+		const loadedTheme = await loadPresentationTheme(currentThemeName, getCurrentThemeOptions());
 		if (requestId !== themeLoadRequestId) return;
 		assignTheme(loadedTheme);
 	} catch {
@@ -392,6 +451,10 @@ function notifyThemeChange(event: ThemeChangeEvent = {}): void {
 
 async function startThemeWatcher(): Promise<void> {
 	stopThemeWatcher();
+	if (themeSource === "omarchy") {
+		startOmarchyWatcher();
+		return;
+	}
 
 	// Only watch if it's a custom theme (not built-in)
 	if (!currentThemeName || currentThemeName === "dark" || currentThemeName === "light") {
@@ -480,7 +543,7 @@ function applyResolvedAutoTheme(resolved: string, debugLabel: string, event: The
  * An explicit appearance is provisional input and does not alter terminal-reported state.
  */
 function reevaluateAutoTheme(debugLabel: string, event: ThemeChangeEvent = {}, appearance?: "dark" | "light"): void {
-	if (!autoDetectedTheme) return;
+	if (!autoDetectedTheme || themeSource === "omarchy") return;
 	const resolved =
 		appearance === undefined ? getDefaultTheme() : appearance === "dark" ? autoDarkTheme : autoLightTheme;
 	applyResolvedAutoTheme(resolved, debugLabel, event);
@@ -668,7 +731,9 @@ function stopSigwinchListener(): void {
 	stopMacAppearanceObserver();
 }
 
-export function stopThemeWatcher(): void {
+function stopFileThemeWatchers(): void {
+	stopOmarchyWatcher?.();
+	stopOmarchyWatcher = undefined;
 	if (themeReloadTimer) {
 		clearTimeout(themeReloadTimer);
 		themeReloadTimer = undefined;
@@ -677,6 +742,10 @@ export function stopThemeWatcher(): void {
 		themeWatcher.close();
 		themeWatcher = undefined;
 	}
+}
+
+export function stopThemeWatcher(): void {
+	stopFileThemeWatchers();
 	stopSigwinchListener();
 	terminalReportedAppearance = undefined;
 }

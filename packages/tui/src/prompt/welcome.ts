@@ -1,7 +1,7 @@
 import { TERMINAL } from "../terminal-capabilities";
 import type { Component } from "../tui";
 import { padding, replaceTabs, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils";
-import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
+import { APP_DISPLAY_NAME } from "@oh-my-pi/pi-utils/dirs";
 import { theme } from "../theme/theme";
 import tipsText from "./tips.txt" with { type: "text" };
 
@@ -269,7 +269,7 @@ export class WelcomeComponent implements Component {
 		}
 		const dualContentWidth = boxWidth - 3; // 3 = │ + │ + │
 		const preferredLeftCol = 26;
-		const minLeftCol = 12; // logo width
+		const minLeftCol = Math.max(...PI_LOGO.map(visibleWidth));
 		const minRightCol = 20;
 		// Dynamic model/provider labels are truncated inside the fixed column.
 		// Letting them influence the responsive breakpoint changes the box height
@@ -383,7 +383,7 @@ export class WelcomeComponent implements Component {
 		const lines: string[] = [];
 
 		// Top border with embedded title
-		const title = ` ${APP_NAME} v${this.version} `;
+		const title = ` ${APP_DISPLAY_NAME} v${this.version} `;
 		const titlePrefixRaw = hChar.repeat(3);
 		const titleStyled = theme.fg("dim", titlePrefixRaw) + theme.fg("muted", title);
 		const titleVisLen = visibleWidth(titlePrefixRaw) + visibleWidth(title);
@@ -481,7 +481,16 @@ export class WelcomeComponent implements Component {
 }
 
 /** Block-grid brand mark shared by the welcome and setup surfaces. */
-export const PI_LOGO = ["████████████", "   ██  ██   ", "   ██  ██   ", "   ▒▒  ██   ", "       ██   "];
+export const PI_SYMBOL = ["████████████", "   ██  ██   ", "   ██  ██   ", "   ▒▒  ██   ", "       ██   "];
+export const PI_LOGO = PI_SYMBOL.map((line, row) => `${line} ${"FORGE"[row]}`);
+export const FORGE_WORDMARK = [
+	"████  ███  ████   ████ ████",
+	"█    █   █ █   █ █     █   ",
+	"███  █   █ ████  █  ██ ███ ",
+	"█    █   █ █  █  █   █ █   ",
+	"█     ███  █   █  ███  ████",
+];
+export const FORGE_LOGO = PI_SYMBOL.map((line, row) => `${line}   ${FORGE_WORDMARK[row]}`);
 
 /** Multi-stop palette for the diagonal gradient. */
 const GRADIENT_STOPS: ReadonlyArray<readonly [number, number, number]> = [

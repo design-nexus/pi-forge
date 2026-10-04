@@ -1,3 +1,4 @@
+import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
 // Linux desktop notification delivery via D-Bus.
 //
 // Several terminal families — most notably the VTE-based stack (Ptyxis,
@@ -26,7 +27,6 @@ import { $which } from "@oh-my-pi/pi-utils";
 import type { TerminalId, TerminalNotification } from "./terminal-capabilities";
 
 /** Application name surfaced as the notification source. */
-const APP_NAME = "omp";
 
 /** Resolved notifier binary used to fan a notification out to D-Bus. */
 export type DesktopNotifierKind = "notify-send" | "gdbus";

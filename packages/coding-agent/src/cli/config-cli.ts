@@ -17,7 +17,7 @@ import { initXdg } from "./commands/init-xdg";
 // Types
 // =============================================================================
 
-export type ConfigAction = "list" | "get" | "set" | "reset" | "path" | "init-xdg";
+export type ConfigAction = "list" | "get" | "set" | "reset" | "path" | "init-xdg" | "import-omp";
 
 export interface ConfigCommandArgs {
 	action: ConfigAction;
@@ -179,6 +179,8 @@ export async function runConfigCommand(cmd: ConfigCommandArgs): Promise<void> {
 		case "path":
 			handlePath();
 			break;
+		case "import-omp":
+			throw new Error("Use pi-forge config import-omp through the CLI entrypoint");
 		case "init-xdg":
 			await initXdg();
 			break;

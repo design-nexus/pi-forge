@@ -11,6 +11,7 @@ import {
 } from "@oh-my-pi/pi-tui/setup/wizard";
 import { formatModelString, resolveModelRoleValue, rolePriorityDefaults } from "../config/model-resolver";
 import { getRoleInfo, roleCandidatePool } from "../config/model-roles";
+import { importOmpData } from "../cli/import-omp";
 import type { Settings } from "../config/settings";
 import { captureBrowserSession } from "../utils/browser-session";
 import { copyToClipboard } from "../utils/clipboard";
@@ -24,6 +25,7 @@ import {
 	cfgComposerShape,
 	cfgSetupVersion,
 	cfgSymbolPreset,
+	cfgThemeSource,
 	cfgThemeDark,
 	cfgThemeLight,
 } from "./settings";
@@ -79,6 +81,15 @@ export function createSetupHost(ctx: InteractiveModeContext): SetupHost {
 	const modelSource = createModelBrowserSource(ctx.settings);
 	return {
 		ui: ctx.ui,
+		previewOmpImport: async () => {
+			const report = await importOmpData({ dryRun: true });
+			return { copied: report.copied.length, skipped: report.skipped.length, warnings: report.warnings };
+		},
+		importOmp: async () => {
+			await importOmpData();
+			await ctx.settings.reloadFromDisk();
+			await ctx.session.modelRegistry.authStorage.credentials.reload();
+		},
 		get statusLine() {
 			return ctx.statusLine;
 		},
@@ -135,6 +146,7 @@ export function createSetupHost(ctx: InteractiveModeContext): SetupHost {
 		saveColorBlindMode: enabled => {
 			cfgColorBlindMode.set(ctx.settings, enabled);
 		},
+		saveThemeSource: source => cfgThemeSource.set(ctx.settings, source),
 		saveTheme: (mode, name) => {
 			(mode === "dark" ? cfgThemeDark : cfgThemeLight).set(ctx.settings, name);
 		},

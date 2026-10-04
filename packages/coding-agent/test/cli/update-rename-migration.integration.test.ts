@@ -59,7 +59,7 @@ async function makeFixtures(root: string): Promise<{ oldDir: string; newDir: str
 		const dir = path.join(root, name);
 		await Bun.write(path.join(dir, "package.json"), JSON.stringify({ name, version, bin: { omp: "cli.js" } }));
 		const cli = path.join(dir, "cli.js");
-		await Bun.write(cli, `#!/usr/bin/env bun\nconsole.log("omp/${version}");\n`);
+		await Bun.write(cli, `#!/usr/bin/env bun\nconsole.log("pi-forge/${version}");\n`);
 		await fs.chmod(cli, 0o755);
 		return dir;
 	};

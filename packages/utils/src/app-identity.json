@@ -1,0 +1,8 @@
+{
+	"name": "pi-forge",
+	"displayName": "Pi Forge",
+	"version": "0.1.0",
+	"repository": "design-nexus/pi-forge",
+	"homepage": "https://github.com/design-nexus/pi-forge",
+	"configDirectory": ".pi-forge"
+}

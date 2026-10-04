@@ -1766,3 +1766,16 @@ Completed an original/revised Luna Low pair with identical runtime/addon/task/se
 ### Next: normal development observations (2026-10-04)
 
 Hosted benchmarks are paused by user agreement. Keep the current implementation and production prompts. Follow [the real-work observation workflow](docs/real-work-observation.md): Luna Low first, separate persisted task logs, offline usage summaries, independent acceptance, active-time notes, and recorded interventions. Governor remains explicitly off for the ordinary-use baseline; deliberate auto observations are labeled separately. Fix recurring problems found during useful work, then measure specific fixes rather than repeating broad benchmark packets. No new hosted run is authorized by this workflow alone.
+
+
+## Pi Forge application separation — 0.1.0
+
+Implemented the separate `pi-forge` executable identity and version, `.pi-forge`/XDG storage, Forge-owned binary update channel, and optional non-destructive OMP import. Internal package/native versions and upstream plugin/provider contracts stay on the inherited compatibility line. OMP features, defaults, and service integrations remain available without new opt-in gates.
+
+Branding retains the existing π appearance with a horizontal FORGE wordmark and vertical FORGE beside the compact mark's right leg. README now describes active Forge features, configuration defaults, measured limitations, install/import behavior, and upstream attribution. `docs/upstream-reconciliation.md` records the integrated upstream baseline and reconciliation procedure.
+
+Appearance settings now label Catppuccin Mocha/Latte and offer Follow Omarchy. The app reads current and legacy palette locations, follows replacement files, retains the last valid palette during invalid changes, and disposes watchers when switching back. It does not change desktop configuration.
+
+Release preparation uses the manual Pi Forge draft workflow for Linux x64 glibc. Inherited upstream publishing is gated off in this repository. Source installs remain manual checkout updates. Release publication and other binary platforms remain future release work; no release was published by this implementation.
+
+Verification: `bun check` passed; focused compatibility tests reported 521 passes and one macOS-only skip. Source and compiled `--smoke-test` passed, the compiled version reports `pi-forge/0.1.0`, and welcome/splash layouts fit 20–80 columns. The live Forge release lookup returned 404 without an OMP fallback; the source updater reports manual checkout instructions without fetching releases.

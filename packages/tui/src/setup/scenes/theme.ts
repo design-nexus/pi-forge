@@ -7,6 +7,9 @@ import { WizardStep } from "../../components/wizard-step";
 import { Container } from "../../tui";
 import {
 	enableAutoTheme,
+	setThemeSource,
+	getThemeSource,
+	readOmarchyTheme,
 	getAvailableThemes,
 	getCurrentThemeName,
 	getSelectListTheme,
@@ -28,6 +31,8 @@ const CURATED_ITEMS: readonly SelectItem[] = [
 	{ value: "colorblind", label: "Colorblind colors", description: "Adjust red/green contrast" },
 	{ value: "ansi", label: "ANSI-safe", description: "ASCII glyphs with the dark terminal theme" },
 	{ value: "browse", label: "Browse all…", description: "Show every built-in and custom theme" },
+	{ value: "theme:dark-catppuccin", label: "Catppuccin Mocha", description: "Catppuccin dark palette" },
+	{ value: "theme:light-catppuccin", label: "Catppuccin Latte", description: "Catppuccin light palette" },
 ];
 
 function fillStyledLine(content: string, width: number): string {
@@ -92,16 +97,23 @@ class ThemeSceneController implements SetupSceneController {
 	#disposed = false;
 	#step: WizardStep | undefined;
 	readonly #originalTheme = getCurrentThemeName();
+	readonly #originalSource = getThemeSource();
 	readonly #originalSymbolPreset: SymbolPreset;
 	readonly #originalColorBlindMode: boolean;
 
 	readonly #host: SetupSceneHost;
+	readonly #curatedItems: readonly SelectItem[] = [
+		...CURATED_ITEMS,
+		...(readOmarchyTheme()
+			? [{ value: "omarchy", label: "Follow Omarchy", description: "Match the desktop palette and follow changes" }]
+			: []),
+	];
 
 	constructor(host: SetupSceneHost) {
 		this.#host = host;
 		this.#originalSymbolPreset = host.ctx.symbolPreset;
 		this.#originalColorBlindMode = host.ctx.colorBlindMode;
-		this.#selectList = this.#createSelectList(CURATED_ITEMS, this.#currentCuratedIndex());
+		this.#selectList = this.#createSelectList(this.#curatedItems, this.#currentCuratedIndex());
 	}
 
 	dispose(): void {
@@ -163,7 +175,7 @@ class ThemeSceneController implements SetupSceneController {
 				preview: { component: preview, optional: true },
 				content: loading ?? this.#selectList,
 				status,
-				minContentLines: CURATED_ITEMS.length + 1,
+				minContentLines: this.#curatedItems.length + 1,
 				fitContent: budget => {
 					if (this.#loadingAllThemes) return;
 					const visible = budget === undefined ? 10 : budget - 1;
@@ -193,7 +205,7 @@ class ThemeSceneController implements SetupSceneController {
 		list.onCancel = () => {
 			if (this.#mode === "all") {
 				this.#mode = "curated";
-				this.#selectList = this.#createSelectList(CURATED_ITEMS, this.#currentCuratedIndex());
+				this.#selectList = this.#createSelectList(this.#curatedItems, this.#currentCuratedIndex());
 				this.#host.requestRender();
 				return;
 			}
@@ -211,7 +223,7 @@ class ThemeSceneController implements SetupSceneController {
 	}
 
 	#previewByIndex(index: number): void {
-		const items = this.#mode === "curated" ? CURATED_ITEMS : undefined;
+		const items = this.#mode === "curated" ? this.#curatedItems : undefined;
 		const value = items?.[index]?.value;
 		if (value) void this.#preview(value);
 	}
@@ -251,6 +263,15 @@ class ThemeSceneController implements SetupSceneController {
 	}
 
 	async #commit(value: string): Promise<void> {
+		if (value === "omarchy") {
+			this.#host.ctx.saveThemeSource?.("omarchy");
+			setThemeSource("omarchy");
+			return;
+		}
+		if (value === "auto" || value === "ansi" || value.startsWith("theme:")) {
+			this.#host.ctx.saveThemeSource?.("terminal");
+			setThemeSource("terminal");
+		}
 		if (value === "auto") {
 			this.#host.ctx.saveTheme("dark", "titanium");
 			this.#host.ctx.saveTheme("light", "light");
@@ -290,7 +311,10 @@ class ThemeSceneController implements SetupSceneController {
 		}
 
 		let result: { success: boolean; error?: string } = { success: true };
-		if (value === "auto") {
+		if (value === "omarchy") {
+			setThemeSource("omarchy");
+		} else if (value === "auto") {
+			setThemeSource("terminal");
 			await this.#applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);
 			enableAutoTheme({ ephemeral: true });
 		} else if (value === "colorblind") {
@@ -301,6 +325,7 @@ class ThemeSceneController implements SetupSceneController {
 		} else {
 			const themeName = this.#themeNameFromValue(value);
 			if (themeName) {
+				setThemeSource("terminal");
 				await this.#applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);
 				result = await previewTheme(themeName);
 			}
@@ -321,7 +346,8 @@ class ThemeSceneController implements SetupSceneController {
 	#restorePreview(): void {
 		void (async () => {
 			await this.#applyPreviewPresentation(this.#originalSymbolPreset, this.#originalColorBlindMode);
-			if (this.#originalTheme) {
+			setThemeSource(this.#originalSource);
+			if (this.#originalTheme && this.#originalSource !== "omarchy") {
 				await previewTheme(this.#originalTheme);
 			}
 			this.#host.ctx.ui.invalidate();

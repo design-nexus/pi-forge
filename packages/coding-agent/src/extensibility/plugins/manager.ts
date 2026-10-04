@@ -1068,7 +1068,7 @@ export class PluginManager {
 					status: fixed ? "ok" : "error",
 					message: fixed
 						? `Reconciled version drift: node_modules now matches lock v${recordedVersion}`
-						: `Version drift: lock records v${recordedVersion} but node_modules has v${pluginPkg.version} (run \`omp plugin install ${name} --force\`)`,
+						: `Version drift: lock records v${recordedVersion} but node_modules has v${pluginPkg.version} (run \`pi-forge plugin install ${name} --force\`)`,
 					fixed,
 				});
 				if (fixed) {
@@ -1088,7 +1088,7 @@ export class PluginManager {
 				status: hasManifest ? "ok" : "warning",
 				message: hasManifest
 					? `v${pluginPkg.version}${pluginPkg.description ? ` - ${pluginPkg.description}` : ""}`
-					: `v${pluginPkg.version} - No omp/pi manifest (not an omp plugin)`,
+					: `v${pluginPkg.version} - No omp/pi manifest (not a Pi Forge plugin)`,
 			});
 
 			// Check tools path exists if specified

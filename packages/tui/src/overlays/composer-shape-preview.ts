@@ -1,3 +1,4 @@
+import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
 /**
  * Live preview for the `composer.shape` setting and the setup-wizard composer
  * scene. Chrome is rendered through the same {@link ComposerStyle} objects the
@@ -42,7 +43,7 @@ export interface ComposerShapePreviewOptions {
 	status?: ComposerPreviewStatusSource;
 }
 /** Stand-in session title shown while the previewed session is unnamed. */
-const PREVIEW_TITLE = "omp";
+const PREVIEW_TITLE = APP_NAME;
 
 export function renderComposerShapePreview(
 	shape: ComposerShape,

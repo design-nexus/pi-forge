@@ -15,7 +15,7 @@ import { setEmojiAutocompleteEnabled } from "@oh-my-pi/pi-tui/prompt/prompt-acti
 import { applyHyperlinkSetting } from "@oh-my-pi/pi-tui/render/hyperlink";
 import { setInlineImageMaxColumns, setInlineImageMaxRows } from "@oh-my-pi/pi-tui/render/render-utils";
 import { setShimmerMode } from "@oh-my-pi/pi-tui/theme/shimmer";
-import { setAutoThemeMapping, setColorBlindMode, setSymbolPreset } from "@oh-my-pi/pi-tui/theme/theme";
+import { setThemeSource, setAutoThemeMapping, setColorBlindMode, setSymbolPreset } from "@oh-my-pi/pi-tui/theme/theme";
 
 const EMPTY_UNKNOWN_RECORD: Record<string, unknown> = {};
 
@@ -53,6 +53,25 @@ export const cfgGitEnabled = register({
 // ────────────────────────────────────────────────────────────────────────
 
 // Theme
+export const cfgThemeSource = register({
+	id: "theme.source",
+	type: "enum",
+	values: ["terminal", "omarchy"] as const,
+	default: "terminal",
+	ui: {
+		tab: "appearance",
+		group: "Theme",
+		label: "Theme Source",
+		description:
+			"Follow Omarchy's palette, or use the configured terminal themes. Falls back when Omarchy is unavailable.",
+		options: [
+			{ value: "terminal", label: "Terminal themes" },
+			{ value: "omarchy", label: "Follow Omarchy" },
+		],
+	},
+});
+effect(cfgThemeSource, source => setThemeSource(source));
+
 export const cfgThemeDark = register({
 	id: "theme.dark",
 	type: "string",

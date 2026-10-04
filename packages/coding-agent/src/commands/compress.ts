@@ -18,11 +18,11 @@ export default class Compress extends Command {
 	};
 
 	static examples = [
-		"omp compress prompts/tools/read.md",
-		"omp compress notes.md -o notes.compressed.md",
-		"omp compress 'src/prompts/**/*.md' -i",
-		"omp compress a.md b.md c.md -i -n 8",
-		"omp compress spec.md -r 5 -m opus",
+		"pi-forge compress prompts/tools/read.md",
+		"pi-forge compress notes.md -o notes.compressed.md",
+		"pi-forge compress 'src/prompts/**/*.md' -i",
+		"pi-forge compress a.md b.md c.md -i -n 8",
+		"pi-forge compress spec.md -r 5 -m opus",
 	];
 
 	async run(): Promise<void> {

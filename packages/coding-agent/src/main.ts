@@ -79,7 +79,7 @@ import {
 	stopPendingStartupComposer,
 	takeStartupComposerLease,
 } from "./modes/startup-composer";
-import { ensureTheme, initTheme, stopThemeWatcher } from "@oh-my-pi/pi-tui/theme";
+import { ensureTheme, initTheme, setThemeSource, stopThemeWatcher } from "@oh-my-pi/pi-tui/theme";
 import type { SubmittedUserInput } from "./modes/types";
 import { createWarpEventBridgeExtension } from "./modes/warp-events";
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
@@ -139,6 +139,7 @@ import {
 	cfgStartupSetupWizard,
 	cfgStartupShowSplash,
 	cfgSymbolPreset,
+	cfgThemeSource,
 	cfgThemeDark,
 	cfgThemeLight,
 	cfgTuiImeSafeCursor,
@@ -1882,6 +1883,7 @@ export async function runRootCommand(
 			cfgExternalThinking.override(settingsInstance, true);
 		}
 
+		setThemeSource(cfgThemeSource.get(settingsInstance));
 		await logger.time(
 			"initTheme:final",
 			initTheme,
@@ -1906,6 +1908,7 @@ export async function runRootCommand(
 			theme: {
 				symbolPreset: cfgSymbolPreset.get(settingsInstance),
 				colorBlindMode: cfgColorBlindMode.get(settingsInstance),
+				source: cfgThemeSource.get(settingsInstance),
 				darkTheme: cfgThemeDark.get(settingsInstance),
 				lightTheme: cfgThemeLight.get(settingsInstance),
 			},

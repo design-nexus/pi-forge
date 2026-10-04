@@ -14,32 +14,37 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { engines, version } from "../package.json" with { type: "json" };
+import { engines } from "../package.json" with { type: "json" };
 import { isEnoent, isEnotdir } from "./fs-error";
 
+import appIdentity from "./app-identity.json" with { type: "json" };
+
+export const APP_REPOSITORY = appIdentity.repository;
+export const APP_DISPLAY_NAME = appIdentity.displayName;
+
 /** App name (e.g. "omp") */
-export const APP_NAME: string = "omp";
+export const APP_NAME: string = appIdentity.name;
 
 /** Public homepage that inference gateways (OpenRouter, Vercel AI Gateway) credit omp traffic to. */
-export const APP_URL: string = "https://omp.sh/";
+export const APP_URL: string = appIdentity.homepage;
 
 /** Config directory name (e.g. ".omp") */
-export const CONFIG_DIR_NAME: string = ".omp";
+export const CONFIG_DIR_NAME: string = appIdentity.configDirectory;
 
 /** Ordered main settings filenames: canonical write target first, legacy-compatible YAML fallback second. */
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
 
 /** Version (e.g. "1.0.0") */
-export const VERSION: string = version;
+export const VERSION: string = appIdentity.version;
 
 /** Default User-Agent header string (e.g. "omp/17.2.12") */
-export const USER_AGENT = `omp/${VERSION}`;
+export const USER_AGENT = `${APP_NAME}/${VERSION}`;
 
 /** Minimum Bun version */
 export const MIN_BUN_VERSION: string = engines.bun.replace(/[^0-9.]/g, "");
 
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-const PROFILE_ENV_KEYS = ["OMP_PROFILE", "PI_PROFILE"] as const;
+const PROFILE_ENV_KEYS = ["PI_FORGE_PROFILE", "OMP_PROFILE", "PI_PROFILE"] as const;
 
 /**
  * Names Windows treats as reserved device aliases. Matches the basename
@@ -70,7 +75,7 @@ export function normalizeProfileName(profile: string | undefined): string | unde
 		WINDOWS_RESERVED_BASENAME_RE.test(normalized)
 	) {
 		throw new Error(
-			`Invalid OMP profile "${profile}". Profile names must match ${PROFILE_NAME_RE.source}, ` +
+			`Invalid Pi Forge profile "${profile}". Profile names must match ${PROFILE_NAME_RE.source}, ` +
 				`cannot be "." or "..", cannot end with ".", and cannot be a Windows reserved device name ` +
 				`(CON, PRN, AUX, NUL, COM0-9, LPT0-9, or any of those with an extension).`,
 		);
@@ -91,7 +96,7 @@ export function resolveProfileEnv(omp: string | undefined, pi: string | undefine
 }
 
 function getProfileFromEnv(): string | undefined {
-	return resolveProfileEnv(process.env.OMP_PROFILE, process.env.PI_PROFILE);
+	return resolveProfileEnv(process.env.PI_FORGE_PROFILE ?? process.env.OMP_PROFILE, process.env.PI_PROFILE);
 }
 
 /**
@@ -100,7 +105,7 @@ function getProfileFromEnv(): string | undefined {
  * crash a bare `import` of this module with an uncaught stack trace before the
  * CLI's error handling is in scope. The default profile is used instead; the
  * CLI re-validates the env (see `runCli` in coding-agent/src/cli.ts) so the
- * user still gets a clean "Invalid OMP profile" message.
+ * user still gets a clean "Invalid Pi Forge profile" message.
  */
 function readProfileFromEnvSafe(): string | undefined {
 	try {
@@ -295,7 +300,7 @@ export function getSafeProjectCwd(): string {
 
 /** Get the config directory name relative to home (e.g. ".omp" or PI_CONFIG_DIR override). */
 export function getConfigDirName(): string {
-	return process.env.PI_CONFIG_DIR || CONFIG_DIR_NAME;
+	return process.env.PI_FORGE_CONFIG_DIR || process.env.PI_CONFIG_DIR || CONFIG_DIR_NAME;
 }
 
 /** Get the config agent directory name relative to home (e.g. ".omp/agent" or PI_CONFIG_DIR + "/agent"). */
@@ -443,7 +448,11 @@ let activeProfile = readProfileFromEnvSafe();
 function resolveActiveAgentDirOverride(): string | undefined {
 	return activeProfile
 		? undefined
-		: resolvePreProfileAgentDir(undefined, process.env.PI_CODING_AGENT_DIR, readPiProfileFromEnvSafe());
+		: resolvePreProfileAgentDir(
+				undefined,
+				process.env.PI_FORGE_AGENT_DIR ?? process.env.PI_CODING_AGENT_DIR,
+				readPiProfileFromEnvSafe(),
+			);
 }
 
 let dirs = new DirResolver({
@@ -463,7 +472,7 @@ let dirs = new DirResolver({
  */
 let preProfileAgentDirEnv: string | undefined = resolvePreProfileAgentDir(
 	activeProfile,
-	process.env.PI_CODING_AGENT_DIR,
+	process.env.PI_FORGE_AGENT_DIR ?? process.env.PI_CODING_AGENT_DIR,
 	activeProfile ?? readPiProfileFromEnvSafe(),
 );
 // Anchor home for the resolver. Captured at module load to stay stable across
@@ -520,7 +529,7 @@ export function setAgentDir(dir: string): void {
 export function __resetProfileSnapshotForTests(): void {
 	preProfileAgentDirEnv = resolvePreProfileAgentDir(
 		activeProfile,
-		process.env.PI_CODING_AGENT_DIR,
+		process.env.PI_FORGE_AGENT_DIR ?? process.env.PI_CODING_AGENT_DIR,
 		activeProfile ?? readPiProfileFromEnvSafe(),
 	);
 }
@@ -548,13 +557,14 @@ export function setProfile(profile: string | undefined): void {
 		// entered the picture, not the state between two activations.
 		preProfileAgentDirEnv = resolvePreProfileAgentDir(
 			undefined,
-			process.env.PI_CODING_AGENT_DIR,
+			process.env.PI_FORGE_AGENT_DIR ?? process.env.PI_CODING_AGENT_DIR,
 			readPiProfileFromEnvSafe(),
 		);
 	}
 	activeProfile = next;
 	if (activeProfile) {
 		dirs = new DirResolver({ profile: activeProfile });
+		process.env.PI_FORGE_PROFILE = activeProfile;
 		process.env.OMP_PROFILE = activeProfile;
 		process.env.PI_PROFILE = activeProfile;
 		process.env.PI_CODING_AGENT_DIR = dirs.agentDir;
@@ -1081,8 +1091,8 @@ const INSTALL_ID_FILE = "install-id";
  * app X use" instead of folding everything into one install-wide bucket.
  */
 export function getAppName(): string {
-	const value = process.env.OMP_APP_NAME?.trim();
-	return value ? value : "omp";
+	const value = (process.env.PI_FORGE_APP_NAME ?? process.env.OMP_APP_NAME)?.trim();
+	return value ? value : APP_NAME;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

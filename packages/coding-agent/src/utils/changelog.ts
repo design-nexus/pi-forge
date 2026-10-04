@@ -135,7 +135,7 @@ function categoryLabel(category: string, count: number): string {
 export function formatStartupChangelogSummary(selection: StartupChangelogSelection): string {
 	const latestVersion = selection.latestVersion;
 	if (!latestVersion || selection.selectedEntries === 0) {
-		return "Updated omp. Use /changelog for recent changes.";
+		return "Updated Pi Forge. Use /changelog for upstream release history.";
 	}
 
 	const releaseCount = selection.selectedEntries;

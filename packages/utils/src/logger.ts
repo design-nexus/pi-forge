@@ -14,7 +14,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { isPromise } from "node:util/types";
-import { getLogsDir } from "./dirs";
+import { APP_NAME, getLogsDir } from "./dirs";
 import { RotatingFileSink } from "./logger/rotating-file";
 import { drainModuleLoadEvents } from "./timing-buffer";
 /** Severity names accepted by the centralized logger. */
@@ -253,11 +253,11 @@ function makeFileTransport(dir?: string): RotatingFileSink {
 	schedulePruneStaleProcessLogs(logsDir);
 	return new RotatingFileSink({
 		directory: logsDir,
-		filenamePrefix: "omp",
+		filenamePrefix: APP_NAME,
 		filenameSuffix: String(process.pid),
 		maxBytes: 10 * 1024 * 1024,
 		maxFiles: 5,
-		auditFile: path.join(logsDir, `.omp.${process.pid}-audit.json`),
+		auditFile: path.join(logsDir, `.${APP_NAME}.${process.pid}-audit.json`),
 	});
 }
 

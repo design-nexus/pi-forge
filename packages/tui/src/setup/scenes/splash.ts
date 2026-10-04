@@ -1,13 +1,13 @@
 import { centerLine, visibleWidth } from "../../utils";
 import { padToWidth } from "../../render/utils";
-import { gradientEscape, gradientLogo, PI_LOGO, type ShineConfig } from "../../prompt/welcome";
+import { gradientEscape, gradientLogo, PI_LOGO, FORGE_LOGO, type ShineConfig } from "../../prompt/welcome";
 import { theme } from "../../theme/theme";
 
 export const SETUP_SPLASH_MS = 2600;
 export const SETUP_TICK_MS = 33;
 
 /** Brand mark at 2x: every glyph doubled horizontally, every row doubled vertically. */
-const LARGE_LOGO = PI_LOGO.flatMap(line => {
+const LARGE_LOGO = FORGE_LOGO.flatMap(line => {
 	let wide = "";
 	for (const char of line) {
 		wide += char === " " ? "  " : `${char}${char}`;
@@ -19,7 +19,7 @@ const LOGO_HEIGHT = LARGE_LOGO.length;
 const RESET = "\x1b[0m";
 
 /** Full scene needs comfortable room; below this we drop to a centered mark. */
-const MIN_SCENE_WIDTH = 56;
+const MIN_SCENE_WIDTH = Math.max(56, LOGO_WIDTH + 8);
 const MIN_SCENE_HEIGHT = 22;
 
 const SKIP_HINT = "press enter to skip";
@@ -178,7 +178,8 @@ export function renderSetupSplash(width: number, height: number, elapsedMs: numb
 
 /** Centered fallback for windows too small to hold the full scene. */
 function renderCompactSplash(width: number, height: number, phase: number, shine: ShineConfig): string[] {
-	const art = height >= 14 ? LARGE_LOGO : PI_LOGO;
+	const art =
+		height >= 14 && width >= LOGO_WIDTH ? LARGE_LOGO : width >= visibleWidth(FORGE_LOGO[0]) ? FORGE_LOGO : PI_LOGO;
 	const content = [...gradientLogo(art, phase, shine), "", theme.bold("O h   M y   P i")];
 	const start = Math.max(0, Math.floor((height - content.length) / 2));
 	const lines: string[] = [];

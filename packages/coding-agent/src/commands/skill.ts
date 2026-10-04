@@ -35,14 +35,14 @@ export default class Skill extends Command {
 	};
 
 	static examples = [
-		"omp skill install @alice/pdf-tools",
-		"omp skill install -g @alice/pdf-tools@^1.2",
-		'omp skill search "pdf" --sort downloads',
-		"omp skill version minor && omp skill publish",
-		"omp skill publish ./skills/pdf-tools --dry-run",
-		"omp skill tag @alice/pdf-tools@2.0.0-beta.1 next",
-		'omp skill deprecate @alice/pdf-tools@"<1.0.0" "use 1.x"',
-		"omp skill token create ci --package @alice/pdf-tools --expires 90",
+		"pi-forge skill install @alice/pdf-tools",
+		"pi-forge skill install -g @alice/pdf-tools@^1.2",
+		'pi-forge skill search "pdf" --sort downloads',
+		"pi-forge skill version minor && pi-forge skill publish",
+		"pi-forge skill publish ./skills/pdf-tools --dry-run",
+		"pi-forge skill tag @alice/pdf-tools@2.0.0-beta.1 next",
+		'pi-forge skill deprecate @alice/pdf-tools@"<1.0.0" "use 1.x"',
+		"pi-forge skill token create ci --package @alice/pdf-tools --expires 90",
 	];
 
 	async run(): Promise<void> {

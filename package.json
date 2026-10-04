@@ -1,9 +1,12 @@
 {
-	"name": "omp",
+	"name": "pi-forge",
 	"private": true,
-	"homepage": "https://omp.sh",
+	"homepage": "https://github.com/design-nexus/pi-forge",
 	"license": "MIT",
-	"author": { "name": "Stencil Labs, Inc.", "url": "https://stencil.so" },
+	"author": {
+		"name": "Stencil Labs, Inc.",
+		"url": "https://stencil.so"
+	},
 	"workspaces": {
 		"packages": [
 			"packages/*",
