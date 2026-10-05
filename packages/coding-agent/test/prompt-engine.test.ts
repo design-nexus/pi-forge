@@ -21,6 +21,7 @@ import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manage
 import { cfgIncludeModelInPrompt } from "@oh-my-pi/pi-coding-agent/session/settings";
 import { buildSystemPrompt, type BuildSystemPromptOptions } from "@oh-my-pi/pi-coding-agent/system-prompt";
 import { CONFIG_DIR_NAME, getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+import browserGuidance from "../src/prompts/tools/browser.md" with { type: "text" };
 import bundledTemplate from "../src/prompts/system/system-prompt.md" with { type: "text" };
 
 function promptOptions(cwd: string, overrides: Partial<BuildSystemPromptOptions> = {}): BuildSystemPromptOptions {
@@ -158,7 +159,7 @@ describe("prompt composition", () => {
 			promptOptions(cwd, {
 				promptProfile: "minimal",
 				toolNames: ["read", "write", "eval"],
-				browserEnabled: true,
+				evalPreludes: [{ name: "browser", guidance: browserGuidance }],
 			}),
 		);
 		expect(result.systemPrompt.join("\n")).toContain("browser.open");

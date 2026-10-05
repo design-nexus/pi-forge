@@ -1779,3 +1779,10 @@ Appearance settings now label Catppuccin Mocha/Latte and offer Follow Omarchy. T
 Release preparation uses the manual Pi Forge draft workflow for Linux x64 glibc. Inherited upstream publishing is gated off in this repository. Source installs remain manual checkout updates. Release publication and other binary platforms remain future release work; no release was published by this implementation.
 
 Verification: `bun check` passed; focused compatibility tests reported 521 passes and one macOS-only skip. Source and compiled `--smoke-test` passed, the compiled version reports `pi-forge/0.1.0`, and welcome/splash layouts fit 20–80 columns. The live Forge release lookup returned 404 without an OMP fallback; the source updater reports manual checkout instructions without fetching releases.
+
+
+## OMP reconciliation — Pi Forge 0.1.1 (2026-10-04)
+
+Merged OMP 18.6.2 at `1c0993c3d12e70042169a951663bb2702e2c0a9e` while preserving Forge identity, settings and release isolation, prompts, governor, task dependencies/integration, and themes. Streamed upstream task launches are adopted once, including a prerequisite followed by a dependent task. Runtime model selectors override automatic roles, solution-space hints reach the executor, and changing repository context stays in one final system block without changing the static prefix. Forge welcome artwork retains the version at narrow widths. Native crash reports also honor Forge storage and canonical overrides, preserving OMP state isolation.
+
+Verification: workspace `bun check` passed; the task/governor/prompt/runtime integration run passed 883 tests, the final core run passed 640 tests, the app/config/discovery/theme run passed 579 tests with one macOS-only skip, and import/updater/browser checks passed 48 tests. These runs overlap and must not be added together. Rust nextest and doctests passed after normalizing Git diff prefixes for the test process and reconciling two stale upstream image-height assertions with the new 64px minimum. Source and compiled worker smoke probes passed and report `pi-forge/0.1.1`. No model calls were used.

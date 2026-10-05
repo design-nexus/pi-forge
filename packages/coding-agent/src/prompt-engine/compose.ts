@@ -1,3 +1,5 @@
+import { prompt } from "@oh-my-pi/pi-utils";
+import dynamicContextTemplate from "../prompts/system/dynamic-context.md" with { type: "text" };
 import type { Model } from "@oh-my-pi/pi-ai";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core/tokenizer";
 import { TOOL_CAPABILITY_CATALOG } from "./capability-catalog";
@@ -22,7 +24,7 @@ export interface PromptSection {
 	active: boolean;
 	reason: string;
 	tokens: number;
-	source: "bundled" | "model" | "custom";
+	source: "bundled" | "model" | "custom" | "prelude";
 }
 
 export interface PromptModuleContent {
@@ -45,7 +47,7 @@ interface SectionDraft {
 	id: PromptSection["id"];
 	content: string;
 	available: boolean;
-	source?: "model";
+	source?: "model" | "prelude";
 }
 
 const BUNDLED_BOUNDARIES = [
@@ -115,6 +117,7 @@ export interface ComposePromptBlocks {
 	base: string;
 	bundledSections?: readonly PromptModuleContent[];
 	computerSafety?: string;
+	evalGuidance?: readonly PromptModuleContent[];
 	project?: string;
 	repoContext?: string;
 	modelModules?: readonly PromptModuleContent[];
@@ -168,9 +171,14 @@ export function composePrompt(
 			return [id, { policy, active, available, reason }];
 		}),
 	) as PromptComposition["capabilities"];
-	const originalBlocks = [blocks.base, blocks.computerSafety, blocks.project, blocks.repoContext].filter(
-		(value): value is string => value !== undefined,
-	);
+	const dynamicContext = (project?: string, repoContext?: string): string =>
+		prompt.render(dynamicContextTemplate, { project, repoContext }).trim();
+	const originalBlocks = [
+		blocks.base,
+		...(blocks.evalGuidance ?? []).map(module => module.content),
+		blocks.computerSafety,
+		dynamicContext(blocks.project, blocks.repoContext) || undefined,
+	].filter((value): value is string => value !== undefined);
 	const modelBlocks = (blocks.modelModules ?? [])
 		.filter(module => applicableModelModules.has(module.id))
 		.map(module => module.content);
@@ -182,6 +190,7 @@ export function composePrompt(
 				...(blocks.computerSafety
 					? [{ id: "computer-safety" as const, content: blocks.computerSafety, available: true }]
 					: []),
+				...(blocks.evalGuidance ?? []).map(module => ({ ...module, available: true, source: "prelude" as const })),
 				...(blocks.project ? [{ id: "project" as const, content: blocks.project, available: true }] : []),
 				...(blocks.repoContext
 					? [{ id: "repo-context" as const, content: blocks.repoContext, available: true }]
@@ -258,6 +267,7 @@ export function composePrompt(
 					.filter(
 						section =>
 							section.active &&
+							section.source !== "prelude" &&
 							[
 								"core",
 								"runtime",
@@ -273,9 +283,16 @@ export function composePrompt(
 					.map(section => section.content)
 					.join(""),
 				...sections
-					.filter(section => section.active && ["computer-safety", "project", "repo-context"].includes(section.id))
+					.filter(section => section.active && section.source === "prelude")
 					.map(section => section.content),
-			];
+				...sections
+					.filter(section => section.source !== "prelude" && section.active && section.id === "computer-safety")
+					.map(section => section.content),
+				dynamicContext(
+					sections.find(section => section.id === "project" && section.active)?.content,
+					sections.find(section => section.id === "repo-context" && section.active)?.content,
+				),
+			].filter(Boolean);
 	return {
 		systemPrompt,
 		composition: {

@@ -131,7 +131,7 @@ describe("AgentSession owner-routed async delivery", () => {
 		expect(deliveredImages).toEqual([image]);
 	});
 
-	it("revises the Governor when an owned background task fails", async () => {
+	it("exposes a process job's full command in the async job snapshot", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
 		const mock = createMockModel({ handler: () => ({ content: ["Done"] }) });
 		const agent = new Agent({
@@ -142,45 +142,34 @@ describe("AgentSession owner-routed async delivery", () => {
 		});
 		const authStorage = await AuthStorage.create(":memory:");
 		authStorages.push(authStorage);
-		authStorage.keys.setRuntime("anthropic", "test-key");
 		const manager = new AsyncJobManager({});
 		AsyncJobManager.setInstance(manager);
-		const settings = Settings.isolated();
-		cfgAdaptiveMode.set(settings, "inspect");
 		session = new AgentSession({
 			agent,
 			sessionManager: SessionManager.inMemory(),
-			settings,
+			settings: Settings.isolated(),
 			modelRegistry: new ModelRegistry(authStorage),
-			agentId: "SubAgent",
+			agentId: "Owner",
 			asyncJobManager: manager,
 		});
-		session.recordGovernorDecision(
-			{
-				signals: {
-					fileCount: 1,
-					independentTasks: 0,
-					dependencyEdges: 0,
-					highRisk: false,
-					confidence: 0.9,
-				},
-			},
-			"initial",
-		);
-		manager.register(
-			"task",
-			"failing worker",
-			async () => {
-				throw new Error("Worker failed");
-			},
-			{ id: "failed-worker", ownerId: "SubAgent" },
-		);
-		await session.settleAsyncWork();
-		expect(session.getGovernorSnapshot()).toMatchObject({
-			trigger: "runtime",
-			signals: { runtime: { failedWorkers: 1 } },
-			decision: { band: "normal" },
+
+		const command = `pytest ${"tests/a ".repeat(40)}-q`;
+		const gate = Promise.withResolvers<string>();
+		manager.register("bash", command.slice(0, 120), () => gate.promise, {
+			id: "proc-job",
+			ownerId: "Owner",
+			process: { command, cwd: "/repo", pids: () => [] },
 		});
+		manager.register("task", "in-process work", () => gate.promise, { id: "task-job", ownerId: "Owner" });
+
+		const running = session.getAsyncJobSnapshot()?.running ?? [];
+		expect(running.find(job => job.id === "proc-job")?.command).toBe(command);
+		expect(running.find(job => job.id === "task-job")?.command).toBeUndefined();
+
+		gate.resolve("done");
+		await session.settleAsyncWork();
+		const recent = session.getAsyncJobSnapshot()?.recent ?? [];
+		expect(recent.find(job => job.id === "proc-job")?.command).toBe(command);
 	});
 
 	it("does not spill an incomplete background capture as full output during follow-up delivery", async () => {
@@ -942,5 +931,56 @@ describe("AgentSession owner-routed async delivery", () => {
 		await Promise.resolve();
 		expect(flushed).toBe(true);
 		expect(vi.getTimerCount()).toBe(baselineTimers + 1);
+	});
+	it("revises the Governor when an owned background task fails", async () => {
+		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
+		const mock = createMockModel({ handler: () => ({ content: ["Done"] }) });
+		const agent = new Agent({
+			getApiKey: () => "test-key",
+			initialState: { model, systemPrompt: ["Test"], tools: [] },
+			convertToLlm,
+			streamFn: mock.stream,
+		});
+		const authStorage = await AuthStorage.create(":memory:");
+		authStorages.push(authStorage);
+		authStorage.keys.setRuntime("anthropic", "test-key");
+		const manager = new AsyncJobManager({});
+		AsyncJobManager.setInstance(manager);
+		const settings = Settings.isolated();
+		cfgAdaptiveMode.set(settings, "inspect");
+		session = new AgentSession({
+			agent,
+			sessionManager: SessionManager.inMemory(),
+			settings,
+			modelRegistry: new ModelRegistry(authStorage),
+			agentId: "SubAgent",
+			asyncJobManager: manager,
+		});
+		session.recordGovernorDecision(
+			{
+				signals: {
+					fileCount: 1,
+					independentTasks: 0,
+					dependencyEdges: 0,
+					highRisk: false,
+					confidence: 0.9,
+				},
+			},
+			"initial",
+		);
+		manager.register(
+			"task",
+			"failing worker",
+			async () => {
+				throw new Error("Worker failed");
+			},
+			{ id: "failed-worker", ownerId: "SubAgent" },
+		);
+		await session.settleAsyncWork();
+		expect(session.getGovernorSnapshot()).toMatchObject({
+			trigger: "runtime",
+			signals: { runtime: { failedWorkers: 1 } },
+			decision: { band: "normal" },
+		});
 	});
 });

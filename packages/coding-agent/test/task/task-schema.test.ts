@@ -13,21 +13,8 @@ import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
 // test/task/task-batch.test.ts).
 
 describe("task schema (single-spawn)", () => {
-	it("accepts {agent, task}", () => {
-		const parsed = taskSchema({ agent: "scout", task: "Map the auth module." });
-		expect(parsed instanceof type.errors).toBe(false);
-	});
-
-	it("defaults agent to `task` when omitted", () => {
-		const parsed = taskSchema({ task: "Map the auth module." });
-		expect(parsed instanceof type.errors).toBe(false);
-		if (!(parsed instanceof type.errors)) {
-			expect(parsed.agent).toBe("task");
-		}
-	});
-
 	it("requires task", () => {
-		const parsed = taskSchema({ agent: "scout" });
+		const parsed = taskSchema({ agent: "scout", solutionSpace: "c" });
 		expect(parsed instanceof type.errors).toBe(true);
 	});
 
@@ -37,7 +24,12 @@ describe("task schema (single-spawn)", () => {
 			batchEnabled: false,
 			evalToolsEnabled: false,
 		});
-		const parsed = schema({ agent: "scout", task: "Map the auth module.", tools: ["word_count"] });
+		const parsed = schema({
+			agent: "scout",
+			task: "Map the auth module.",
+			solutionSpace: "c",
+			tools: ["word_count"],
+		});
 		expect(parsed instanceof type.errors).toBe(false);
 		if (parsed && typeof parsed === "object" && !(parsed instanceof type.errors)) {
 			expect("tools" in parsed).toBe(false);
@@ -49,6 +41,7 @@ describe("task schema (single-spawn)", () => {
 		const parsed = taskSchema({
 			agent: "scout",
 			task: "Map the auth module.",
+			solutionSpace: "c",
 			outputSchema,
 			schemaMode: "strict",
 			tools: ["word_count"],
@@ -80,8 +73,12 @@ describe("task schema (single-spawn)", () => {
 			context: "Inspect the web app",
 			capabilities: ["browser", "mcp__server__tool"],
 			tasks: [
-				{ task: "Use the browser", capabilities: ["browser"] },
-				{ task: "Inspect connected service", capabilities: ["mcp__server__tool"] },
+				{ solutionSpace: "Inspect browser behavior", task: "Use the browser", capabilities: ["browser"] },
+				{
+					solutionSpace: "Inspect connected service",
+					task: "Inspect connected service",
+					capabilities: ["mcp__server__tool"],
+				},
 			],
 		});
 		expect(parsed instanceof type.errors).toBe(false);
@@ -95,7 +92,7 @@ describe("task schema (single-spawn)", () => {
 		});
 		const disabledParsed = disabled({
 			context: "Inspect",
-			tasks: [{ task: "Use the browser" }],
+			tasks: [{ solutionSpace: "Inspect browser behavior", task: "Use the browser" }],
 			capabilities: ["browser"],
 		});
 		expect(disabledParsed instanceof type.errors).toBe(false);
@@ -112,7 +109,7 @@ describe("task schema (single-spawn)", () => {
 		const parsed = schema({
 			context: "Update the authentication flow",
 			highRisk: true,
-			tasks: [{ task: "Change token validation", highRisk: true }],
+			tasks: [{ solutionSpace: "Update validation", task: "Change token validation", highRisk: true }],
 		});
 		expect(parsed instanceof type.errors).toBe(false);
 		if (!(parsed instanceof type.errors)) {
@@ -122,14 +119,14 @@ describe("task schema (single-spawn)", () => {
 			schema({
 				context: "Bad risk input",
 				highRisk: "high",
-				tasks: [{ task: "Change token validation" }],
+				tasks: [{ solutionSpace: "Update validation", task: "Change token validation" }],
 			}) instanceof type.errors,
 		).toBe(true);
 		const disabled = getTaskSchema({ isolationEnabled: false, batchEnabled: true, defaultAgent: "task" });
 		const disabledParsed = disabled({
 			context: "Ignored metadata",
 			highRisk: true,
-			tasks: [{ task: "Change token validation", highRisk: true }],
+			tasks: [{ solutionSpace: "Update validation", task: "Change token validation", highRisk: true }],
 		});
 		expect(disabledParsed instanceof type.errors).toBe(false);
 		if (!(disabledParsed instanceof type.errors)) {
@@ -173,5 +170,34 @@ describe("task spawn validation", () => {
 	it("rejects a missing task", async () => {
 		const text = await executeText({ agent: "scout" });
 		expect(text).toContain("Missing `task`");
+	});
+});
+
+describe("per-call model schema boundaries", () => {
+	for (const isolationEnabled of [false, true]) {
+		for (const effortEnabled of [false, true]) {
+			it(`rejects batch-container model (isolation=${isolationEnabled}, effort=${effortEnabled})`, () => {
+				const schema = getTaskSchema({ isolationEnabled, effortEnabled, batchEnabled: true });
+				const result = schema({
+					context: "Shared context",
+					model: "p/requested",
+					tasks: [{ task: "Do work", solutionSpace: "c" }],
+				});
+				expect(result instanceof type.errors).toBe(true);
+			});
+		}
+	}
+
+	it("accepts ordered model arrays on both flat calls and batch items", () => {
+		const models = ["p/preferred:high", "p/alternative"];
+		const flat = taskSchema({ task: "Do work", solutionSpace: "c", model: models });
+		expect(flat instanceof type.errors).toBe(false);
+		if (flat instanceof type.errors) throw new Error(flat.summary);
+		expect(flat.model).toEqual(models);
+		const batch = getTaskSchema({ isolationEnabled: false, batchEnabled: true })({
+			context: "Shared context",
+			tasks: [{ task: "Do work", solutionSpace: "c", model: models }],
+		});
+		expect(batch instanceof type.errors).toBe(false);
 	});
 });

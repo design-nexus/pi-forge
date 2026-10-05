@@ -14,9 +14,11 @@ Shared edits need one integration owner{{#if ircEnabled}}; siblings coordinate v
 # Inputs
 
 `name`: CamelCase ≤32, auto-generated if omitted; address agent by name. `outputSchema` overrides agent/session schemas.
+`solutionSpace`: describe how open-ended the child's problem is: whether the fix or design is given, or which causes or designs remain open. Volume of work does not widen it; NEVER mention sibling agents or coordination. (`one fix: rename, names given`; `one fix: slice end in paginate`; `single-flight cache load; races easy to miss`; `several retry API shapes; error classes to choose`; `deadlock cause open, no repro`)
 {{#if evalToolsEnabled}}`tools`: eval-defined, run in your kernel.
-{{/if}}{{#if effortEnabled}}`effort`: `"lo"`|`"med"`|`"hi"` by complexity.
-{{/if}}{{#if capabilityRoutingEnabled}}`capabilities`: optional direct-tool needs (`lsp`, `debugger`, `github`, `images`, `browser`, or one exact `mcp__server__tool` name); set at the top level for the whole call or per task item for narrower needs. Browser requires the runtime; MCP names must identify one connected tool. Name only capabilities required to complete the work.
+{{/if}}{{#if effortEnabled}}`effort`: `"lo"`|`"med"`|`"hi"` by how open-ended the problem is.
+{{/if}}`model`: selector or ordered array overriding the agent's model for this spawn (`provider/model[:level]`, role alias like `@smol`, `@default` = parent's live model){{#if batchEnabled}}; set per `tasks[]` item, never top-level{{/if}}. Omit unless a specific model is needed. Requested model unavailable → stop and report; NEVER substitute another.
+{{#if capabilityRoutingEnabled}}`capabilities`: optional direct-tool needs (`lsp`, `debugger`, `github`, `images`, `browser`, or one exact `mcp__server__tool` name); set at the top level for the whole call or per task item for narrower needs. Browser requires the runtime; MCP names must identify one connected tool. Name only capabilities required to complete the work.
 {{/if}}{{#if governorEnabled}}`highRisk`: set `true` at the call level or on a task item when a failure could cause security, data loss, compatibility, or production impact; this raises the Governor's verification floor within its configured ceiling.
 {{/if}}`schemaMode`: default permissive warns after retries; strict fails.
 {{#if isolationEnabled}}{{#if applyIsolatedChanges}}`isolated`: worktree; successful changes apply to parent.
@@ -24,8 +26,7 @@ Shared edits need one integration owner{{#if ircEnabled}}; siblings coordinate v
 {{/if}}{{/if}}Children start blank;{{#if ircEnabled}} parent IRC steers immediately;{{/if}} large payloads via `local://<path>`, NEVER inline.
 
 # Format
-
-{{#if batchEnabled}}`context`: shared (`# Goal`, `# Constraints`, `# Contract` interfaces); NEVER repeat per task.
+{{#if batchEnabled}}`context`: shared (`# Goal`, `# Contract` interfaces); NEVER repeat per task.
 {{/if}}`task`: self-contained (`# Target` files/non-goals, `# Change` steps/APIs, `# Acceptance` observable result).
 
 # Available Agents
