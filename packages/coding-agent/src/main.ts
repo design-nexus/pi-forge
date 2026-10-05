@@ -723,7 +723,7 @@ async function runInteractiveMode(
 			}
 		}
 
-		// `omp join <link>`: dispatch through the same builtin path as a typed
+		// `pi-forge join <link>`: dispatch through the same builtin path as a typed
 		// `/join` so collab guards and error rendering stay in one place.
 		if (joinLink !== undefined) {
 			const executeBuiltinSlashCommand = await loadBuiltinSlashCommandExecutor();
@@ -895,7 +895,7 @@ async function moveMissingCwdSessionIfNeeded(
 		// Its directory is gone, so it cannot be resumed in place either.
 		throw new SessionResolutionError(
 			err.message,
-			"Close the session in the other omp process, then resume it again.",
+			"Close the session in the other pi-forge process, then resume it again.",
 		);
 	}
 	return { status: "moved", manager };
@@ -1044,7 +1044,7 @@ export interface ScopedModelSink {
  * whose model first materializes through runtime discovery (e.g.
  * `opencode-go/ox-alpha-free` on a fresh launch with no cache row) is absent from
  * the frozen scoped `/models` list even though it is in `enabledModels`, invokable
- * via `--model`, and listed by `omp models find`. Once the initial refresh settles,
+ * via `--model`, and listed by `pi-forge models find`. Once the initial refresh settles,
  * re-resolve the scope and, when the set changed, push the fuller list into the
  * session so the scoped picker and Ctrl+P cycle include it. A scope that resolved
  * to zero models may become active here when the startup discovery pass returned
@@ -1146,7 +1146,7 @@ export function normalizeContinueSessionArgs(parsed: Args, rawArgs?: readonly st
 	parsed.messages.splice(messageIndex, 1);
 }
 const FORK_NOT_FOUND_HINT =
-	"Run `omp --resume` without an argument to pick from recent sessions, or `omp` to start a new one.";
+	"Run `pi-forge --resume` without an argument to pick from recent sessions, or `pi-forge` to start a new one.";
 
 function validateSessionPersistenceArgs(parsed: Pick<Args, "continue" | "noSession" | "resume">): void {
 	if (!parsed.noSession) return;
@@ -1217,7 +1217,7 @@ export async function createSessionManager(
 		if (!match) {
 			throw new SessionResolutionError(
 				`Session "${sessionArg}" not found.`,
-				"Run `omp --resume` without an argument to pick from recent sessions, or `omp` to start a new one.",
+				"Run `pi-forge --resume` without an argument to pick from recent sessions, or `pi-forge` to start a new one.",
 			);
 		}
 		if (match.scope === "local") {
@@ -2311,7 +2311,7 @@ export async function runRootCommand(
 					process.stderr.write(`${chalk.yellow(`${message}\n`)}`);
 				}
 			}
-			// Fail fast on stale/typo flags (e.g. `omp --list-models`) and invalid
+			// Fail fast on stale/typo flags (e.g. `pi-forge --list-models`) and invalid
 			// built-in enum values now that we know the real extension flag set —
 			// an extension may shadow `--mode`/`--thinking`/`--approval-mode`, so
 			// neither can be judged by the pre-extension parse. Without this check

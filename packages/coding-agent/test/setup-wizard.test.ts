@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, mock, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, vi } from "bun:test";
 import type { Model } from "@oh-my-pi/pi-ai";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import { runOnboardingSetup } from "@oh-my-pi/pi-coding-agent/commands/setup";
+import * as ompImport from "@oh-my-pi/pi-coding-agent/cli/import-omp";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import {
 	ALL_SCENES,
@@ -57,7 +58,16 @@ afterEach(async () => {
 });
 
 describe("setup wizard scene selection", () => {
-	it("runs all v1 scenes for a new user", async () => {
+	beforeEach(() => {
+		vi.spyOn(ompImport, "importOmpData").mockResolvedValue({
+			copied: ["auth.db"],
+			skipped: [],
+			warnings: [],
+			dryRun: true,
+		});
+	});
+	afterEach(() => vi.restoreAllMocks());
+	it("offers import alongside setup when OMP data is available", async () => {
 		const scenes = await selectSetupScenes(0, ALL_SCENES, fakeContextWithConfiguredModel(), { isTTY: true });
 		expect(scenes.map(scene => scene.id)).toEqual(ALL_SCENES.map(scene => scene.id));
 	});

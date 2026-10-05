@@ -20,7 +20,7 @@ import { type as arkType } from "@oh-my-pi/omptype";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
 import { type ImageContent, type TextContent, type ToolExample, validateToolArguments } from "@oh-my-pi/pi-ai";
 import { replaceTabs, TERMINAL, truncateToWidth } from "@oh-my-pi/pi-tui";
-import { isRecord, logger, prompt, untilAborted } from "@oh-my-pi/pi-utils";
+import { APP_DISPLAY_NAME, isRecord, logger, prompt, untilAborted } from "@oh-my-pi/pi-utils";
 
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
 import { formatKeyHint, formatKeyHints } from "@oh-my-pi/pi-tui/app-keybindings";
@@ -587,7 +587,7 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 		const method = cfgAskNotify.get(this.session.settings);
 		if (method === "off") return;
 		TERMINAL.sendNotification({
-			title: "omp",
+			title: APP_DISPLAY_NAME,
 			body: "Waiting for input",
 			type: "ask",
 			urgency: "normal",

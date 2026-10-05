@@ -8,6 +8,8 @@ import {
 } from "@oh-my-pi/pi-tui/native/encode";
 import type { TspEvent } from "@oh-my-pi/pi-wire";
 
+import { APP_NAME, VERSION } from "@oh-my-pi/pi-utils/dirs";
+
 const encoder = new TextEncoder();
 
 /** Split a byte stream of APC messages into complete `ESC _ … ESC \` strings. */
@@ -19,12 +21,17 @@ function messages(stream: string): string[] {
 }
 
 describe("TSP framing", () => {
+	it("announces the application version so the terminal does not use its OMP default", () => {
+		const raw = splitTspMessage(encodeTspHelloQuery())!;
+		expect(JSON.parse(raw.body)).toMatchObject({ app: APP_NAME, ver: VERSION });
+	});
+
 	it("advertises explicit prompt submission alongside native edit and undo", () => {
 		const raw = splitTspMessage(encodeTspHelloQuery("test"))!;
 		expect(JSON.parse(raw.body)).toEqual({
 			q: "hello",
 			v: [1],
-			app: "omp",
+			app: "pi-forge",
 			features: ["edit", "undo", "send"],
 			ver: "test",
 		});
