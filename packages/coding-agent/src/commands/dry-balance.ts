@@ -12,7 +12,7 @@ export default class DryBalance extends Command {
 	};
 
 	static flags = {
-		model: Flags.string({ description: "Model selector (same syntax as --model on omp)" }),
+		model: Flags.string({ description: "Model selector (same syntax as --model on pi-forge)" }),
 		count: Flags.integer({ description: "Number of random session ids to try", default: 100 }),
 		concurrency: Flags.integer({ description: "Maximum concurrent credential resolutions", default: 32 }),
 		json: Flags.boolean({ description: "Output JSON" }),

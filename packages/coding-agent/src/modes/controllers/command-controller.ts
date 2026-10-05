@@ -20,7 +20,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@oh-my-pi/pi-tui";
-import { formatDuration, logger, Snowflake, sanitizeText } from "@oh-my-pi/pi-utils";
+import { APP_DISPLAY_NAME, VERSION, formatDuration, logger, Snowflake, sanitizeText } from "@oh-my-pi/pi-utils";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type BashResult, isPersistentShellCdCommand } from "../../exec/bash-executor";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
@@ -818,7 +818,7 @@ export class CommandController {
 				? ""
 				: `\n\n${theme.fg("dim", "Use")} ${theme.bold("/changelog full")} ${theme.fg("dim", "to view the complete changelog.")}`;
 
-		this.#showMarkdownPanel(title, changelogMarkdown + hint);
+		this.#showMarkdownPanel(`${APP_DISPLAY_NAME} ${VERSION} · OMP Upstream ${title}`, changelogMarkdown + hint);
 	}
 
 	handleHotkeysCommand(): void {

@@ -8,6 +8,7 @@
  * the bodies byte-wise. Chunks split on code-point boundaries, so every chunk
  * is valid UTF-8 on its own and the joined bytes equal the original body.
  */
+import { APP_NAME, VERSION } from "@oh-my-pi/pi-utils/dirs";
 import { isRecord } from "@oh-my-pi/pi-utils/type-guards";
 import {
 	TSP_APC_ID,
@@ -114,11 +115,11 @@ export function encodeTspJson(verb: TspVerb, value: unknown, params?: TspParams,
  * so the terminal may turn ⌃Z in a field into one.
  * `"send"` accepts an explicit prompt for a live composer without simulating keys.
  */
-export function encodeTspHelloQuery(version?: string): string {
+export function encodeTspHelloQuery(version: string = VERSION): string {
 	return encodeTspJson("q", {
 		q: "hello",
 		v: [TSP_VERSION],
-		app: "omp",
+		app: APP_NAME,
 		features: ["edit", "undo", "send"],
 		ver: version,
 	});

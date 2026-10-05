@@ -199,7 +199,7 @@ export function describeSetupSplash(): NativeNode {
 			[
 				node("spacer", { grow: 1 }),
 				logoNode(LARGE_LOGO, true),
-				text([span("O h   M y   P i", "strong")], { wrap: "none" }),
+				text([span("P i   F o r g e", "strong")], { wrap: "none" }),
 				node("spacer", { grow: 1 }),
 				text([span(hint, "dim")], { wrap: "none" }),
 			],
@@ -212,7 +212,7 @@ export function describeSetupSplash(): NativeNode {
 function renderCompactSplash(width: number, height: number, phase: number, shine: ShineConfig): string[] {
 	const art =
 		height >= 14 && width >= LOGO_WIDTH ? LARGE_LOGO : width >= visibleWidth(FORGE_LOGO[0]) ? FORGE_LOGO : PI_LOGO;
-	const content = [...gradientLogo(art, phase, shine), "", theme.bold("O h   M y   P i")];
+	const content = [...gradientLogo(art, phase, shine), "", theme.bold("P i   F o r g e")];
 	const start = Math.max(0, Math.floor((height - content.length) / 2));
 	const lines: string[] = [];
 	for (let y = 0; y < height; y++) {

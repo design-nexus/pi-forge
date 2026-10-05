@@ -12,7 +12,7 @@ Pi Forge preserves OMP's features, default behavior, terminal appearance, and se
 
 Pi Forge 0.1.1 incorporates OMP 18.6.2; the integrated revision is recorded in [upstream reconciliation](docs/upstream-reconciliation.md).
 
-Until a binary release is published, build from a source checkout. Install Bun ≥1.3.14 and the Rust toolchain specified in `rust-toolchain.toml`, then:
+To build from a source checkout, install Bun ≥1.4.2 and the Rust toolchain specified in `rust-toolchain.toml`, then:
 
 ```sh
 git clone https://github.com/design-nexus/pi-forge.git
@@ -24,7 +24,7 @@ pi-forge
 
 The source launcher follows this checkout. Update the checkout manually and rerun `bun run setup`; `pi-forge update` does not replace source installations.
 
-Linux x64 glibc binaries are prepared by the manual draft-release workflow. Once a release is published:
+Install the Linux x64 glibc release:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/design-nexus/pi-forge/main/scripts/install.sh | sh

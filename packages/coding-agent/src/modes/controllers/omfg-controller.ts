@@ -35,8 +35,8 @@ interface GenerateCandidateOptions {
 type SaveCandidateResult = { kind: "saved" | "aborted" | "rejected" } | { kind: "amend"; feedback: string };
 
 const MAX_ATTEMPTS = 3;
-const PROJECT_OPTION = "This project (.omp/rules)";
-const GLOBAL_OPTION = "Global — all projects (~/.omp/agent/rules)";
+const PROJECT_OPTION = "This project (.pi-forge/rules)";
+const GLOBAL_OPTION = "Global — all projects (~/.pi-forge/agent/rules)";
 const AMEND_OPTION = "Amend with feedback…";
 
 export class OmfgController {
@@ -257,7 +257,7 @@ export class OmfgController {
 			// a stale listing that would make `replaceTtsrRules` evict the live rule
 			// registered below (issue #10940 review). Invalidating the file clears its
 			// parent (rules dir); invalidating that dir clears its parent (the config dir)
-			// so a first-ever rule in a freshly created `.omp/rules` is still discovered.
+			// so a first-ever rule in a freshly created `.pi-forge/rules` is still discovered.
 			invalidateCapabilityCache(target.filePath);
 			invalidateCapabilityCache(path.dirname(target.filePath));
 			if (!this.#isActiveRequest(request)) return { kind: "aborted" };

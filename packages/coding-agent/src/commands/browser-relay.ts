@@ -24,10 +24,10 @@ export default class BrowserRelay extends Command {
 		port: Flags.integer({ char: "p", description: "Port to listen on", default: DEFAULT_RELAY_PORT }),
 		token: Flags.string({ description: "Require the extension to present this token" }),
 		dir: Flags.string({
-			description: "Extension install directory (install; default ~/.omp/browser-relay/extension)",
+			description: "Extension install directory (install; default ~/.pi-forge/browser-relay/extension)",
 		}),
 		"no-group": Flags.boolean({
-			description: "Don't gather controllable tabs into an 'omp' tab group",
+			description: "Don't gather controllable tabs into a 'pi-forge' tab group",
 			default: false,
 		}),
 		verbose: Flags.boolean({ char: "v", description: "Log relay traffic summaries to stderr", default: false }),

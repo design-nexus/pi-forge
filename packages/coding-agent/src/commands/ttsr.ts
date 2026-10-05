@@ -67,13 +67,13 @@ export default class Ttsr extends Command {
 		"pi-forge ttsr test src/foo.ts",
 		"pi-forge ttsr test --file src/foo.ts",
 		"pi-forge ttsr test --file src/foo.ts --source text",
-		"pi-forge ttsr test --rule .omp/rules/no-any.md --source tool --path src/foo.ts 'const x: any = 1'",
+		"pi-forge ttsr test --rule .pi-forge/rules/no-any.md --source tool --path src/foo.ts 'const x: any = 1'",
 		"pi-forge ttsr test --agent scout 'const x: any = 1'",
 		"echo 'Box::leak(&mut v)' | pi-forge ttsr test --file - --path src/lib.rs",
 		"pi-forge ttsr test --source tool --tool edit --path src/foo.ts 'const x: any = 1'",
 		"pi-forge ttsr scan",
 		"pi-forge ttsr scan src/",
-		"pi-forge ttsr scan -r .omp/rules/no-any.md src/",
+		"pi-forge ttsr scan -r .pi-forge/rules/no-any.md src/",
 	];
 
 	async run(): Promise<void> {

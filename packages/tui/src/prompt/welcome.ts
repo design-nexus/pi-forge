@@ -11,6 +11,7 @@ import { TERMINAL } from "../terminal-capabilities";
 import { theme } from "../theme/theme";
 import type { Component } from "../tui";
 import { padding, replaceTabs, visibleWidth, wrapTextWithAnsi } from "../utils";
+import { createForgeLogoImage, forgeLogoNode } from "./forge-logo";
 import tipsText from "./tips.txt" with { type: "text" };
 
 /** Tips embedded at build time, one per line; blanks dropped. Key placeholders
@@ -160,6 +161,7 @@ export function renderWelcomeTip(tip: string, width: number, phase = 0): string[
  * ({@link WelcomeComponent.describe}).
  */
 export class WelcomeComponent implements Component {
+	readonly #logoImage = createForgeLogoImage();
 	#animStart: number | null = null;
 	#animTimer: Timer | null = null;
 	#requestRender: (() => void) | null = null;
@@ -208,17 +210,7 @@ export class WelcomeComponent implements Component {
 		const lockupRow = keyed(
 			row(
 				[
-					node(
-						"image",
-						{
-							builtin: "omp",
-							alt: APP_NAME,
-							w: 128,
-							role: "omp.welcome.logo",
-						},
-						undefined,
-						"logo",
-					),
+					forgeLogoNode(),
 					keyed(
 						col(
 							[
@@ -341,7 +333,15 @@ export class WelcomeComponent implements Component {
 		const version = theme.fg("dim", `v${this.version}`);
 		const lockupWidth = LOGO_WIDTH + LOCKUP_GAP + Math.max(WORDMARK_WIDTH, visibleWidth(version));
 		const art = room >= lockupWidth ? lockup(logo, version) : room >= LOGO_WIDTH ? [...logo, version] : [];
-		const lines = centerBlock(art, termWidth);
+		const lines =
+			TERMINAL.imageProtocol && room >= LOGO_WIDTH
+				? [
+						...this.#logoImage
+							.render(LOGO_WIDTH)
+							.map(line => padding(Math.max(0, Math.floor((termWidth - LOGO_WIDTH) / 2))) + line),
+						...centerBlock([version], termWidth),
+					]
+				: centerBlock(art, termWidth);
 		const tip = termWidth >= TIP_MIN_COLUMNS ? this.#renderTip(room) : [];
 		if (tip.length > 0) lines.push("", ...tip.flatMap(line => centerBlock([line], termWidth)));
 		return lines;
@@ -373,7 +373,7 @@ export class WelcomeComponent implements Component {
 
 /** Block-grid brand mark shared by the welcome and setup surfaces. */
 export const PI_SYMBOL = ["████████████", "   ██  ██   ", "   ██  ██   ", "   ▒▒  ██   ", "       ██   "];
-export const PI_LOGO = PI_SYMBOL.map((line, row) => `${line} ${"FORGE"[row]}`);
+export const PI_LOGO = PI_SYMBOL;
 export const FORGE_WORDMARK = [
 	"████  ███  ████   ████ ████",
 	"█    █   █ █   █ █     █   ",
@@ -425,6 +425,7 @@ function centerBlock(lines: readonly string[], width: number): string[] {
 
 /** The block-grid brand mark as accent lines; `shimmer` declares the terminal-clocked shine sweep. */
 export function logoNode(lines: readonly string[], shimmer: boolean): NativeNode {
+	if (lines === PI_LOGO) return forgeLogoNode();
 	return col(
 		lines.map(line =>
 			text([span(line, "accent", shimmer ? { fx: "shimmer" } : undefined)], {

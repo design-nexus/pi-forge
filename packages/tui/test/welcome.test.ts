@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { FORGE_WORDMARK, PI_LOGO, pickWeightedTip, WelcomeComponent } from "@oh-my-pi/pi-tui/prompt/welcome";
 import { initTheme, theme } from "@oh-my-pi/pi-tui/theme";
+import { getNativeBlob } from "@oh-my-pi/pi-tui/native/blobs";
 import { visibleWidth } from "@oh-my-pi/pi-tui";
 
 describe("WelcomeComponent", () => {
@@ -13,7 +14,14 @@ describe("WelcomeComponent", () => {
 	});
 
 	it("natively sets the version under the wordmark beside the logo", () => {
-		const tree = new WelcomeComponent("18.4.12").describe({} as never);
+		const tree = new WelcomeComponent("0.1.1").describe({} as never);
+		const lockup = tree.c?.[0];
+		if (!lockup || !("k" in lockup)) throw new Error("Missing native lockup");
+		const logo = lockup.c?.[0];
+		if (!logo || !("k" in logo) || logo.k !== "image") throw new Error("Missing logo image");
+		expect(logo.p?.builtin).toBeUndefined();
+		expect(getNativeBlob(logo.p!.blob!)?.mime).toBe("image/png");
+		expect(logo.p?.alt).toBe("Pi Forge");
 		expect(tree.c?.[0]).toMatchObject({
 			key: "lockup",
 			p: { role: "omp.welcome.lockup" },
@@ -24,7 +32,7 @@ describe("WelcomeComponent", () => {
 					p: { role: "omp.welcome.mark" },
 					c: [
 						{ p: { role: "omp.welcome.wordmark" } },
-						{ p: { role: "omp.welcome.version", spans: [{ t: "v18.4.12" }] } },
+						{ p: { role: "omp.welcome.version", spans: [{ t: "v0.1.1" }] } },
 					],
 				},
 			],

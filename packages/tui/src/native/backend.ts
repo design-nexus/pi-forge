@@ -15,6 +15,7 @@
  * once against the last sent state, so every intermediate change coalesces
  * into one frame (`set`s merged, `text append`s joined).
  */
+import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
 import * as fs from "node:fs";
 import * as logger from "@oh-my-pi/pi-utils/logger";
 import {
@@ -387,7 +388,7 @@ export class NativeBackend {
 		surface.acked = surface.seq;
 		surface.focus = null;
 		surface.dirty = false;
-		this.#write("o", { id: surface.id, mode: "inline", title: "omp", role: SESSION_ROLE, adopt: true });
+		this.#write("o", { id: surface.id, mode: "inline", title: APP_NAME, role: SESSION_ROLE, adopt: true });
 		this.#sendPalette(surface);
 		// After the `o`, as in `start()`.
 		setNativeRendering(true);
@@ -523,7 +524,7 @@ export class NativeBackend {
 	}
 
 	#open(surface: Surface): void {
-		this.#write("o", { id: surface.id, mode: surface.mode, title: "omp", role: surface.role });
+		this.#write("o", { id: surface.id, mode: surface.mode, title: APP_NAME, role: surface.role });
 		this.#sendPalette(surface);
 	}
 
