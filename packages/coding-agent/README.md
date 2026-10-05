@@ -1,6 +1,6 @@
 # @oh-my-pi/pi-coding-agent
 
-Core implementation package for **Pi Forge 0.1.0**, retaining the internal package name for OMP compatibility.
+Core implementation package for **Pi Forge 0.1.1**, retaining the internal package name for OMP compatibility.
 
 For installation, setup, provider configuration, model roles, slash commands, and full CLI reference, see:
 - [Monorepo README (local)](../../README.md)

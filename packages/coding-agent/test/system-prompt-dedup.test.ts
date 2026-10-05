@@ -69,6 +69,31 @@ describe("SYSTEM.md prompt assembly", () => {
 		expect(promptText).not.toContain("current working directory");
 	});
 
+	it("keeps changing repository context in one final block without changing the static prefix", async () => {
+		const cwd = path.join(tempDir, "parent");
+		const build = (relativeRepoRoot: string) =>
+			buildSystemPrompt({
+				cwd,
+				contextFiles: [],
+				skills: [],
+				rules: [],
+				toolNames: [],
+				activeRepoContext: {
+					cwd,
+					repoRoot: path.join(cwd, relativeRepoRoot),
+					relativeRepoRoot,
+					source: "single-direct-child-repo",
+				},
+				workspaceTree: { rootPath: cwd, rendered: "", truncated: false, totalLines: 0, agentsMdFiles: [] },
+			});
+		const first = await build("repo-alpha");
+		const second = await build("repo-beta");
+		expect(first.systemPrompt.slice(0, -1)).toEqual(second.systemPrompt.slice(0, -1));
+		expect(first.systemPrompt.at(-1)).toContain("repo-alpha");
+		expect(second.systemPrompt.at(-1)).toContain("repo-beta");
+		expect(first.systemPrompt.join("\n").match(/<active-repo-context>/g)).toHaveLength(1);
+	});
+
 	it("renders SYSTEM.md exactly once when it is used as the custom base prompt", async () => {
 		const projectDir = path.join(tempDir, "project");
 		const systemDir = path.join(projectDir, ".omp");

@@ -2,7 +2,7 @@
   <img src="assets/pi-forge.svg" alt="Pi Forge" width="640">
 </p>
 
-# Pi Forge 0.1.0
+# Pi Forge 0.1.1
 
 A coding agent based on [OMP](https://github.com/can1357/oh-my-pi), with modular prompts, adaptive execution, context management, and checked integration of parallel changes.
 
@@ -10,7 +10,9 @@ Pi Forge preserves OMP's features, default behavior, terminal appearance, and se
 
 ## Install and update
 
-The current working installation is a source checkout. Install Bun ≥1.3.14 and the Rust toolchain specified in `rust-toolchain.toml`, then:
+Pi Forge 0.1.1 incorporates OMP 18.6.2; the integrated revision is recorded in [upstream reconciliation](docs/upstream-reconciliation.md).
+
+Until a binary release is published, build from a source checkout. Install Bun ≥1.3.14 and the Rust toolchain specified in `rust-toolchain.toml`, then:
 
 ```sh
 git clone https://github.com/design-nexus/pi-forge.git
@@ -260,7 +262,7 @@ Core tools live in the same namespace as `read` and `bash`. Pin the active set w
 **Coordination**
 
 - `task` — fan out subagents in parallel, optionally workspace-isolated.
-- `hub` — message live agents, wait on or cancel background jobs, and supervise long-running processes.
+- `wait` — block until the next background result, peer message, or steering interrupt; message peers and control jobs via `agent://` and `proc://`.
 - `todo` — ordered mutations over the session todo list with phase tracking.
 - `ask` — structured follow-up questions for interactive runs.
 
@@ -315,7 +317,7 @@ Auth tags below: `oauth` signs in with your provider account, `plan` routes thro
 
 Direct APIs and gateways. Mix providers per role.
 
-Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google Vertex · Google Antigravity `oauth` · xAI · SuperGrok `oauth` · DeepSeek · Mistral · Groq · Cerebras · Fireworks · Together · Baseten · DeepInfra · Hugging Face · NVIDIA · Meta · Amazon Bedrock · Azure OpenAI · SiliconFlow · GMI Cloud · CoreWeave · Sakana AI · Command Code · Charm Hyper · StepFun · OpenRouter · Synthetic · Vercel AI Gateway · Cloudflare AI Gateway · Wafer Serverless
+Anthropic `oauth` · OpenAI · OpenAI Codex `oauth` · Google Gemini · Google Vertex · Google Antigravity `oauth` · xAI · SuperGrok `oauth` · DeepSeek · Mistral · Groq · Cerebras · Fireworks · Together · Baseten · DeepInfra · Hugging Face · NVIDIA · Meta · Amazon Bedrock · Azure OpenAI · SiliconFlow · GMI Cloud · CoreWeave · Sakana AI · Command Code · Charm Hyper · StepFun · Helmcode · OpenRouter · Synthetic · Vercel AI Gateway · Cloudflare AI Gateway · Wafer Serverless
 
 ### Coding plans
 

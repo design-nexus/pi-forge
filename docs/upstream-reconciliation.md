@@ -16,4 +16,10 @@ Do not use `pi-forge update` to merge OMP: it installs only Pi Forge binary rele
 
 ## Integrated baseline
 
-The separation audit verifies `git merge-base HEAD upstream/main` as `7853b4e499936f9dcc13c9b64adb55f6b342aabf`. No additional upstream merge is part of the app separation.
+Pi Forge 0.1.1 integrates OMP **18.6.2**, upstream commit `1c0993c3d1` (2026-10-04), through a merge preserving Git ancestry. The previous baseline was `7853b4e499936f9dcc13c9b64adb55f6b342aabf`.
+
+Reconciliation preserves Forge application/storage/update identity (including native crash reports), profiles, capability routing, the adaptive governor, verification and integration gates, shared task concurrency, Catppuccin, and Follow Omarchy. Upstream streamed task launches are adopted once and respect dependent tasks; adaptive routing waits for the completed batch before deciding policy. Dynamic repository context is emitted once in the final system block, keeping the static prefix stable.
+
+Verification covers workspace lint/types/Rust checks, task/governor/prompt/runtime contracts, updater integrity, settings/import/plugin discovery, themes and welcome layout, plus source and compiled worker smoke probes. Application version is independent of the internal 18.6.2 package/native compatibility version.
+
+The Rust suite passes with `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.mnemonicPrefix GIT_CONFIG_VALUE_0=false` applied only to the test process, since upstream VCS fixtures assume standard Git diff prefixes. Two inherited image-height assertions were reconciled with upstream’s new 64px minimum; coverage also checks tight geometry above that floor.

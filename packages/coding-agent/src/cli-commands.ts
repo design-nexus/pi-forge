@@ -172,6 +172,11 @@ export const commands: CommandEntry[] = [
 		help: commandHelp.pluginHelp,
 	},
 	{
+		name: "predict",
+		load: () => import("./commands/predict").then(m => m.default),
+		help: commandHelp.predictHelp,
+	},
+	{
 		name: "ps",
 		load: () => import("./commands/ps").then(m => m.default),
 		help: commandHelp.psHelp,
@@ -319,7 +324,7 @@ const RESERVED_TOP_LEVEL_WORDS: Record<string, string> = {
 	discover:
 		'`pi-forge discover` is not a top-level command. Use `pi-forge plugin discover [marketplace]` to browse available plugins, or run `pi-forge launch discover` if you meant to send "discover" as a prompt.',
 	upgrade:
-		'`pi-forge upgrade` is not a top-level command. Use `pi-forge plugin upgrade [name@marketplace]` to upgrade plugins, or run `pi-forge launch upgrade` if you meant to send "upgrade" as a prompt.',
+		'`pi-forge upgrade` is not a top-level command. Use `pi-forge plugin upgrade [name]` to upgrade plugins, or run `pi-forge launch upgrade` if you meant to send "upgrade" as a prompt.',
 	enable:
 		'`pi-forge enable` is not a top-level command. Use `pi-forge plugin enable <name@marketplace>` to enable a plugin, or run `pi-forge launch enable` if you meant to send "enable" as a prompt.',
 	disable:

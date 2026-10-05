@@ -3,7 +3,7 @@ Persistent shell: one fact command/pipeline; dependencies use `&&`.
 `cwd`, not `cd`; `pty` only interactive.
 Set `verification: true` for a foreground command that checks whether the current work passes (tests, type checks, lint). Leave it unset for exploration and ordinary commands.
 Internal URIs work as paths for builtins/coreutils, redirects, globs.
-{{#if asyncEnabled}}`async` defers finite results; timeout unchanged.{{/if}}
+{{#if asyncEnabled}}`async` defers finite results but keeps the deadline (default {{defaultTimeoutSec}}s); `timeout: 0` for watchers and long jobs.{{/if}}
 No `head`/`tail`/redirection; output trunc by default, full result at `artifact://<id>`.
-{{#if hasLaunch}}Long-lived services: unique name; ready/env require name; no async/timeout. env adds variables; pty defaults true. ready needs log regex or port (both if given); host defaults 127.0.0.1, ready.timeout 30s.{{/if}}
+{{#if hasLaunch}}Long-lived services: unique name; ready requires name; no async/timeout; pty defaults true. ready needs log regex or port (both if given); host defaults 127.0.0.1, ready.timeout 30s.{{/if}}
 {{#if autoBackgroundEnabled}}Background results follow; NEVER poll; foreground wait unchanged.{{/if}}

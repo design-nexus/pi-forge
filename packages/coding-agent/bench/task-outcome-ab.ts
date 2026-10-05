@@ -303,7 +303,7 @@ export async function runSystem(
 	budget: RunBudget | null = null,
 	thinkingLevel = "low",
 ): Promise<RunSummary> {
-	if (!CLI_THINKING_LEVELS.includes(thinkingLevel))
+	if (!CLI_THINKING_LEVELS.some(level => level === thinkingLevel))
 		throw new Error(`--thinking must be one of: ${CLI_THINKING_LEVELS.join(", ")}`);
 	const artifactDir = await fs.mkdtemp(path.join(outputDir, `${system}-${repeat}-`));
 	const runDir = path.join(artifactDir, "workspace");
@@ -532,7 +532,7 @@ async function main(): Promise<void> {
 	const repositoryPath = repository ? path.resolve(repository) : undefined;
 	const model = args.get("--model") ?? "openai-codex/gpt-6-luna";
 	const thinkingLevel = args.get("--thinking") ?? "low";
-	if (!CLI_THINKING_LEVELS.includes(thinkingLevel))
+	if (!CLI_THINKING_LEVELS.some(level => level === thinkingLevel))
 		throw new Error(`--thinking must be one of: ${CLI_THINKING_LEVELS.join(", ")}`);
 	const selectedSystem = args.get("--system") ?? "both";
 	if (selectedSystem !== "both" && selectedSystem !== "omp" && selectedSystem !== "piforge")
