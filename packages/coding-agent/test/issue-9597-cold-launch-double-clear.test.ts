@@ -19,6 +19,7 @@ import {
 	cfgSpellingAutocorrect,
 	cfgSpellingTypoDetection,
 	cfgStartupQuiet,
+	cfgStartupShowInformation,
 	cfgTuiImeSafeCursor,
 	cfgTuiMaxInlineImages,
 	cfgTuiResizeScrollback,
@@ -58,6 +59,7 @@ describe("issue #9597 — cold-launch welcome duplication", () => {
 		settings = await Settings.init({ inMemory: true });
 		config = {
 			quiet: cfgStartupQuiet.get(settings),
+			showStartupInformation: cfgStartupShowInformation.get(settings),
 			composerShape: cfgComposerShape.get(settings) ?? "box",
 			showHardwareCursor: cfgShowHardwareCursor.get(settings),
 			maxInlineImages: cfgTuiMaxInlineImages.get(settings),

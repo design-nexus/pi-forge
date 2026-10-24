@@ -155,6 +155,7 @@ import {
 	cfgStartupChangelogMode,
 	cfgStartupCheckUpdate,
 	cfgStartupQuiet,
+	cfgStartupShowInformation,
 	cfgStartupSetupWizard,
 	cfgStartupShowSplash,
 	cfgSymbolPreset,
@@ -1937,6 +1938,7 @@ export async function runRootCommand(
 
 		applyStartupComposerPreferences({
 			quiet: cfgStartupQuiet.get(settingsInstance),
+			showStartupInformation: cfgStartupShowInformation.get(settingsInstance),
 			composerShape: cfgComposerShape.get(settingsInstance),
 			showHardwareCursor: cfgShowHardwareCursor.get(settingsInstance),
 			maxInlineImages: cfgTuiMaxInlineImages.get(settingsInstance),

@@ -10,14 +10,14 @@ const data = imageData.trim();
 const bytes = Buffer.from(data, "base64");
 
 /** Approved compact mark: unchanged pi geometry, smaller gradient lettering. */
-export function forgeLogoNode(width = 128): NativeNode {
+export function forgeLogoNode(width = 192): NativeNode {
 	return node(
 		"image",
 		{
 			blob: registerNativeBlob(bytes, "image/png"),
 			alt: APP_DISPLAY_NAME,
-			w: 288,
-			h: 240,
+			w: 576,
+			h: 448,
 			max: { w: width },
 			role: "omp.welcome.logo",
 		},
@@ -32,7 +32,7 @@ export function createForgeLogoImage(): Image {
 		"image/png",
 		{ fallbackColor: text => theme.fg("dim", text) },
 		{
-			maxWidthCells: 12,
+			maxWidthCells: 18,
 			filename: APP_DISPLAY_NAME,
 		},
 	);

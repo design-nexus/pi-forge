@@ -22,7 +22,7 @@ import { postmortem } from "@oh-my-pi/pi-utils";
 import { CustomEditor } from "./custom-editor";
 import type { WordCompletionMethod } from "./word-completion";
 import { type AnimationFrame, TranscriptContainer } from "../chrome/transcript-container";
-import { WelcomeComponent } from "./welcome";
+import { WelcomeComponent, type WelcomeInformation } from "./welcome";
 import { ensureThemeSync, getEditorTheme, theme } from "../theme/theme";
 
 const DOUBLE_INTERRUPT_MS = 500;
@@ -30,6 +30,7 @@ const DOUBLE_INTERRUPT_MS = 500;
 /** Live settings that affect the composer before and after session adoption. */
 export interface ComposerPreferences {
 	readonly quiet: boolean;
+	readonly showStartupInformation: boolean;
 	readonly composerShape: string;
 	readonly showHardwareCursor: boolean;
 	readonly maxInlineImages: number;
@@ -44,6 +45,7 @@ export interface ComposerPreferences {
 /** Settings-schema-compatible defaults used when constructing a dependency-free composer. */
 export const COMPOSER_DEFAULTS: ComposerPreferences = {
 	quiet: false,
+	showStartupInformation: true,
 	composerShape: "band",
 	showHardwareCursor: true,
 	maxInlineImages: 8,
@@ -56,7 +58,7 @@ export const COMPOSER_DEFAULTS: ComposerPreferences = {
 };
 
 /** Welcome data that can be supplied initially or patched as startup resolves it. */
-export interface ComposerWelcomeUpdate {
+export interface ComposerWelcomeUpdate extends WelcomeInformation {
 	readonly version?: string;
 }
 
@@ -209,6 +211,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	readonly #now: () => number;
 	#preferences: ComposerPreferences;
 	#welcome: WelcomeComponent | undefined;
+	#welcomeInformation: WelcomeInformation = {};
 	#version = "";
 	#headerBefore: readonly Component[] = [];
 	#headerAfter: readonly Component[] = [];
@@ -881,6 +884,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 			this.#welcome = undefined;
 		} else {
 			this.#ensureWelcome();
+			this.#welcome?.setInformation(this.#welcomeInformation, this.#preferences.showStartupInformation);
 			this.#welcome?.invalidate();
 			if (wasQuiet && this.#started) this.playWelcomeIntro();
 		}
@@ -897,6 +901,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		const welcome = this.#welcome;
 		if (!welcome) return;
 		if (update.version !== undefined) welcome.setVersion(this.#version);
+		welcome.setInformation(this.#welcomeInformation, this.#preferences.showStartupInformation);
 		this.ui.requestRender();
 	}
 
@@ -977,10 +982,14 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 
 	#applyWelcomeUpdate(update: ComposerWelcomeUpdate): void {
 		if (update.version !== undefined) this.#version = update.version;
+		this.#welcomeInformation = { ...this.#welcomeInformation, ...update };
 	}
 
 	#ensureWelcome(): void {
-		this.#welcome ??= new WelcomeComponent(this.#version);
+		if (!this.#welcome) {
+			this.#welcome = new WelcomeComponent(this.#version);
+			this.#welcome.setInformation(this.#welcomeInformation, this.#preferences.showStartupInformation);
+		}
 	}
 
 	#rebuildHeader(): void {

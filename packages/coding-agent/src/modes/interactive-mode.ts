@@ -1,3 +1,4 @@
+import { getRecentSessions } from "../session/session-listing";
 import { formatModelSelectorValue } from "@oh-my-pi/pi-tui/overlays/model-selector";
 /**
  * Interactive mode for the coding agent.
@@ -345,6 +346,7 @@ import {
 	cfgSpellingTypoDetection,
 	cfgStartupChangelogMode,
 	cfgStartupQuiet,
+	cfgStartupShowInformation,
 	cfgStatusLineCompactThinkingLevel,
 	cfgStatusLineContextLine,
 	cfgStatusLineLeftSegments,
@@ -395,6 +397,7 @@ import {
  * them (`InteractiveMode.#applyUiSettingChanges`) so a bulk reload rebuilds the transcript once.
  */
 const cfgLiveUiSettings = combine({
+	"startup.showInformation": cfgStartupShowInformation,
 	showHardwareCursor: cfgShowHardwareCursor,
 	"tui.maxInlineImages": cfgTuiMaxInlineImages,
 	"tui.resizeScrollback": cfgTuiResizeScrollback,
@@ -2094,7 +2097,9 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		const startupQuiet = cfgStartupQuiet.get(settings);
 		this.composer.setPreferences({ quiet: startupQuiet });
-		this.composer.updateWelcome({ version: this.#version });
+		this.composer.updateWelcome({ version: this.#version, lspServers: this.lspServers ?? [] });
+		this.#updateWelcomeInformation();
+		if (!startupQuiet && cfgStartupShowInformation.get(settings)) await this.#loadWelcomeSessions();
 		const headerBefore = this.#buildConfigWarningComponents();
 		const headerAfter: Component[] = [];
 		if (!startupQuiet && this.#startupChangelog && cfgStartupChangelogMode.get(settings) !== "hidden") {
@@ -2390,6 +2395,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#eventBusUnsubscribers.push(
 			this.session.subscribe(event => {
 				if (event.type === "model_changed") {
+					this.#updateWelcomeInformation();
 					this.#scheduleComposerStatusPersist();
 				}
 				if (event.type === "config_warnings_changed") {
@@ -2404,6 +2410,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// plan.defaultOnStartup) can change the model before this subscription
 		// exists, so the model_changed events they emit are never observed above.
 		this.#scheduleComposerStatusPersist();
+		this.#updateWelcomeInformation();
 		// Config warnings can change during the same pre-subscription window; the
 		// event is not replayed, so rebuild from the live array once here too.
 		this.#syncConfigWarningHeader();
@@ -3391,6 +3398,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	/** Live-setting composer preferences; `quiet` is startup-only and `composerShape` flows through {@link syncComposerShape}. */
 	#liveComposerPreferences(): Omit<ComposerPreferences, "quiet" | "composerShape"> {
 		return {
+			showStartupInformation: cfgStartupShowInformation.get(this.settings),
 			showHardwareCursor: cfgShowHardwareCursor.get(this.settings),
 			maxInlineImages: cfgTuiMaxInlineImages.get(this.settings),
 			resizeScrollback: cfgTuiResizeScrollback.get(this.settings),
@@ -3423,6 +3431,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		if (
 			any(
+				"startup.showInformation",
 				"showHardwareCursor",
 				"tui.maxInlineImages",
 				"tui.resizeScrollback",
@@ -3436,6 +3445,10 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.composer.setPreferences(this.#liveComposerPreferences());
 			// setPreferences re-themes the editor, which resets its mode-tinted border.
 			this.updateEditorBorderColor();
+		}
+		if (any("startup.showInformation") && next["startup.showInformation"]) {
+			this.#updateWelcomeInformation();
+			void this.#loadWelcomeSessions();
 		}
 		if (any("composer.shape")) this.syncComposerShape();
 		if (any("tui.vimMode", "tui.vimModeDisplay")) this.#applyVimModeSetting();
@@ -7224,6 +7237,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#handleLspStartupEvent(event: LspStartupEvent): void {
+		if (event.type === "completed") {
+			this.composer.updateWelcome({ lspServers: event.servers });
+		}
 		if (event.type === "failed") {
 			this.showWarning(`LSP startup failed: ${event.error}. It will retry lazily on write.`);
 			return;
@@ -7241,6 +7257,23 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (failedServers.length > 1) {
 			const failedNames = failedServers.map(server => server.name).join(", ");
 			this.showWarning(`LSP startup failed for ${failedNames}. It will retry lazily on write.`);
+		}
+	}
+
+	#updateWelcomeInformation(): void {
+		this.composer.updateWelcome({
+			modelName: this.session.model?.name ?? "Unknown",
+			providerName: this.session.model?.provider ?? "Unknown",
+		});
+	}
+
+	async #loadWelcomeSessions(): Promise<void> {
+		try {
+			const sessions = await getRecentSessions(this.sessionManager.getSessionDir());
+			this.composer.updateWelcome({ recentSessions: sessions });
+		} catch (error) {
+			logger.debug("welcome recent sessions unavailable", { error });
+			this.composer.updateWelcome({ recentSessions: [] });
 		}
 	}
 

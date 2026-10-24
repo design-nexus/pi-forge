@@ -8,6 +8,10 @@ A coding agent based on [OMP](https://github.com/can1357/oh-my-pi), with modular
 
 Pi Forge preserves OMP's features, default behavior, terminal appearance, and service integrations. It adds Forge capabilities and uses its own executable, application state, version, and update channel. OMP and Pi Forge can be installed alongside each other.
 
+## User guide
+
+Read the [plain-language user guide](docs/user-guide.md) or download the [PDF edition](output/pdf/pi-forge-user-guide.pdf). Both cover inherited OMP features, Pi Forge additions, everyday workflows, and command references.
+
 ## Install and update
 
 Pi Forge 0.1.1 incorporates OMP 18.6.2; the integrated revision is recorded in [upstream reconciliation](docs/upstream-reconciliation.md).

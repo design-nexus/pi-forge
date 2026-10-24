@@ -1019,6 +1019,19 @@ export const cfgStartupQuiet = register({
 	},
 });
 
+export const cfgStartupShowInformation = register({
+	id: "startup.showInformation",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "interaction",
+		group: "Startup & Updates",
+		label: "Show Startup Information Panel",
+		description:
+			"Show model, provider, tips, language servers, and recent sessions beneath the welcome logo. Quiet Startup still suppresses it.",
+	},
+});
+
 export const cfgStartupShowSplash = register({
 	id: "startup.showSplash",
 	type: "boolean",

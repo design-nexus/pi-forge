@@ -1,4 +1,5 @@
-import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
+import { sanitizeText } from "@oh-my-pi/pi-utils";
+import { APP_DISPLAY_NAME } from "@oh-my-pi/pi-utils/dirs";
 import type { TspSpan } from "@oh-my-pi/pi-wire";
 import { formatDoubleTap, formatKeyHint, formatKeyHints, type KeyName } from "../app-keybindings";
 import { editorKey } from "../chrome/keybinding-hints";
@@ -10,7 +11,7 @@ import { isNativeRendering } from "../native/state";
 import { TERMINAL } from "../terminal-capabilities";
 import { theme } from "../theme/theme";
 import type { Component } from "../tui";
-import { padding, replaceTabs, visibleWidth, wrapTextWithAnsi } from "../utils";
+import { padding, replaceTabs, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils";
 import { createForgeLogoImage, forgeLogoNode } from "./forge-logo";
 import tipsText from "./tips.txt" with { type: "text" };
 
@@ -153,15 +154,31 @@ export function renderWelcomeTip(tip: string, width: number, phase = 0): string[
 	return lines;
 }
 
+/** Dynamic startup details, shared by terminal and native welcome renderers. */
+export interface WelcomeInformation {
+	readonly modelName?: string;
+	readonly providerName?: string;
+	readonly recentSessions?: readonly { readonly name: string; readonly timeAgo: string }[];
+	readonly lspServers?: readonly {
+		readonly name: string;
+		readonly status: "ready" | "error" | "connecting" | "available";
+		readonly fileTypes: readonly string[];
+	}[];
+}
+
+const INFORMATION_SESSION_SLOTS = 4;
+const INFORMATION_SERVER_SLOTS = 4;
+
 /**
- * The session's welcome banner. In a terminal: the gradient logo beside the
- * `omp` wordmark with the version under it (the logo alone when the lockup does
- * not fit) and the tip of the session (dropped below {@link TIP_MIN_COLUMNS}
- * columns). Natively: a card with the same logo, wordmark, version and tip
- * ({@link WelcomeComponent.describe}).
+ * The session welcome banner. The optional information view places the Forge
+ * logo and active model on the left, with tips, LSP servers and recent sessions
+ * on the right. The compact view keeps the logo, version and rotating tip.
+ * Native terminals receive the same left-to-right layout as a structured card.
  */
 export class WelcomeComponent implements Component {
 	readonly #logoImage = createForgeLogoImage();
+	#information: WelcomeInformation = {};
+	#showInformation = false;
 	#animStart: number | null = null;
 	#animTimer: Timer | null = null;
 	#requestRender: (() => void) | null = null;
@@ -214,7 +231,7 @@ export class WelcomeComponent implements Component {
 					keyed(
 						col(
 							[
-								art([span(APP_NAME, "strong")], "omp.welcome.wordmark"),
+								art([span(APP_DISPLAY_NAME, "strong")], "omp.welcome.wordmark"),
 								art([span(`v${this.version}`, "dim mono")], "omp.welcome.version"),
 							],
 							{ role: "omp.welcome.mark" },
@@ -226,7 +243,30 @@ export class WelcomeComponent implements Component {
 			),
 			"lockup",
 		);
-		const body: NativeChild[] = [lockupRow];
+		const identity = col(
+			[
+				lockupRow,
+				text(plainLine(this.#information.modelName ?? "Loading..."), { wrap: "word" }),
+				text(plainLine(this.#information.providerName ?? "Loading..."), { wrap: "word" }),
+			],
+			{ align: "center", role: "pi-forge.welcome.identity" },
+		);
+		const body: NativeChild[] = this.#showInformation
+			? [
+					row(
+						[
+							identity,
+							card(
+								{ role: "pi-forge.welcome.information" },
+								this.#informationColumns().map(lines =>
+									col(lines.map(line => text(plainLine(line), { wrap: "word" }))),
+								),
+							),
+						],
+						{ align: "center", gap: "md", role: "pi-forge.welcome.layout" },
+					),
+				]
+			: [lockupRow];
 		if (tip) {
 			const isNew = NEW_TIP_MARKER.test(tip);
 			const tipText = plainLine(expandTipKeys(isNew ? tip.replace(NEW_TIP_MARKER, "") : tip));
@@ -303,6 +343,175 @@ export class WelcomeComponent implements Component {
 		this.#stopAnimation();
 	}
 
+	/** Toggle the panel and patch its data without restarting the welcome animation. */
+	setInformation(information: WelcomeInformation, show: boolean): void {
+		this.#information = { ...this.#information, ...information };
+		this.#showInformation = show;
+		this.invalidate();
+	}
+
+	#informationColumns(): string[][] {
+		const clean = (value: string) => replaceTabs(sanitizeText(value)).replace(/[\r\n]+/g, " ");
+		const servers = this.#information.lspServers;
+		const sessions = this.#information.recentSessions;
+		return [
+			[
+				"Tips",
+				"?  for keyboard shortcuts",
+				"#  for prompt actions",
+				"/  for commands",
+				"!  to run bash",
+				"$  to run python",
+			],
+			[
+				"LSP Servers",
+				...(servers?.length
+					? servers
+							.slice(0, INFORMATION_SERVER_SLOTS)
+							.map(server => `${clean(server.name)}: ${server.status} (${clean(server.fileTypes.join(", "))})`)
+					: [servers ? "No language servers" : "Loading..."]),
+				...(servers && servers.length > INFORMATION_SERVER_SLOTS
+					? [`+${servers.length - INFORMATION_SERVER_SLOTS} more`]
+					: []),
+				"",
+				"Recent sessions",
+				...(sessions?.length
+					? sessions
+							.slice(0, INFORMATION_SESSION_SLOTS)
+							.map(session => `${clean(session.name)} (${clean(session.timeAgo)})`)
+					: [sessions ? "No recent sessions" : "Loading..."]),
+			],
+		];
+	}
+
+	#renderInformation(termWidth: number): string[] {
+		const boxWidth = Math.min(100, Math.max(0, termWidth - 4));
+		if (boxWidth < 4) return [];
+		const dualContentWidth = boxWidth - 3;
+		const preferredLeftCol = 26;
+		const minLeftCol = Math.max(...FORGE_PANEL_LOGO.map(visibleWidth), visibleWidth("Welcome back!"));
+		const minRightCol = 20;
+		const desiredLeftCol = Math.max(
+			Math.min(preferredLeftCol, Math.max(minLeftCol, Math.floor(dualContentWidth * 0.35))),
+			minLeftCol,
+		);
+		const leftCol =
+			dualContentWidth >= minRightCol + 1
+				? Math.min(desiredLeftCol, dualContentWidth - minRightCol)
+				: Math.max(1, dualContentWidth - 1);
+		const rightCol = Math.max(1, dualContentWidth - leftCol);
+		const showRightColumn = leftCol >= minLeftCol && rightCol >= minRightCol;
+		const actualLeftCol = showRightColumn ? leftCol : boxWidth - 2;
+		const actualRightCol = showRightColumn ? rightCol : 0;
+		const clean = (value: string) => replaceTabs(sanitizeText(value)).replace(/[\r\n]+/g, " ");
+		const fit = (value: string, width: number) => {
+			const clipped = truncateToWidth(value, width);
+			return clipped + padding(Math.max(0, width - visibleWidth(clipped)));
+		};
+		const center = (value: string, width: number) => {
+			const clipped = truncateToWidth(value, width);
+			return padding(Math.max(0, Math.floor((width - visibleWidth(clipped)) / 2))) + clipped;
+		};
+		const graphicLogo = TERMINAL.imageProtocol != null && actualLeftCol >= LOGO_WIDTH;
+		const graphicWidth = Math.min(18, actualLeftCol);
+		const logo = graphicLogo ? this.#logoImage.render(graphicWidth + 2) : this.#currentForgeLogoFrame();
+		const logoLines = graphicLogo
+			? logo.map(
+					line =>
+						padding(Math.max(0, Math.floor((actualLeftCol - graphicWidth) / 2))) +
+						line +
+						padding(Math.max(0, graphicWidth - visibleWidth(line))),
+				)
+			: logo.map(line => center(line, actualLeftCol));
+		const leftLines = [
+			"",
+			center(theme.bold("Welcome back!"), actualLeftCol),
+			"",
+			...logoLines,
+			"",
+			center(theme.fg("muted", clean(this.#information.modelName ?? "Loading...")), actualLeftCol),
+			center(theme.fg("borderMuted", clean(this.#information.providerName ?? "Loading...")), actualLeftCol),
+		];
+		const horizontal = theme.fg("dim", theme.boxRound.horizontal);
+		const separator = ` ${theme.fg("dim", theme.boxRound.horizontal.repeat(Math.max(0, actualRightCol - 2)))}`;
+		const servers = this.#information.lspServers;
+		const serverLines = servers?.length
+			? servers.slice(0, INFORMATION_SERVER_SLOTS).map(server => {
+					const icon =
+						server.status === "ready"
+							? theme.styledSymbol("status.enabled", "success")
+							: server.status === "available"
+								? theme.styledSymbol("status.enabled", "dim")
+								: server.status === "connecting"
+									? theme.styledSymbol("status.pending", "muted")
+									: theme.styledSymbol("status.error", "error");
+					return ` ${icon} ${theme.fg("muted", clean(server.name))} ${theme.fg("dim", clean(server.fileTypes.slice(0, 3).join(" ")))}`;
+				})
+			: [theme.fg("dim", servers ? " No LSP servers" : " Loading...")];
+		const sessionLines = this.#information.recentSessions?.length
+			? this.#information.recentSessions.slice(0, INFORMATION_SESSION_SLOTS).map(session => {
+					const suffix = ` (${clean(session.timeAgo)})`;
+					const name = truncateToWidth(
+						clean(session.name),
+						Math.max(1, actualRightCol - visibleWidth(suffix) - 4),
+					);
+					return ` ${theme.fg("dim", `${theme.md.bullet} `)}${theme.fg("muted", name)}${theme.fg("dim", suffix)}`;
+				})
+			: [theme.fg("dim", this.#information.recentSessions ? " No recent sessions" : " Loading...")];
+		const rightLines = [
+			` ${theme.bold(theme.fg("accent", "Tips"))}`,
+			` ${theme.fg("dim", "?")}${theme.fg("muted", " for keyboard shortcuts")}`,
+			` ${theme.fg("dim", "#")}${theme.fg("muted", " for prompt actions")}`,
+			` ${theme.fg("dim", "/")}${theme.fg("muted", " for commands")}`,
+			` ${theme.fg("dim", "!")}${theme.fg("muted", " to run bash")}`,
+			` ${theme.fg("dim", "$")}${theme.fg("muted", " to run python")}`,
+			separator,
+			` ${theme.bold(theme.fg("accent", "LSP Servers"))}`,
+			...serverLines,
+			...(servers && servers.length > INFORMATION_SERVER_SLOTS
+				? [` ${theme.fg("dim", `+${servers.length - INFORMATION_SERVER_SLOTS} more`)}`]
+				: []),
+			separator,
+			` ${theme.bold(theme.fg("accent", "Recent sessions"))}`,
+			...sessionLines,
+			"",
+		];
+		const border = (value: string) => theme.fg("dim", value);
+		const chars = theme.boxRound;
+		const title = ` ${APP_DISPLAY_NAME} v${this.version} `;
+		const titlePrefix = chars.horizontal.repeat(3);
+		const titleWidth = visibleWidth(titlePrefix) + visibleWidth(title);
+		const top =
+			titleWidth >= boxWidth - 2
+				? chars.topLeft + truncateToWidth(border(titlePrefix + title), boxWidth - 2) + chars.topRight
+				: chars.topLeft +
+					border(titlePrefix + title) +
+					border(chars.horizontal.repeat(boxWidth - 2 - titleWidth)) +
+					chars.topRight;
+		const lines = [top];
+		const narrowLines = showRightColumn ? [] : [...leftLines, "", ...rightLines];
+		const contentRows = showRightColumn ? Math.max(leftLines.length, rightLines.length) : narrowLines.length;
+		for (let i = 0; i < contentRows; i++) {
+			const left = fit((showRightColumn ? leftLines : narrowLines)[i] ?? "", actualLeftCol);
+			if (showRightColumn) {
+				const right = fit(rightLines[i] ?? "", actualRightCol);
+				lines.push(border(chars.vertical) + left + border(chars.vertical) + right + border(chars.vertical));
+			} else {
+				lines.push(border(chars.vertical) + left + border(chars.vertical));
+			}
+		}
+		lines.push(
+			showRightColumn
+				? chars.bottomLeft +
+						horizontal.repeat(actualLeftCol) +
+						border(chars.teeUp) +
+						horizontal.repeat(actualRightCol) +
+						border(chars.bottomRight)
+				: chars.bottomLeft + horizontal.repeat(actualLeftCol) + border(chars.bottomRight),
+		);
+		return lines.map(line => `${padding(2)}${line}`);
+	}
+
 	/** Update the version embedded in the welcome border title. */
 	setVersion(version: string): void {
 		this.version = version;
@@ -329,6 +538,12 @@ export class WelcomeComponent implements Component {
 		// Content keeps a column clear on each side; everything centers in the full width.
 		const room = termWidth - 2;
 		if (room < 4) return [];
+		if (this.#showInformation) {
+			const lines = this.#renderInformation(termWidth);
+			const tip = termWidth >= TIP_MIN_COLUMNS ? this.#renderTip(Math.min(termWidth - 2, TIP_MEASURE)) : [];
+			if (tip.length > 0) lines.push(...tip.map(line => `${padding(2)}${line}`));
+			return lines;
+		}
 		const logo = this.#currentLogoFrame();
 		const version = theme.fg("dim", `v${this.version}`);
 		const lockupWidth = LOGO_WIDTH + LOCKUP_GAP + Math.max(WORDMARK_WIDTH, visibleWidth(version));
@@ -369,11 +584,26 @@ export class WelcomeComponent implements Component {
 		if (elapsed >= INTRO_MS) return REST_FRAME;
 		return introLogoFrame(elapsed / INTRO_MS);
 	}
+
+	/** Forge wordmark placed beside the unchanged Pi mark in the information panel. */
+	#currentForgeLogoFrame(): readonly string[] {
+		if (this.#animStart == null) return gradientLogo(FORGE_PANEL_LOGO, 0);
+		const elapsed = performance.now() - this.#animStart;
+		if (elapsed >= INTRO_MS) return gradientLogo(FORGE_PANEL_LOGO, 0);
+		return introLogoFrame(elapsed / INTRO_MS, FORGE_PANEL_LOGO);
+	}
 }
 
 /** Block-grid brand mark shared by the welcome and setup surfaces. */
 export const PI_SYMBOL = ["████████████", "   ██  ██   ", "   ██  ██   ", "   ▒▒  ██   ", "       ██   "];
 export const PI_LOGO = PI_SYMBOL;
+// The approved raster logo puts a tiny Forge wordmark under the top bar, just
+// to the right of the unchanged Pi stem. Keep it compact in the text renderer
+// too; the final two letters share the baseline row so it stays within the Pi.
+const FORGE_PANEL_LOGO = PI_SYMBOL.map((line, row) => {
+	const detail = ["", "f", "o", "r", "ge"][row];
+	return detail ? `${line}  ${detail}` : line;
+});
 export const FORGE_WORDMARK = [
 	"████  ███  ████   ████ ████",
 	"█    █   █ █   █ █     █   ",
@@ -387,8 +617,7 @@ export const FORGE_LOGO = PI_SYMBOL.map((line, row) => `${line}   ${FORGE_WORDMA
 const LOGO_WIDTH = Math.max(...PI_LOGO.map(row => row.length));
 
 /**
- * The Forge wordmark, set beside {@link PI_LOGO} from its second row.
- * The version follows the wordmark, extending below the compact logo.
+ * The Forge wordmark, set below the top bar beside the right stem.
  */
 const WORDMARK = FORGE_WORDMARK;
 
@@ -549,12 +778,12 @@ const INTRO_SHINE_TRAVERSALS = 3;
  * fades with the same ease-out curve so the highlight is gone by the resting
  * frame.
  */
-function introLogoFrame(progress: number): string[] {
+function introLogoFrame(progress: number, logo: readonly string[] = PI_LOGO): string[] {
 	const eased = 1 - (1 - progress) ** 3;
 	const phase = ((((1 - eased) * INTRO_SWEEPS) % 1) + 1) % 1;
 	const shinePos = (((progress * INTRO_SHINE_TRAVERSALS) % 1) + 1) % 1;
 	const shineStrength = (1 - eased) ** 1.5;
-	return gradientLogo(PI_LOGO, phase, {
+	return gradientLogo(logo, phase, {
 		strength: shineStrength,
 		pos: shinePos,
 	});

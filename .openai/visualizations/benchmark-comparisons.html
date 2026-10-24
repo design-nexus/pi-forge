@@ -1,0 +1,153 @@
+<div id="pf-all-comparisons">
+  <style>
+    #pf-all-comparisons { color:var(--foreground); }
+    #pf-all-comparisons .plots { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+    #pf-all-comparisons .plot { min-width:0; }
+    #pf-all-comparisons .plot svg { display:block; width:100%; }
+    #pf-all-comparisons .plot svg text { fill:var(--foreground); font-size:12px; }
+    #pf-all-comparisons .plot svg .domain,#pf-all-comparisons .plot svg .tick line { stroke:var(--border); }
+    #pf-all-comparisons .swatch { display:inline-block; width:12px; height:12px; margin-right:5px; }
+    #pf-all-comparisons summary { margin:14px 0; font-weight:500; }
+    #pf-all-comparisons h3 { margin-top:18px; }
+    @media(max-width:800px) { #pf-all-comparisons .plots { grid-template-columns:1fr; } }
+  </style>
+  <h2>Recorded benchmark comparisons</h2>
+  <div class="viz-row text-small">
+    <span><span class="swatch" style="background:var(--viz-series-1)"></span>Less than baseline</span>
+    <span><span class="swatch" style="background:var(--viz-series-2)"></span>More than baseline</span>
+    <span>0% = unchanged • Lower is better for these three measures</span>
+  </div>
+  <div class="plots">
+    <div class="plot"><h3>Reported tokens</h3><svg data-metric="0" role="img" aria-label="Percent change in reported tokens for all matched comparisons"></svg></div>
+    <div class="plot"><h3>Reported cost</h3><svg data-metric="1" role="img" aria-label="Percent change in reported cost for all matched comparisons"></svg></div>
+    <div class="plot"><h3>Elapsed time</h3><svg data-metric="2" role="img" aria-label="Percent change in elapsed time for all matched comparisons"></svg></div>
+  </div>
+  <div class="text-small text-muted">P = Pi Forge versus OMP · G = Governor auto versus off · E = revised versus original edit prompt. Rows with three pairs show means. * Bash Governor quality differs: off fails the strengthened audit.</div>
+  <details open>
+    <summary>All matched results — exact values and acceptance</summary>
+    <div class="table-responsive"><table class="table table-sm"><thead><tr><th>Task / model / pairs</th><th>Condition</th><th class="text-end">Reported tokens</th><th class="text-end">Cost (USD)</th><th class="text-end">Time (s)</th><th>Outcome</th></tr></thead><tbody data-paired></tbody></table></div>
+  </details>
+  <details open>
+    <summary>Completed runs without a comparison condition</summary>
+    <div class="table-responsive"><table class="table table-sm"><thead><tr><th>Task</th><th class="text-end">Reported tokens</th><th class="text-end">Cost (USD)</th><th class="text-end">Time (s)</th><th>Outcome</th></tr></thead><tbody>
+      <tr><td>Three-consumer migration off · Luna Low</td><td class="text-end">157,634</td><td class="text-end">0.004703</td><td class="text-end">42.26</td><td>2/2; three explicit workers; four allowed files</td></tr>
+      <tr><td>Isolated notes · Luna Low</td><td class="text-end">230,856</td><td class="text-end">0.007905</td><td class="text-end">68.56</td><td>6/6; both patches applied; gate verified; zero repairs</td></tr>
+      <tr><td>Injected repair, before fixes · Luna Low</td><td class="text-end">267,417</td><td class="text-end">0.009997</td><td class="text-end">78.95</td><td>Files pass 6/6; host integration job fails</td></tr>
+      <tr><td>Injected repair, after fixes · Luna Low</td><td class="text-end">174,951</td><td class="text-end">0.007100</td><td class="text-end">67.79</td><td>6/6; host accepts one repair; gate completes</td></tr>
+      <tr><td>Repository maintenance, exploratory · Luna Low</td><td class="text-end">1,895,178</td><td class="text-end">0.030070</td><td class="text-end">181.55</td><td>Original 5/5; strengthened audit 5/7; no workers</td></tr>
+    </tbody></table></div>
+  </details>
+  <details>
+    <summary>Failed, capped, or interrupted attempts — excluded from performance comparisons</summary>
+    <div class="table-responsive"><table class="table table-sm"><thead><tr><th>Attempt</th><th class="text-end">Tokens</th><th class="text-end">Cost (USD)</th><th class="text-end">Time (s)</th><th>Reason</th></tr></thead><tbody>
+      <tr><td>OMP context-notes attempted repeat</td><td class="text-end">3,860,271</td><td class="text-end">3.359850</td><td class="text-end">308.71</td><td>40/43 tests; three failures</td></tr>
+      <tr><td>Pi Forge matching attempted repeat</td><td>Unavailable</td><td>Unavailable</td><td>Unavailable</td><td>Provider usage limit; no implementation</td></tr>
+      <tr><td>Early repository Governor off</td><td class="text-end">272,500</td><td class="text-end">0.744993</td><td class="text-end">52.28</td><td>Token cap; dependency setup invalid; no implementation</td></tr>
+      <tr><td>Early repository Governor auto</td><td class="text-end">284,671</td><td class="text-end">0.487147</td><td class="text-end">97.75</td><td>Token cap; deferred task; dependency setup invalid</td></tr>
+      <tr><td>Hosted routing retry off</td><td class="text-end">1,029,527</td><td class="text-end">1.634030</td><td class="text-end">70.01</td><td>Token cap; no implementation</td></tr>
+      <tr><td>Hosted routing retry auto</td><td class="text-end">5,077,321</td><td class="text-end">5.192157</td><td class="text-end">220.07</td><td>Four workers dispatched; token cap before edits</td></tr>
+      <tr><td>Compact notes initial off</td><td class="text-end">141,385</td><td class="text-end">0.005821</td><td class="text-end">37.59</td><td>Worker modified protected acceptance test</td></tr>
+      <tr><td>Optional notes Luna Low</td><td>Unknown</td><td>Unknown</td><td>Unknown</td><td>Malformed repetitive stream; manually interrupted</td></tr>
+      <tr><td>Four-consumer migration Luna Low</td><td>Unknown</td><td>Unknown</td><td>Unknown</td><td>Periodic malformed stream; interrupted; matched retry used Medium</td></tr>
+      <tr><td>Ternary Bonsai and Qwopus local off</td><td>Not retained</td><td>Local model</td><td>Not retained</td><td>Stopped while generating; acceptance not reached</td></tr>
+      <tr><td>Gemma local off/auto and Qwopus local auto</td><td>Not retained</td><td>Local model</td><td>Not retained</td><td>LM Studio server aborted before tool use</td></tr>
+      <tr><td>Larger hosted off attempt</td><td>Not retained</td><td>Not retained</td><td>Not retained</td><td>No retained summary</td></tr>
+      <tr><td>Measurement runtime startup</td><td>No provider call</td><td>No provider call</td><td>Excluded</td><td>Missing generated asset; fixed before matched pair</td></tr>
+    </tbody></table></div>
+  </details>
+  <details>
+    <summary>Prompt setup measurements — input size, not coding performance</summary>
+    <div class="table-responsive"><table class="table table-sm"><thead><tr><th>Paired first-turn profile</th><th class="text-end">Provider input tokens</th><th class="text-end">Versus OMP</th></tr></thead><tbody>
+      <tr><td>OMP default</td><td class="text-end">12,916</td><td>Baseline</td></tr>
+      <tr><td>Pi Forge Full</td><td class="text-end">13,027</td><td class="text-end">+0.9%</td></tr>
+      <tr><td>Pi Forge Minimal</td><td class="text-end">12,174</td><td class="text-end">−5.7%</td></tr>
+      <tr><td>Pi Forge Coding</td><td class="text-end">12,373</td><td class="text-end">−4.2%</td></tr>
+      <tr><td>Pi Forge Agentic</td><td class="text-end">13,027</td><td class="text-end">+0.9%</td></tr>
+    </tbody></table></div>
+    <div class="table-responsive"><table class="table table-sm"><thead><tr><th>Other setup measurement</th><th>Full</th><th>Minimal</th><th>Coding</th><th>Agentic</th></tr></thead><tbody>
+      <tr><td>Earlier authenticated provider input; separate observation</td><td>12,896</td><td>12,079</td><td>12,284</td><td>12,916</td></tr>
+      <tr><td>Offline initial prompt text only</td><td>1,809</td><td>1,667</td><td>1,809</td><td>1,809</td></tr>
+      <tr><td>Offline task-agent prompt peak</td><td>2,005</td><td>1,863</td><td>2,005</td><td>2,005</td></tr>
+    </tbody></table></div>
+  </details>
+  <details>
+    <summary>Local correctness checks — no hosted performance comparison</summary>
+    <table class="table table-sm"><thead><tr><th>Latest recorded suite snapshot</th><th>Result</th><th>Contract</th></tr></thead><tbody>
+      <tr><td>Integration, repair, task execution, benchmark acceptance</td><td>153 pass / 0 fail</td><td>Seven suites; real isolated patch integration, retry ownership, stagnation, and host acceptance</td></tr>
+      <tr><td>Streaming, usage, thinking-loop recovery</td><td>177 pass / 0 fail</td><td>Malformed stream recovery, replay limits, large valid payload boundaries</td></tr>
+      <tr><td>Edit and prompt selection</td><td>23 pass / 0 fail</td><td>Seen-line guard, edit details, aborts, prompt variants</td></tr>
+      <tr><td>Development implementation maintenance control</td><td>7/7</td><td>Chromium wrapper and Bash boundaries; offline control</td></tr>
+      <tr><td>Development implementation context notes</td><td>43/43</td><td>Journal, compaction, permissions, assembly, usage</td></tr>
+      <tr><td>Code checks and restored native build</td><td>Pass</td><td>bun check; rebuilt addon matches original production prompt</td></tr>
+    </tbody></table>
+    <div class="text-small text-muted">Suite snapshots overlap with earlier runs; counts are not added together.</div>
+  </details>
+  <div class="text-small text-muted">Sources: reviewed phase9-evaluation.md and architecture-baseline.md; retained benchmark-results JSON. Reported totals include cached input. Models, task revisions, and conditions differ across groups; compare within each row. Small samples do not establish a general advantage. Historical means are rounded.</div>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script>
+  (() => {
+    const root=document.getElementById('pf-all-comparisons');
+    const rows=[
+      {label:'P · Tiny edit',task:'Tiny retry-delay edit',group:'P',model:'GPT-5.5',n:3,a:[34599,.068058,20.50],b:[34978,.086315,18.51],result:['3/3 runs pass; focused tests','3/3 runs pass; scoped']},
+      {label:'P · Lifecycle',task:'Session lifecycle',group:'P',model:'GPT-5.5',n:3,a:[85290,.134362,48.61],b:[72389,.127599,44.43],result:['3/3 runs pass','3/3 runs pass; scoped']},
+      {label:'P · Cross-package',task:'Cross-package contract',group:'P',model:'GPT-5.5',n:3,a:[53011,.083147,21.73],b:[60873,.092830,25.23],result:['3/3 runs pass','3/3 runs pass; scoped']},
+      {label:'P · 4-file migration',task:'Decomposable four-file migration',group:'P',model:'GPT-5.5',n:3,a:[81604,.133812,49.44],b:[88697,.127343,41.32],result:['3/3 runs pass','3/3 runs pass; scoped']},
+      {label:'P · Unexpected scope',task:'Unexpected scope',group:'P',model:'GPT-5.5',n:3,a:[38532,.078682,21.12],b:[38652,.078155,24.23],result:['3/3 runs pass','3/3 runs pass; scoped']},
+      {label:'P · Overestimated',task:'Overestimated scope',group:'P',model:'GPT-5.5',n:3,a:[52519,.090663,25.67],b:[55988,.082176,25.64],result:['3/3 runs pass','3/3 runs pass; scoped']},
+      {label:'P · Chromium wrapper',task:'Repository Chromium wrapper',group:'P',model:'GPT-5.5',n:1,a:[558418,.544533,95.86],b:[486601,.480629,67.72],result:['Pass; one allowed file','Pass; one allowed file']},
+      {label:'P · Repository Bash',task:'Repository Bash verification',group:'P',model:'GPT-5.5',n:3,a:[608487,.583656,72.79],b:[574863,.542730,59.53],result:['3/3 runs; original 2 checks','3/3 runs; original 2 checks']},
+      {label:'P · Context notes 1',task:'Context notes first successful pair',group:'P',model:'GPT-5.5',n:1,a:[7163604,5.405497,600.70],b:[2862785,2.227969,374.58],result:['43/43; scope revalidated','43/43; scope revalidated']},
+      {label:'P · Context notes 2',task:'Context notes successful repeat pair',group:'P',model:'GPT-5.5',n:1,a:[4175360,3.710949,433.72],b:[3212514,3.034080,419.77],result:['43/43; scoped','43/43; scoped']},
+      {label:'G · Tiny edit',task:'Governor tiny retry-delay edit',group:'G',model:'GPT-5.5',n:1,a:[35866,.071418,19.56],b:[43097,.086391,18.04],result:['2/2; no workers','2/2; no decisions or workers']},
+      {label:'G · Lifecycle',task:'Governor session lifecycle',group:'G',model:'GPT-5.5',n:1,a:[60762,.096098,31.06],b:[78227,.148405,39.59],result:['4/4; no workers','4/4; no decisions or workers']},
+      {label:'G · Migration G5.5',task:'Governor four-file migration',group:'G',model:'GPT-5.5',n:1,a:[75859,.121961,39.10],b:[96386,.147210,36.08],result:['2/2; no workers','2/2; reassessment; no workers']},
+      {label:'G · 2 explicit workers',task:'Compact notes, explicit two workers',group:'G',model:'Luna Low',n:1,a:[117418,.00404372,34.204],b:[140844,.00563768,31.540],result:['6/6; two workers','6/6; two explicit workers; Normal/V1']},
+      {label:'G · Optional fixes',task:'Optional delegation notes',group:'G',model:'Luna Medium',n:1,a:[58359,.00194278,25.2619],b:[63388,.00209024,21.4393],result:['6/6; no workers','6/6; Normal/V1 to Trivial/V0; no workers']},
+      {label:'G · 4 explicit workers',task:'Four-consumer migration, explicit workers',group:'G',model:'Luna Medium',n:1,a:[212025,.00782922,43.613],b:[228735,.00937790,48.959],result:['3/3; four workers','3/3; four workers plus reviewer; Massive/V2']},
+      {label:'G · Optional migration',task:'Optional strategy four-consumer migration',group:'G',model:'Luna Low',n:1,a:[82432,.00335368,31.4328],b:[53383,.00180534,30.1145],result:['3/3; no workers','3/3; Normal/V1 to Complex/V2; no workers']},
+      {label:'G · Repository Bash *',task:'Repository Bash Governor pair',group:'G',model:'Luna Low',n:1,a:[271708,.00673176,49.2139],b:[557513,.01093098,76.6612],result:['Original 2/2; audit 3/4 (regression)','Original 2/2; audit 4/4; failure recovery']},
+      {label:'E · Edit recovery',task:'Edit-recovery prompt experiment (rejected)',group:'E',model:'Luna Low',n:1,a:[3251474,.04550388,259.303111617],b:[7033755,.09560342,639.723025569],result:['7/7; eight edit failures','7/7; eight edit failures; revision reverted']}
+    ];
+    const names={P:['OMP','Pi Forge'],G:['Off','Auto'],E:['Original','Revised']};
+    const fmt=new Intl.NumberFormat('en-US');
+    const body=root.querySelector('[data-paired]');
+    rows.forEach(r=>[r.a,r.b].forEach((v,i)=>{
+      const tr=document.createElement('tr');
+      [i===0?r.task+' · '+r.model+' · '+r.n+' pair'+(r.n===1?'':'s'):'',names[r.group][i],fmt.format(v[0]),v[1].toFixed(6),v[2].toFixed(2),r.result[i]].forEach((text,j)=>{
+        const td=document.createElement('td');td.textContent=text;if(j>=2&&j<=4)td.className='text-end tabular-nums';tr.append(td);
+      });body.append(tr);
+    }));
+    const changes=rows.map(r=>r.a.map((v,i)=>(r.b[i]/v-1)*100));
+    if(typeof d3==='undefined')return;
+    const extent=d3.extent(changes.flat());const span=extent[1]-extent[0];
+    const domain=[Math.min(0,extent[0])-span*.08,Math.max(0,extent[1])+span*.08];
+    function draw(){
+      root.querySelectorAll('svg[data-metric]').forEach(element=>{
+        const metric=Number(element.dataset.metric),width=element.parentElement.getBoundingClientRect().width;
+        const left=153,right=65,top=22,row=window.matchMedia('(pointer:coarse)').matches?44:32,height=top+rows.length*row+53;
+        const svg=d3.select(element).attr('viewBox',`0 0 ${width} ${height}`);svg.selectAll('*').remove();
+        svg.append('title').text(['Reported tokens','Reported cost','Elapsed time'][metric]+' — percent change from baseline');
+        const x=d3.scaleLinear().domain(domain).range([left,width-right]);
+        const y=d3.scaleBand().domain(rows.map(r=>r.label)).range([top,top+rows.length*row]).padding(.28);
+        svg.append('rect').attr('data-chart-frame','').attr('x',left).attr('y',top).attr('width',width-left-right).attr('height',rows.length*row).attr('fill','none').attr('stroke','var(--border)');
+        svg.append('line').attr('x1',x(0)).attr('x2',x(0)).attr('y1',top).attr('y2',top+rows.length*row).attr('stroke','var(--border)');
+        svg.append('g').attr('transform',`translate(0,${top+rows.length*row})`).call(d3.axisBottom(x).tickValues([domain[0],0,domain[1]]).tickFormat(v=>v.toFixed(0)+'%'));
+        const axis=svg.append('g').attr('transform',`translate(${left},0)`).call(d3.axisLeft(y).tickSize(0));axis.select('.domain').remove();
+        rows.forEach((r,i)=>{
+          const v=changes[i][metric],cy=y(r.label),h=y.bandwidth();
+          svg.append('rect').attr('x',Math.min(x(0),x(v))).attr('y',cy).attr('width',Math.abs(x(v)-x(0))).attr('height',h)
+            .attr('fill',v<=0?'var(--viz-series-1)':'var(--viz-series-2)')
+            .attr('data-tooltip',r.task+': '+(v>0?'+':'')+v.toFixed(1)+'% '+['tokens','cost','time'][metric]);
+          svg.append('text').attr('x',width-2).attr('y',cy+h/2).attr('dy','.35em').attr('text-anchor','end')
+            .text((v>0?'+':'')+v.toFixed(1)+'%');
+          svg.append('rect').attr('data-chart-hit','').attr('x',left).attr('y',cy-(row-h)/2).attr('width',width-left-right).attr('height',row).attr('fill','transparent')
+            .attr('data-tooltip',r.task+': '+(v>0?'+':'')+v.toFixed(1)+'% '+['tokens','cost','time'][metric]);
+        });
+        svg.append('text').attr('class','axis-title').attr('data-axis','x').attr('x',(left+width-right)/2).attr('y',height-5).attr('text-anchor','middle').text('Change (%)');
+        svg.append('text').attr('class','axis-title').attr('data-axis','y').attr('transform',`translate(6,${top+rows.length*row/2}) rotate(-90)`).attr('text-anchor','middle').text('Comparison');
+      });
+    }
+    const observer=new ResizeObserver(draw);root.querySelectorAll('.plot').forEach(p=>observer.observe(p));draw();
+  })();
+  </script>
+</div>

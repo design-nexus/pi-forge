@@ -38,6 +38,7 @@ import {
 	cfgStartupChangelogMode,
 	cfgStartupCheckUpdate,
 	cfgStartupQuiet,
+	cfgStartupShowInformation,
 	cfgStartupSetupWizard,
 	cfgStartupShowSplash,
 	cfgTuiImeSafeCursor,
@@ -280,6 +281,7 @@ describe("Composer prepaint", () => {
 		settings = await Settings.init({ inMemory: true });
 		config = {
 			quiet: cfgStartupQuiet.get(settings),
+			showStartupInformation: cfgStartupShowInformation.get(settings),
 			composerShape: cfgComposerShape.get(settings) ?? "box",
 			showHardwareCursor: cfgShowHardwareCursor.get(settings),
 			maxInlineImages: cfgTuiMaxInlineImages.get(settings),
@@ -733,6 +735,7 @@ describe("Composer prepaint", () => {
 
 		applyStartupComposerPreferences({
 			quiet: true,
+			showStartupInformation: false,
 			composerShape: "box",
 			showHardwareCursor: config.showHardwareCursor,
 			maxInlineImages: config.maxInlineImages,
